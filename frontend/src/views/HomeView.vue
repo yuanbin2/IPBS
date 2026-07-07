@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ChatDotRound, Connection, Cpu, DataAnalysis, Files, UploadFilled } from "@element-plus/icons-vue";
+import { RouterLink } from "vue-router";
 import { usePlatformStore } from "../stores/platform";
 
 const platform = usePlatformStore();
@@ -8,8 +9,8 @@ const modules = [
   { title: "个人博客", detail: "论文、项目、技术文章与学习笔记沉淀。", icon: Files },
   { title: "企业知识库", detail: "上传 PDF、Word、Markdown 与网页资料。", icon: UploadFilled },
   { title: "Agentic RAG", detail: "检索、重排、引用来源与多步推理。", icon: DataAnalysis },
-  { title: "智能体协作", detail: "LangGraph 状态图、条件边、HITL 审批。", icon: Cpu },
-  { title: "对话入口", detail: "面向博客与企业资料的统一问答界面。", icon: ChatDotRound }
+  { title: "工具调用", detail: "博客检索、用户资料、计算器三个工具已接入。", icon: Cpu },
+  { title: "对话入口", detail: "通过 /api/agent/chat/ 与 Agent 交互。", icon: ChatDotRound }
 ];
 </script>
 
@@ -18,10 +19,10 @@ const modules = [
     <aside class="sidebar">
       <div class="brand">Knowledge Agent</div>
       <nav class="nav">
-        <a class="active">概览</a>
+        <RouterLink class="active" to="/">概览</RouterLink>
         <a>博客</a>
         <a>知识库</a>
-        <a>对话</a>
+        <RouterLink to="/chat">对话</RouterLink>
         <a>评估</a>
       </nav>
     </aside>
@@ -29,27 +30,29 @@ const modules = [
     <section class="workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Day 1 Bootstrap</p>
+          <p class="eyebrow">Day 2 Tool Calling</p>
           <h1>{{ platform.projectName }}</h1>
         </div>
-        <el-button type="primary" :icon="Connection">新建对话</el-button>
+        <RouterLink to="/chat">
+          <el-button type="primary" :icon="Connection">新建对话</el-button>
+        </RouterLink>
       </header>
 
       <section class="status-grid">
         <article>
           <span>后端</span>
           <strong>Django + DRF</strong>
-          <small>/api/health/ ready</small>
+          <small>/api/agent/chat/ ready</small>
         </article>
         <article>
-          <span>前端</span>
-          <strong>Vue 3 + Vite</strong>
-          <small>Pinia + Router + Element Plus</small>
+          <span>Agent</span>
+          <strong>Tool Calling Loop</strong>
+          <small>input -> decide -> tool -> answer</small>
         </article>
         <article>
-          <span>数据层</span>
-          <strong>PostgreSQL + Redis</strong>
-          <small>pgvector-ready compose</small>
+          <span>数据库</span>
+          <strong>SQLite Local</strong>
+          <small>Docker-independent day-2 dev</small>
         </article>
       </section>
 
@@ -67,3 +70,4 @@ const modules = [
     </section>
   </main>
 </template>
+

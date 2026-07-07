@@ -70,3 +70,10 @@ npm run dev
 - 添加 Docker Compose 和 Nginx 配置草稿
 - 写清项目目标、架构图、技术栈和第一篇博客草稿
 
+## 第 2 天完成项
+
+- 在 `agent/` 中实现最小 Agent tool-calling loop
+- 实现博客检索、当前用户资料、简单计算器 3 个工具
+- 后端新增 `POST /api/agent/chat/`
+- 前端新增 `/chat` Agent 聊天页面
+- 支持展示工具调用名称、输入、输出
