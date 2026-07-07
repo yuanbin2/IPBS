@@ -1,0 +1,172 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: #17202a;
+  background: #f4f7f9;
+  font-family: Inter, "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  padding: 28px 20px;
+  color: #f8fafc;
+  background: #14313d;
+}
+
+.brand {
+  margin-bottom: 32px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.nav {
+  display: grid;
+  gap: 8px;
+}
+
+.nav a {
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: #d6e2e6;
+}
+
+.nav a.active,
+.nav a:hover {
+  color: #ffffff;
+  background: #1f4b5a;
+}
+
+.workspace {
+  padding: 32px;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #58707a;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+h1 {
+  max-width: 760px;
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.25;
+}
+
+.status-grid,
+.module-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.status-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 20px;
+}
+
+.status-grid article,
+.module-card {
+  border: 1px solid #dce5e8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.status-grid article {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+}
+
+.status-grid span,
+.status-grid small {
+  color: #60717a;
+}
+
+.status-grid strong {
+  font-size: 20px;
+}
+
+.module-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.module-card {
+  min-height: 168px;
+  padding: 18px;
+}
+
+.module-card .el-icon {
+  margin-bottom: 18px;
+  color: #0f766e;
+  font-size: 28px;
+}
+
+.module-card h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.module-card p {
+  margin: 0;
+  color: #52646d;
+  line-height: 1.6;
+}
+
+.stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.stack span {
+  padding: 8px 10px;
+  border: 1px solid #cad8dd;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #2f4852;
+  font-size: 13px;
+}
+
+@media (max-width: 980px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .status-grid,
+  .module-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    flex-direction: column;
+  }
+}
+
