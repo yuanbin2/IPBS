@@ -12,7 +12,7 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
-from .tools import SafeCalculator, ToolResult, build_langchain_tools, search_local_blog
+from .tools import SafeCalculator, ToolResult, build_langchain_tools, search_knowledge
 
 
 Route = Literal["retrieve", "direct"]
@@ -48,7 +48,7 @@ class AgentResponse:
 
 
 class SimpleToolCallingAgent:
-    """LangGraph state workflow for the day-3 agent."""
+    """LangGraph workflow for direct chat, tool calling, and RAG context generation."""
 
     def __init__(self, project_root: Path):
         self.project_root = project_root
@@ -90,18 +90,20 @@ class SimpleToolCallingAgent:
         if not api_key:
             return None
 
-        base_url = os.getenv("OPENAI_BASE_URL", "https://poloai.top/v1/")
-        if base_url.startswith("https//"):
-            base_url = base_url.replace("https//", "https://", 1)
-        if base_url.startswith("http//"):
-            base_url = base_url.replace("http//", "http://", 1)
-
         return ChatOpenAI(
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             api_key=api_key,
-            base_url=base_url,
+            base_url=self._normalized_openai_base_url(),
             temperature=0,
         )
+
+    def _normalized_openai_base_url(self) -> str:
+        base_url = os.getenv("OPENAI_BASE_URL", "https://poloai.top/v1/")
+        if base_url.startswith("https//"):
+            return base_url.replace("https//", "https://", 1)
+        if base_url.startswith("http//"):
+            return base_url.replace("http//", "http://", 1)
+        return base_url
 
     def _build_graph(self):
         workflow = StateGraph(AgentState)
@@ -146,10 +148,10 @@ class SimpleToolCallingAgent:
                 (
                     "system",
                     (
-                        "你是企业知识智能体平台的助手。当前问题已经被判定为需要工具或项目上下文。"
-                        "请从 blog_search、current_user_profile、calculator 中选择合适工具。"
-                        "如果是计算，必须调用 calculator；如果要求检索项目资料，调用 blog_search；"
-                        "如果询问当前用户，调用 current_user_profile。"
+                        "你是企业知识智能体平台的工具调度节点。当前问题已经需要工具或项目上下文。"
+                        "请从 knowledge_search、current_user_profile、calculator 中选择工具。"
+                        "计算问题必须调用 calculator；用户画像问题调用 current_user_profile；"
+                        "文档、知识库、项目资料、RAG、博客草稿等问题调用 knowledge_search。"
                     ),
                 ),
                 ("human", "{message}"),
@@ -181,7 +183,7 @@ class SimpleToolCallingAgent:
                 "answer": str(ai_message.content),
                 "tool_calls": [],
                 "token_usage": token_usage,
-                "trace": [*state.get("trace", []), "retrieve_or_direct -> 模型未调用工具"],
+                "trace": [*state.get("trace", []), "retrieve_or_direct -> 模型未调用工具，保留模型直接回答"],
             }
 
         return {
@@ -202,58 +204,18 @@ class SimpleToolCallingAgent:
         if state.get("answer") and not state.get("tool_calls"):
             return {
                 **state,
-                "trace": [*state.get("trace", []), "generate_answer -> 使用已有直接回答"],
+                "trace": [*state.get("trace", []), "generate_answer -> 使用已有模型直接回答"],
             }
 
         if state.get("tool_calls"):
-            final_prompt = ChatPromptTemplate.from_messages(
-                [
-                    (
-                        "system",
-                        (
-                            "你是企业知识智能体平台的通用助手。下面会提供工具检索或计算得到的上下文。"
-                            "请优先参考这些上下文回答，但不要完全受限于上下文。"
-                            "如果上下文不足以回答用户问题，可以基于你的通用知识继续回答，"
-                            "并自然说明哪些内容来自检索上下文，哪些是补充判断。"
-                            "不要因为上下文没有命中就说无法回答，也不要只复述工具结果。"
-                        ),
-                    ),
-                    (
-                        "human",
-                        "用户问题：{message}\n\n工具上下文：\n{tool_context}\n\n请给出最终回答。",
-                    ),
-                ]
-            )
-            final_chain = final_prompt | self.llm
-            final_message = final_chain.invoke(
-                {
-                    "message": state["message"],
-                    "tool_context": self._format_tool_context(state.get("tool_calls", [])),
-                }
-            )
+            final_message = self._invoke_rag_answer_chain(state)
             answer = str(final_message.content)
         elif state.get("messages"):
             final_prompt = ChatPromptTemplate.from_messages([MessagesPlaceholder("messages")])
-            final_chain = final_prompt | self.llm
-            final_message = final_chain.invoke({"messages": state["messages"]})
+            final_message = (final_prompt | self.llm).invoke({"messages": state["messages"]})
             answer = str(final_message.content)
         else:
-            direct_prompt = ChatPromptTemplate.from_messages(
-                [
-                    (
-                        "system",
-                        (
-                            "你是企业知识智能体平台的通用助手。"
-                            "这个问题不需要调用工具，请直接用中文回答用户。"
-                            "普通知识、创意写作、闲聊、解释概念、开放问题都交给大模型自由回答，"
-                            "不要说数据库没有内容，也不要只返回固定模板。"
-                        ),
-                    ),
-                    ("human", "{message}"),
-                ]
-            )
-            direct_chain = direct_prompt | self.llm
-            final_message = direct_chain.invoke({"message": state["message"]})
+            final_message = self._invoke_direct_answer_chain(state["message"])
             answer = str(final_message.content)
 
         token_usage = self._merge_token_usage(
@@ -266,6 +228,48 @@ class SimpleToolCallingAgent:
             "token_usage": token_usage,
             "trace": [*state.get("trace", []), "generate_answer -> 完成最终回答"],
         }
+
+    def _invoke_rag_answer_chain(self, state: AgentState) -> BaseMessage:
+        final_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    (
+                        "你是企业知识智能体平台的 RAG 回答节点。下面会提供工具检索或计算得到的上下文。"
+                        "请优先参考这些上下文，但不要完全受限于上下文。"
+                        "如果上下文不足，可以基于通用知识继续回答，并自然说明哪些内容来自上下文、哪些是补充判断。"
+                        "不要因为上下文没有命中就说无法回答，也不要只复述工具结果。"
+                    ),
+                ),
+                (
+                    "human",
+                    "用户问题：{message}\n\n工具上下文：\n{tool_context}\n\n请给出最终回答。",
+                ),
+            ]
+        )
+        return (final_prompt | self.llm).invoke(
+            {
+                "message": state["message"],
+                "tool_context": self._format_tool_context(state.get("tool_calls", [])),
+            }
+        )
+
+    def _invoke_direct_answer_chain(self, message: str) -> BaseMessage:
+        direct_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    (
+                        "你是企业知识智能体平台的通用助手。"
+                        "这个问题不需要调用工具，请直接用中文回答用户。"
+                        "普通知识、创意写作、闲聊、解释概念、开放问题都交给大模型自由回答。"
+                        "不要说数据库没有内容，也不要只返回固定模板。"
+                    ),
+                ),
+                ("human", "{message}"),
+            ]
+        )
+        return (direct_prompt | self.llm).invoke({"message": message})
 
     def _save_history(self, state: AgentState) -> AgentState:
         usage = state.get("token_usage", self._empty_token_usage())
@@ -326,6 +330,10 @@ class SimpleToolCallingAgent:
             "项目资料",
             "项目文档",
             "本地文档",
+            "知识库",
+            "上传的文档",
+            "文档里",
+            "rag",
             "readme",
             "博客草稿",
         ]
@@ -378,11 +386,14 @@ class SimpleToolCallingAgent:
             )
 
         if self._needs_tool_or_project_context(message):
-            output = search_local_blog(self.project_root, message)
+            output = search_knowledge(message, self.project_root)
             return AgentResponse(
-                answer=f"我检索了本地项目文档，找到这些线索：\n{output}",
-                tool_calls=[ToolResult("blog_search", message, output)],
-                trace=["本地兜底：blog_search"],
+                answer=(
+                    "当前模型服务不可用，我先返回检索上下文。模型恢复后，这些上下文会作为 prompt 的一部分，"
+                    f"再由大模型综合生成最终答案。\n\n{output}"
+                ),
+                tool_calls=[ToolResult("knowledge_search", message, output)],
+                trace=["本地兜底：knowledge_search"],
                 route="retrieve",
                 token_usage=empty_usage,
             )

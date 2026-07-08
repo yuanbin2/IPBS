@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import AgentChatView from "../views/AgentChatView.vue";
 import HomeView from "../views/HomeView.vue";
+import KnowledgeBaseView from "../views/KnowledgeBaseView.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -14,6 +15,11 @@ const router = createRouter({
       path: "/chat",
       name: "agent-chat",
       component: AgentChatView
+    },
+    {
+      path: "/knowledge",
+      name: "knowledge-base",
+      component: KnowledgeBaseView
     }
   ]
 });

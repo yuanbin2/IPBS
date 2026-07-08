@@ -48,12 +48,13 @@ class SafeCalculator:
         raise ValueError("只支持数字和基础四则运算")
 
 
-def search_local_blog(project_root: Path, query: str) -> str:
+def search_project_files(project_root: Path, query: str) -> str:
     sources = [
         project_root / "README.md",
         project_root / "docs" / "day-01-blog.md",
         project_root / "docs" / "architecture.md",
         project_root / "docs" / "day-02-notes.md",
+        project_root / "docs" / "day-03-notes.md",
     ]
     matches: list[str] = []
     terms = [term.lower() for term in query.split() if term.strip()]
@@ -61,7 +62,7 @@ def search_local_blog(project_root: Path, query: str) -> str:
     for source in sources:
         if not source.exists():
             continue
-        text = source.read_text(encoding="utf-8")
+        text = source.read_text(encoding="utf-8", errors="ignore")
         for line in text.splitlines():
             line_lower = line.lower()
             if not terms or any(term in line_lower for term in terms):
@@ -74,17 +75,32 @@ def search_local_blog(project_root: Path, query: str) -> str:
             break
 
     if not matches:
-        return "没有在本地 README、架构文档或博客草稿中找到直接匹配内容。"
+        return "项目 README、架构文档和学习笔记中没有找到直接匹配内容。"
     return "\n".join(matches)
+
+
+def search_knowledge(query: str, project_root: Path) -> str:
+    try:
+        from apps.agent_api.rag import format_search_results, search_knowledge_base
+
+        results = search_knowledge_base(query, limit=5)
+        if results:
+            return format_search_results(results)
+    except Exception as exc:
+        project_matches = search_project_files(project_root, query)
+        return f"知识库检索暂时不可用：{exc}\n\n项目文件兜底：\n{project_matches}"
+
+    project_matches = search_project_files(project_root, query)
+    return f"知识库没有检索到高相关片段。\n\n项目文件兜底：\n{project_matches}"
 
 
 def build_langchain_tools(project_root: Path):
     calculator = SafeCalculator()
 
     @tool
-    def blog_search(query: str) -> str:
-        """Search local project README, architecture notes, and blog drafts."""
-        return search_local_blog(project_root, query)
+    def knowledge_search(query: str) -> str:
+        """Search uploaded knowledge-base documents and local project notes for RAG context."""
+        return search_knowledge(query, project_root)
 
     @tool
     def current_user_profile(_: str = "") -> str:
@@ -99,4 +115,4 @@ def build_langchain_tools(project_root: Path):
         """Evaluate a simple arithmetic expression, such as 12 * 8."""
         return calculator.run(expression)
 
-    return [blog_search, current_user_profile, calculator_tool]
+    return [knowledge_search, current_user_profile, calculator_tool]

@@ -1,15 +1,24 @@
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 
-from .models import AgentRun, Conversation, Message
+from .models import AgentRun, Conversation, Document, DocumentChunk, EmbeddingRecord, KnowledgeBase, Message
+from .rag import LOCAL_EMBEDDING_MODEL, search_knowledge_base
 
 
 NO_MODEL_ENV = {
     "OPENAI_API_KEY": "",
+    "OPENAI_EMBEDDING_API_KEY": "",
+    "BAILIAN_API_KEY": "",
+    "DASHSCOPE_API_KEY": "",
     "LANGSMITH_TRACING": "false",
     "LANGCHAIN_TRACING_V2": "false",
 }
+
+TEST_MEDIA_ROOT = Path(tempfile.gettempdir()) / "knowledge_agent_test_media"
 
 
 class AgentChatTests(TestCase):
@@ -127,3 +136,122 @@ class AgentChatTests(TestCase):
         payload = response.json()
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]["matched_message_id"], matched.id)
+
+    @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_document_upload_creates_chunks_and_embeddings(self):
+        upload = SimpleUploadedFile(
+            "rag-notes.txt",
+            (
+                "LangGraph controls agent state transitions.\n\n"
+                "RAG retrieves knowledge chunks and passes them into the final model prompt."
+            ).encode("utf-8"),
+            content_type="text/plain",
+        )
+
+        response = self.client.post(
+            "/api/agent/documents/",
+            {"file": upload, "title": "RAG Notes"},
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertEqual(payload["status"], Document.Status.READY)
+        self.assertGreaterEqual(payload["chunk_count"], 1)
+        self.assertEqual(KnowledgeBase.objects.count(), 1)
+        self.assertEqual(DocumentChunk.objects.count(), payload["chunk_count"])
+        self.assertEqual(EmbeddingRecord.objects.count(), payload["chunk_count"])
+
+    @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_knowledge_search_returns_relevant_chunks(self):
+        upload = SimpleUploadedFile(
+            "knowledge.txt",
+            (
+                "Agentic RAG means the agent retrieves context first.\n\n"
+                "The retrieved context is inserted into the prompt before the model answers."
+            ).encode("utf-8"),
+            content_type="text/plain",
+        )
+        self.client.post(
+            "/api/agent/documents/",
+            {"file": upload, "title": "Agentic RAG"},
+            HTTP_HOST="localhost",
+        )
+
+        response = self.client.post(
+            "/api/agent/knowledge-search/",
+            {"query": "retrieved context prompt", "limit": 3},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertGreaterEqual(len(payload), 1)
+        self.assertEqual(payload[0]["document_title"], "Agentic RAG")
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_knowledge_search_uses_keyword_signal_when_vectors_are_weak(self):
+        knowledge_base = KnowledgeBase.objects.create(name="hybrid")
+        document = Document.objects.create(
+            knowledge_base=knowledge_base,
+            title="LangGraph RAG Notes",
+            status=Document.Status.READY,
+        )
+        weak_chunk = DocumentChunk.objects.create(
+            document=document,
+            knowledge_base=knowledge_base,
+            chunk_index=0,
+            content="This paragraph is about generic platform setup.",
+        )
+        strong_chunk = DocumentChunk.objects.create(
+            document=document,
+            knowledge_base=knowledge_base,
+            chunk_index=1,
+            content="Agentic RAG stores retrieved context inside the final prompt before answering.",
+        )
+        EmbeddingRecord.objects.create(
+            chunk=weak_chunk,
+            model=LOCAL_EMBEDDING_MODEL,
+            vector=[0.0, 0.0, 0.0],
+            vector_dimensions=3,
+        )
+        EmbeddingRecord.objects.create(
+            chunk=strong_chunk,
+            model=LOCAL_EMBEDDING_MODEL,
+            vector=[0.0, 0.0, 0.0],
+            vector_dimensions=3,
+        )
+
+        results = search_knowledge_base("retrieved context prompt", knowledge_base_id=knowledge_base.id, limit=2)
+
+        self.assertGreaterEqual(len(results), 1)
+        self.assertEqual(results[0].chunk_id, strong_chunk.id)
+
+    @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_document_reindex_rebuilds_chunks(self):
+        upload = SimpleUploadedFile(
+            "reindex.txt",
+            "RAG reindex should rebuild document chunks.".encode("utf-8"),
+            content_type="text/plain",
+        )
+        upload_response = self.client.post(
+            "/api/agent/documents/",
+            {"file": upload, "title": "Reindex"},
+            HTTP_HOST="localhost",
+        )
+        document_id = upload_response.json()["id"]
+
+        response = self.client.post(
+            f"/api/agent/documents/{document_id}/reindex/",
+            {},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], Document.Status.READY)
+        self.assertGreaterEqual(response.json()["chunk_count"], 1)

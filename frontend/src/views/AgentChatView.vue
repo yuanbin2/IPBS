@@ -244,6 +244,23 @@ function handleComposerKeydown(event: KeyboardEvent) {
   event.preventDefault();
   void sendMessage();
 }
+
+function isRetrievalTool(call: ToolCall) {
+  return call.name === "knowledge_search" || call.name === "blog_search";
+}
+
+function toolPanelTitle(call: ToolCall) {
+  if (isRetrievalTool(call)) {
+    return "检索到的相关内容";
+  }
+  if (call.name === "calculator") {
+    return "计算工具结果";
+  }
+  if (call.name === "current_user_profile") {
+    return "用户资料上下文";
+  }
+  return call.name;
+}
 </script>
 
 <template>
@@ -292,13 +309,30 @@ function handleComposerKeydown(event: KeyboardEvent) {
                 <span>Completion {{ message.tokenUsage.completion_tokens }}</span>
                 <strong>Total {{ message.tokenUsage.total_tokens }}</strong>
               </div>
-              <div v-if="message.toolCalls?.length" class="tool-list">
-                <section v-for="call in message.toolCalls" :key="call.name + call.input">
-                  <strong>{{ call.name }}</strong>
-                  <span>{{ call.input }}</span>
-                  <pre>{{ call.output }}</pre>
-                </section>
-              </div>
+              <el-collapse v-if="message.toolCalls?.length" class="retrieval-collapse">
+                <el-collapse-item
+                  v-for="(call, callIndex) in message.toolCalls"
+                  :key="call.name + call.input + callIndex"
+                  :name="`${message.id ?? index}-${callIndex}`"
+                >
+                  <template #title>
+                    <span class="retrieval-title">
+                      <strong>{{ toolPanelTitle(call) }}</strong>
+                      <small>{{ call.name }}</small>
+                    </span>
+                  </template>
+                  <section class="retrieval-panel" :class="{ highlight: isRetrievalTool(call) }">
+                    <div class="retrieval-query">
+                      <span>查询</span>
+                      <p>{{ call.input || "无输入参数" }}</p>
+                    </div>
+                    <div class="retrieval-content">
+                      <span>{{ isRetrievalTool(call) ? "数据库 / 知识库上下文" : "工具输出" }}</span>
+                      <pre>{{ call.output }}</pre>
+                    </div>
+                  </section>
+                </el-collapse-item>
+              </el-collapse>
               <div v-if="message.trace?.length" class="trace-list">
                 <span v-for="item in message.trace" :key="item">{{ item }}</span>
               </div>

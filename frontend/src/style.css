@@ -283,6 +283,85 @@ h1 {
   font-family: "JetBrains Mono", Consolas, monospace;
 }
 
+.retrieval-collapse {
+  margin-top: 12px;
+  border-top: 1px solid #e6eef1;
+  border-bottom: 0;
+}
+
+.retrieval-collapse .el-collapse-item__header {
+  min-height: 42px;
+  border-bottom: 1px solid #e6eef1;
+  background: transparent;
+}
+
+.retrieval-collapse .el-collapse-item__wrap {
+  border-bottom: 0;
+  background: transparent;
+}
+
+.retrieval-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.retrieval-title strong {
+  color: #0f766e;
+  font-size: 13px;
+}
+
+.retrieval-title small {
+  overflow: hidden;
+  color: #60717a;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retrieval-panel {
+  display: grid;
+  gap: 10px;
+  padding: 10px 0 2px;
+}
+
+.retrieval-panel.highlight {
+  border-left: 3px solid #0f766e;
+  padding-left: 12px;
+}
+
+.retrieval-query,
+.retrieval-content {
+  display: grid;
+  gap: 6px;
+}
+
+.retrieval-query span,
+.retrieval-content span {
+  color: #60717a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.retrieval-query p {
+  margin: 0;
+  color: #2f4852;
+  line-height: 1.6;
+}
+
+.retrieval-content pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  border-radius: 6px;
+  background: #f4f7f9;
+  padding: 10px;
+  white-space: pre-wrap;
+  line-height: 1.55;
+  font-family: "JetBrains Mono", Consolas, monospace;
+}
+
 .trace-list {
   display: flex;
   flex-wrap: wrap;
@@ -419,6 +498,181 @@ h1 {
   color: #0f766e;
 }
 
+.knowledge-workspace {
+  min-height: 100vh;
+}
+
+.knowledge-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 18px;
+}
+
+.knowledge-panel,
+.upload-zone,
+.document-table,
+.search-lab {
+  border: 1px solid #dce5e8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+}
+
+.knowledge-panel {
+  align-self: start;
+  display: grid;
+  gap: 10px;
+}
+
+.knowledge-base-button {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  border: 1px solid #cad8dd;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+  color: #2f4852;
+  cursor: pointer;
+  text-align: left;
+}
+
+.knowledge-base-button.active,
+.knowledge-base-button:hover {
+  border-color: #0f766e;
+  color: #0f766e;
+}
+
+.knowledge-base-button span {
+  color: #60717a;
+  font-size: 13px;
+}
+
+.knowledge-main {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.upload-zone {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+}
+
+.upload-zone h2,
+.section-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 18px;
+}
+
+.upload-zone p {
+  margin: 10px 0 0;
+  color: #52646d;
+  line-height: 1.7;
+}
+
+.upload-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.upload-controls input[type="file"] {
+  width: 100%;
+  border: 1px dashed #b8c8ce;
+  border-radius: 8px;
+  background: #f8fafb;
+  padding: 12px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.document-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.document-table th,
+.document-table td {
+  border-top: 1px solid #e6eef1;
+  padding: 12px 10px;
+  text-align: left;
+}
+
+.document-table th {
+  color: #60717a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.status-pill {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #e7edf3;
+  color: #36556a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-pill.ready {
+  background: #dcebea;
+  color: #0f766e;
+}
+
+.status-pill.failed {
+  background: #fee2e2;
+  color: #b42318;
+}
+
+.status-pill.processing,
+.status-pill.pending {
+  background: #fff4d6;
+  color: #8a5b00;
+}
+
+.search-lab {
+  display: grid;
+  gap: 12px;
+}
+
+.search-result {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #e6eef1;
+  border-radius: 8px;
+  background: #f8fafb;
+  padding: 14px;
+}
+
+.search-result header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #0f766e;
+}
+
+.search-result header span {
+  color: #60717a;
+  font-size: 13px;
+}
+
+.search-result p {
+  margin: 0;
+  color: #2f4852;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
 .composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 112px;
@@ -459,7 +713,9 @@ h1 {
   }
 
   .chat-layout,
-  .composer {
+  .composer,
+  .knowledge-layout,
+  .upload-zone {
     grid-template-columns: 1fr;
   }
 
