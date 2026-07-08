@@ -15,12 +15,15 @@ a {
 }
 
 .shell {
-  display: grid;
-  grid-template-columns: 240px 1fr;
+  display: block;
   min-height: 100vh;
 }
 
 .sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 10;
+  width: 240px;
   padding: 28px 20px;
   color: #f8fafc;
   background: #14313d;
@@ -50,6 +53,7 @@ a {
 }
 
 .workspace {
+  margin-left: 240px;
   padding: 32px;
 }
 
@@ -153,8 +157,9 @@ h1 {
 
 .chat-workspace {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .chat-layout {
@@ -162,14 +167,17 @@ h1 {
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 18px;
   min-height: 0;
+  flex: 1;
 }
 
 .conversation {
   display: grid;
   align-content: start;
   gap: 14px;
-  min-height: 480px;
-  padding: 4px 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 12px 4px 0;
+  scrollbar-gutter: stable;
 }
 
 .message {
@@ -206,6 +214,10 @@ h1 {
   padding: 14px 16px;
 }
 
+.message-body.pending {
+  color: #52646d;
+}
+
 .message.user .message-body {
   background: #14313d;
   color: #ffffff;
@@ -215,6 +227,27 @@ h1 {
   margin: 0;
   white-space: pre-wrap;
   line-height: 1.7;
+}
+
+.token-usage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  color: #52646d;
+  font-size: 12px;
+}
+
+.token-usage span,
+.token-usage strong {
+  border: 1px solid #dce5e8;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #f8fafb;
+}
+
+.token-usage strong {
+  color: #0f766e;
 }
 
 .tool-list {
@@ -250,8 +283,26 @@ h1 {
   font-family: "JetBrains Mono", Consolas, monospace;
 }
 
+.trace-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.trace-list span {
+  border: 1px solid #dce5e8;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #f8fafb;
+  color: #52646d;
+  font-size: 12px;
+}
+
 .agent-panel {
   align-self: start;
+  max-height: 100%;
+  overflow-y: auto;
   border: 1px solid #dce5e8;
   border-radius: 8px;
   background: #ffffff;
@@ -262,15 +313,89 @@ h1 {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 14px;
+  margin: 0;
   font-size: 18px;
 }
 
-.agent-panel ol {
+.panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.history-search {
+  margin-bottom: 14px;
+}
+
+.token-card {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 18px;
+  border: 1px solid #dce5e8;
+  border-radius: 8px;
+  background: #f8fafb;
+  padding: 14px;
+}
+
+.token-card span,
+.token-card small {
+  color: #60717a;
+}
+
+.token-card strong {
+  color: #0f766e;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.history-list button {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #cad8dd;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 10px;
+  color: #2f4852;
+  cursor: pointer;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-list button.active,
+.history-list button:hover {
+  border-color: #0f766e;
+  color: #0f766e;
+}
+
+.graph-flow {
   margin: 0 0 18px 18px;
   padding: 0;
   color: #52646d;
   line-height: 1.9;
+}
+
+.load-older {
+  justify-self: center;
+  border: 1px solid #cad8dd;
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 8px 14px;
+  color: #2f4852;
+  cursor: pointer;
+}
+
+.load-older:hover {
+  border-color: #0f766e;
+  color: #0f766e;
 }
 
 .suggestions {
@@ -309,11 +434,19 @@ h1 {
 
 @media (max-width: 980px) {
   .shell {
-    grid-template-columns: 1fr;
+    display: block;
   }
 
   .sidebar {
     display: none;
+  }
+
+  .workspace {
+    margin-left: 0;
+  }
+
+  .chat-workspace {
+    height: 100vh;
   }
 
   .status-grid,

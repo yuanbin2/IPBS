@@ -30,7 +30,7 @@ const modules = [
     <section class="workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Day 2 Tool Calling</p>
+          <p class="eyebrow">Day 3 LangGraph Workflow</p>
           <h1>{{ platform.projectName }}</h1>
         </div>
         <RouterLink to="/chat">
@@ -42,12 +42,12 @@ const modules = [
         <article>
           <span>后端</span>
           <strong>Django + DRF</strong>
-          <small>/api/agent/chat/ ready</small>
+          <small>chat + history APIs ready</small>
         </article>
         <article>
           <span>Agent</span>
-          <strong>Tool Calling Loop</strong>
-          <small>input -> decide -> tool -> answer</small>
+          <strong>LangGraph StateGraph</strong>
+          <small>classify -> route -> answer -> save</small>
         </article>
         <article>
           <span>数据库</span>
@@ -70,4 +70,3 @@ const modules = [
     </section>
   </main>
 </template>
-

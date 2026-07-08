@@ -4,7 +4,7 @@
 
 ## Day 2: LangChain Tool Calling
 
-当前已经实现一个 LangChain Agent loop：
+第二天实现了 LangChain Agent loop：
 
 ```text
 用户输入 -> GPT-4o mini 判断工具 -> 调用 LangChain tool -> 汇总结果
@@ -22,5 +22,18 @@
 POST /api/agent/chat/
 ```
 
-当前已使用 LangChain 的 `ChatOpenAI` 和 `bind_tools`。还没有使用 LangGraph，后续会把单轮工具调用升级为状态图。
+## Day 3: LangGraph StateGraph
+
+当前 Agent 已升级为 LangGraph `StateGraph`：
+
+```text
+classify_question -> retrieve_or_direct -> generate_answer -> save_history
+```
+
+其中 `classify_question` 后面有 conditional edge：
+
+- `retrieve`：需要项目资料、当前用户资料或计算，进入工具节点
+- `direct`：普通问题直接生成回答
+
+聊天历史由 Django ORM 保存到 `Conversation`、`Message`、`AgentRun`。
 

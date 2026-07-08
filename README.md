@@ -77,3 +77,11 @@ npm run dev
 - 后端新增 `POST /api/agent/chat/`
 - 前端新增 `/chat` Agent 聊天页面
 - 支持展示工具调用名称、输入、输出
+
+## 第 3 天完成项
+
+- 将第二天 Agent 改造成 LangGraph `StateGraph`
+- 实现 `classify_question -> retrieve_or_direct -> generate_answer -> save_history`
+- 增加 conditional edge，普通问题直接回答，工具型问题进入工具节点
+- 后端持久化 `Conversation`、`Message`、`AgentRun`
+- 前端聊天页支持刷新后加载历史记录
