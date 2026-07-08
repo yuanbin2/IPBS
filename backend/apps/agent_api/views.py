@@ -21,6 +21,7 @@ def serialize_message(message: Message) -> dict:
         "role": message.role,
         "content": message.content,
         "tool_calls": message.tool_calls,
+        "sources": message.sources,
         "trace": message.trace,
         "token_usage": message.token_usage,
         "created_at": message.created_at.isoformat(),
@@ -190,6 +191,7 @@ class AgentChatView(APIView):
             role=Message.Role.AGENT,
             content=response.answer,
             tool_calls=response_data["tool_calls"],
+            sources=response_data["sources"],
             trace=response.trace,
             token_usage=response.token_usage,
         )
@@ -198,6 +200,7 @@ class AgentChatView(APIView):
             input_message=message,
             route=response.route,
             tool_calls=response_data["tool_calls"],
+            sources=response_data["sources"],
             trace=response.trace,
             token_usage=response.token_usage,
         )

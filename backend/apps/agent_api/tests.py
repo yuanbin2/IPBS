@@ -2,8 +2,11 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+
+from agent.simple_agent import SimpleToolCallingAgent
 
 from .models import AgentRun, Conversation, Document, DocumentChunk, EmbeddingRecord, KnowledgeBase, Message
 from .rag import LOCAL_EMBEDDING_MODEL, search_knowledge_base
@@ -35,6 +38,7 @@ class AgentChatTests(TestCase):
         payload = response.json()
         self.assertIn("96", payload["answer"])
         self.assertEqual(payload["tool_calls"][0]["name"], "calculator")
+        self.assertIn("sources", payload)
         self.assertIn("total_tokens", payload["token_usage"])
         self.assertEqual(Conversation.objects.count(), 1)
         self.assertEqual(Message.objects.count(), 2)
@@ -53,7 +57,8 @@ class AgentChatTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["route"], "direct")
         self.assertEqual(payload["tool_calls"], [])
-        self.assertNotIn("没有在本地", payload["answer"])
+        self.assertEqual(payload["sources"], [])
+        self.assertNotIn("数据库中没有", payload["answer"])
 
     def test_agent_chat_requires_message(self):
         response = self.client.post(
@@ -84,6 +89,7 @@ class AgentChatTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["id"], conversation_id)
         self.assertEqual(len(payload["messages"]), 2)
+        self.assertIn("sources", payload["messages"][1])
 
     def test_conversation_detail_limits_messages_and_loads_older(self):
         conversation = Conversation.objects.create(title="paged history")
@@ -100,7 +106,10 @@ class AgentChatTests(TestCase):
         )
         latest_payload = latest_response.json()
 
-        self.assertEqual([item["content"] for item in latest_payload["messages"]], ["message 5", "message 6", "message 7"])
+        self.assertEqual(
+            [item["content"] for item in latest_payload["messages"]],
+            ["message 5", "message 6", "message 7"],
+        )
         self.assertTrue(latest_payload["has_more_before"])
 
         oldest_id = latest_payload["messages"][0]["id"]
@@ -255,3 +264,22 @@ class AgentChatTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], Document.Status.READY)
         self.assertGreaterEqual(response.json()["chunk_count"], 1)
+
+    @patch.dict("os.environ", {**NO_MODEL_ENV, "OPENAI_API_KEY": "test-key"})
+    def test_agentic_retrieve_returns_tool_call_and_sources_key(self):
+        agent = SimpleToolCallingAgent(Path(settings.BASE_DIR).parent)
+
+        state = agent._retrieve(
+            {
+                "message": "请根据知识库回答 RAG 是什么",
+                "query": "请根据知识库回答 RAG 是什么",
+                "tool_calls": [],
+                "sources": [],
+                "trace": [],
+                "token_usage": agent._empty_token_usage(),
+            }
+        )
+
+        self.assertGreaterEqual(len(state["tool_calls"]), 1)
+        self.assertEqual(state["tool_calls"][0].name, "knowledge_search")
+        self.assertIn("sources", state)

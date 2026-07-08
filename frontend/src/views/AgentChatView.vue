@@ -11,6 +11,15 @@ interface ToolCall {
   output: string;
 }
 
+interface SourceCitation {
+  document_id: number;
+  document_title: string;
+  chunk_id: number;
+  chunk_index: number;
+  score: number;
+  content: string;
+}
+
 interface TokenUsage {
   prompt_tokens: number;
   completion_tokens: number;
@@ -22,6 +31,7 @@ interface ChatMessage {
   role: "user" | "agent";
   content: string;
   toolCalls?: ToolCall[];
+  sources?: SourceCitation[];
   trace?: string[];
   tokenUsage?: TokenUsage;
   pending?: boolean;
@@ -41,6 +51,7 @@ interface ConversationDetail extends Conversation {
     role: "user" | "agent";
     content: string;
     tool_calls: ToolCall[];
+    sources: SourceCitation[];
     trace: string[];
     token_usage: TokenUsage;
   }>;
@@ -156,6 +167,7 @@ function mapApiMessage(message: ConversationDetail["messages"][number]): ChatMes
     role: message.role,
     content: message.content,
     toolCalls: message.tool_calls,
+    sources: message.sources,
     trace: message.trace,
     tokenUsage: message.token_usage
   };
@@ -218,6 +230,7 @@ async function sendMessage(prompt?: string) {
     Object.assign(pendingMessage, {
       content: payload.answer,
       toolCalls: payload.tool_calls,
+      sources: payload.sources,
       trace: payload.trace,
       tokenUsage: payload.token_usage,
       pending: false
@@ -309,6 +322,16 @@ function toolPanelTitle(call: ToolCall) {
                 <span>Completion {{ message.tokenUsage.completion_tokens }}</span>
                 <strong>Total {{ message.tokenUsage.total_tokens }}</strong>
               </div>
+              <section v-if="message.sources?.length" class="source-list">
+                <header>引用来源</header>
+                <article v-for="(source, sourceIndex) in message.sources" :key="source.chunk_id">
+                  <div>
+                    <strong>[{{ sourceIndex + 1 }}] {{ source.document_title }}</strong>
+                    <span>score {{ source.score.toFixed(3) }} / chunk {{ source.chunk_index }}</span>
+                  </div>
+                  <p>{{ source.content }}</p>
+                </article>
+              </section>
               <el-collapse v-if="message.toolCalls?.length" class="retrieval-collapse">
                 <el-collapse-item
                   v-for="(call, callIndex) in message.toolCalls"
@@ -383,10 +406,12 @@ function toolPanelTitle(call: ToolCall) {
           </div>
 
           <ol class="graph-flow">
-            <li>classify_question</li>
-            <li>retrieve_or_direct</li>
-            <li>generate_answer</li>
-            <li>save_history</li>
+            <li>query_analyzer</li>
+            <li>retrieve</li>
+            <li>grade_documents</li>
+            <li>rewrite_query</li>
+            <li>generate</li>
+            <li>cite_sources</li>
           </ol>
 
           <div class="suggestions">

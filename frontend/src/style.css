@@ -250,6 +250,60 @@ h1 {
   color: #0f766e;
 }
 
+.source-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid #dce5e8;
+  border-radius: 8px;
+  background: #f8fafb;
+  padding: 12px;
+}
+
+.source-list > header {
+  color: #0f766e;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.source-list article {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid #e6eef1;
+  padding-top: 10px;
+}
+
+.source-list article:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.source-list article div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.source-list strong {
+  color: #2f4852;
+  font-size: 13px;
+}
+
+.source-list span {
+  color: #60717a;
+  font-size: 12px;
+}
+
+.source-list p {
+  max-height: 130px;
+  overflow: auto;
+  margin: 0;
+  color: #52646d;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .tool-list {
   display: grid;
   gap: 10px;
