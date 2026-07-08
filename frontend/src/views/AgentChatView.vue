@@ -87,6 +87,11 @@ const suggestions = ["什么是 LangGraph？", "帮我计算 12 * 8", "检索 MC
 const canSend = computed(() => input.value.trim().length > 0 && !loading.value);
 
 onMounted(() => {
+  const pendingQuestion = localStorage.getItem("pendingAgentQuestion");
+  if (pendingQuestion) {
+    input.value = pendingQuestion;
+    localStorage.removeItem("pendingAgentQuestion");
+  }
   void loadConversations();
 });
 
@@ -282,8 +287,8 @@ function toolPanelTitle(call: ToolCall) {
       <div class="brand">Knowledge Agent</div>
       <nav class="nav">
         <RouterLink to="/">概览</RouterLink>
-        <a>博客</a>
-        <a>知识库</a>
+        <RouterLink to="/blog">博客</RouterLink>
+        <RouterLink to="/knowledge">知识库</RouterLink>
         <RouterLink class="active" to="/chat">对话</RouterLink>
         <a>评估</a>
       </nav>

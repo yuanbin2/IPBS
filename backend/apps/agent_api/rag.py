@@ -44,6 +44,9 @@ def get_default_knowledge_base() -> KnowledgeBase:
 
 
 def extract_text_from_document(document: Document) -> str:
+    if document.content_text.strip():
+        return document.content_text
+
     path = Path(document.source_file.path)
     suffix = path.suffix.lower()
     if suffix == ".pdf":

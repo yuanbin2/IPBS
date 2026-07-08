@@ -1,0 +1,563 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from "vue";
+import {
+  ChatDotRound,
+  CollectionTag,
+  EditPen,
+  Files,
+  Promotion,
+  Refresh,
+} from "@element-plus/icons-vue";
+import { MdEditor, MdPreview, type UploadImgEvent } from "md-editor-v3";
+import "md-editor-v3/lib/style.css";
+import { RouterLink, useRoute, useRouter } from "vue-router";
+
+interface BlogTag {
+  id: number;
+  name: string;
+  slug: string;
+  article_count: number;
+}
+
+interface BlogCategory {
+  id: number;
+  name: string;
+  slug: string;
+  description: string;
+  article_count: number;
+}
+
+interface BlogArticle {
+  id: number;
+  title: string;
+  slug: string;
+  summary: string;
+  content?: string;
+  status: string;
+  view_count: number;
+  category: BlogCategory | null;
+  tags: BlogTag[];
+  published_at: string | null;
+  knowledge_document_id: number | null;
+  comment_count: number;
+  comments?: BlogComment[];
+}
+
+interface BlogComment {
+  id: number;
+  author_name: string;
+  content: string;
+  created_at: string;
+}
+
+interface ArchiveGroup {
+  month: string;
+  articles: BlogArticle[];
+}
+
+interface BlogAgentSource {
+  title: string;
+  kind: string;
+  content: string;
+  score: number;
+  url: string;
+}
+
+interface BlogAgentChatMessage {
+  role: "user" | "agent";
+  content: string;
+  sources?: BlogAgentSource[];
+  blocked?: boolean;
+  pending?: boolean;
+}
+
+const route = useRoute();
+const router = useRouter();
+
+const articles = ref<BlogArticle[]>([]);
+const currentArticle = ref<BlogArticle | null>(null);
+const tags = ref<BlogTag[]>([]);
+const categories = ref<BlogCategory[]>([]);
+const archive = ref<ArchiveGroup[]>([]);
+const about = ref<{ title: string; content: string; highlights: string[] } | null>(null);
+const loading = ref(false);
+const publishing = ref(false);
+const submittingComment = ref(false);
+const uploadingImage = ref(false);
+const editorError = ref("");
+const blogAgentOpen = ref(false);
+const blogAgentLoading = ref(false);
+const blogAgentInput = ref("这个博客项目的技术栈是什么？");
+const blogAgentSessionKey = ref(localStorage.getItem("blogAgentSessionKey") || "");
+const blogAgentMessages = ref<BlogAgentChatMessage[]>([
+  {
+    role: "agent",
+    content: "你好，我是这个博客里的智能体。你可以问公开文章、项目经历、技术栈、LangGraph 或 Agentic RAG。"
+  }
+]);
+const blogAgentSuggestions = ["你做过哪些 LangGraph 项目？", "这个项目架构是什么？", "Agentic RAG 是怎么实现的？"];
+const commentDraft = ref({
+  author_name: "访客",
+  content: ""
+});
+
+const draft = ref({
+  title: "我的 LangGraph 项目复盘",
+  summary: "从环境搭建到 Agentic RAG，记录这个项目的关键工程选择。",
+  category: "项目复盘",
+  tags: "LangGraph,RAG,Django",
+  content: [
+    "## 项目背景",
+    "",
+    "这篇文章记录我如何把 **Vue、Django、LangChain 和 LangGraph** 组合成一个企业知识智能体平台。",
+    "",
+    "## 关键收获",
+    "",
+    "- 用 Django 管理博客和知识库数据",
+    "- 用 LangGraph 编排 Agentic RAG 流程",
+    "- 让博客文章发布后自动成为 Agent 的知识来源",
+    "",
+    "> 博客内容本身就是 Agent 的知识来源。"
+  ].join("\n")
+});
+
+const activeSlug = computed(() => String(route.params.slug ?? ""));
+
+onMounted(async () => {
+  await Promise.all([loadArticles(), loadTags(), loadCategories(), loadArchive(), loadAbout()]);
+  if (activeSlug.value) {
+    await loadArticle(activeSlug.value);
+  }
+  await loadBlogAgentHistory();
+});
+
+watch(activeSlug, async (slug) => {
+  if (slug) {
+    await loadArticle(slug);
+  } else {
+    currentArticle.value = null;
+  }
+});
+
+async function loadArticles(params: Record<string, string> = {}) {
+  loading.value = true;
+  try {
+    const query = new URLSearchParams(params).toString();
+    articles.value = await requestJson(`/api/agent/blog/articles/${query ? `?${query}` : ""}`);
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function loadArticle(slug: string) {
+  currentArticle.value = await requestJson(`/api/agent/blog/articles/${encodeURIComponent(slug)}/`);
+}
+
+async function loadTags() {
+  tags.value = await requestJson("/api/agent/blog/tags/");
+}
+
+async function loadCategories() {
+  categories.value = await requestJson("/api/agent/blog/categories/");
+}
+
+async function loadArchive() {
+  archive.value = await requestJson("/api/agent/blog/archive/");
+}
+
+async function loadAbout() {
+  about.value = await requestJson("/api/agent/blog/about/");
+}
+
+async function openArticle(article: BlogArticle) {
+  await router.push({ name: "blog", params: { slug: article.slug } });
+}
+
+async function applyFilter(params: Record<string, string>) {
+  currentArticle.value = null;
+  await router.push("/blog");
+  await loadArticles(params);
+}
+
+async function publishDraft() {
+  editorError.value = "";
+  if (!draft.value.title.trim() || !draft.value.content.trim()) {
+    editorError.value = "标题和正文不能为空。";
+    return;
+  }
+
+  publishing.value = true;
+  try {
+    const article = await requestJson("/api/agent/blog/articles/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...draft.value,
+        tags: draft.value.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+        publish: true
+      })
+    });
+    await loadArticles();
+    await loadArchive();
+    await openArticle(article);
+  } catch (error) {
+    editorError.value = error instanceof Error ? error.message : "发布失败，请稍后重试。";
+  } finally {
+    publishing.value = false;
+  }
+}
+
+async function syncArticleKnowledge(article: BlogArticle) {
+  publishing.value = true;
+  try {
+    await requestJson(`/api/agent/blog/articles/${encodeURIComponent(article.slug)}/publish/`, { method: "POST" });
+    await Promise.all([loadArticles(), loadArchive()]);
+    await loadArticle(article.slug);
+  } finally {
+    publishing.value = false;
+  }
+}
+
+async function submitComment(article: BlogArticle) {
+  if (!commentDraft.value.author_name.trim() || !commentDraft.value.content.trim()) return;
+  submittingComment.value = true;
+  try {
+    await requestJson(`/api/agent/blog/articles/${encodeURIComponent(article.slug)}/comments/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(commentDraft.value)
+    });
+    commentDraft.value.content = "";
+    await loadArticle(article.slug);
+  } finally {
+    submittingComment.value = false;
+  }
+}
+
+function askAgent(article: BlogArticle) {
+  void router.push(`/chat`);
+  localStorage.setItem("pendingAgentQuestion", `根据我的博客文章《${article.title}》，总结我的项目经验`);
+}
+
+async function loadBlogAgentHistory() {
+  if (!blogAgentSessionKey.value) return;
+  try {
+    const payload = await requestJson(`/api/agent/blog/agent/chat/?session_key=${encodeURIComponent(blogAgentSessionKey.value)}`);
+    if (payload.messages?.length) {
+      blogAgentMessages.value = payload.messages.map((message: any) => ({
+        role: message.role,
+        content: message.content,
+        sources: message.sources
+      }));
+    }
+  } catch {
+    localStorage.removeItem("blogAgentSessionKey");
+    blogAgentSessionKey.value = "";
+  }
+}
+
+async function sendBlogAgentMessage(prompt?: string) {
+  const message = (prompt ?? blogAgentInput.value).trim();
+  if (!message || blogAgentLoading.value) return;
+
+  blogAgentOpen.value = true;
+  blogAgentMessages.value.push({ role: "user", content: message });
+  const pendingMessage: BlogAgentChatMessage = {
+    role: "agent",
+    content: "正在根据公开博客资料检索...",
+    pending: true
+  };
+  blogAgentMessages.value.push(pendingMessage);
+  blogAgentInput.value = "";
+  blogAgentLoading.value = true;
+
+  try {
+    const payload = await requestJson("/api/agent/blog/agent/chat/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        session_key: blogAgentSessionKey.value
+      })
+    });
+    blogAgentSessionKey.value = payload.session_key;
+    localStorage.setItem("blogAgentSessionKey", payload.session_key);
+    Object.assign(pendingMessage, {
+      content: payload.answer,
+      sources: payload.sources,
+      blocked: payload.blocked,
+      pending: false
+    });
+  } catch (error) {
+    Object.assign(pendingMessage, {
+      content: error instanceof Error ? error.message : "博客智能体暂时不可用，请稍后再试。",
+      pending: false
+    });
+  } finally {
+    blogAgentLoading.value = false;
+  }
+}
+
+function handleBlogAgentKeydown(event: KeyboardEvent) {
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+  event.preventDefault();
+  void sendBlogAgentMessage();
+}
+
+const handleEditorUpload: UploadImgEvent = async (files, callback) => {
+  editorError.value = "";
+  uploadingImage.value = true;
+  try {
+    const uploaded = await Promise.all(
+      files.map(async (file) => {
+        const formData = new FormData();
+        formData.append("image", file);
+        const payload = await requestJson("/api/agent/blog/images/", {
+          method: "POST",
+          body: formData
+        });
+        return {
+          url: payload.url,
+          alt: file.name.replace(/\.[^.]+$/, ""),
+          title: file.name
+        };
+      })
+    );
+    callback(uploaded);
+  } catch (error) {
+    editorError.value = error instanceof Error ? error.message : "图片上传失败。";
+  } finally {
+    uploadingImage.value = false;
+  }
+};
+
+async function requestJson(url: string, options: RequestInit = {}) {
+  const response = await fetch(url, options);
+  const contentType = response.headers.get("content-type") ?? "";
+  const text = await response.text();
+  let payload: any = null;
+
+  if (contentType.includes("application/json") && text) {
+    payload = JSON.parse(text);
+  } else if (text) {
+    const plainText = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    payload = { detail: plainText.slice(0, 220) || "服务返回了非 JSON 响应。" };
+  }
+
+  if (!response.ok) {
+    throw new Error(payload?.detail ?? `请求失败：HTTP ${response.status}`);
+  }
+  return payload;
+}
+</script>
+
+<template>
+  <main class="shell">
+    <aside class="sidebar">
+      <div class="brand">Knowledge Agent</div>
+      <nav class="nav">
+        <RouterLink to="/">概览</RouterLink>
+        <RouterLink class="active" to="/blog">博客</RouterLink>
+        <RouterLink to="/knowledge">知识库</RouterLink>
+        <RouterLink to="/chat">对话</RouterLink>
+        <a>评估</a>
+      </nav>
+    </aside>
+
+    <section class="workspace blog-workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Day 6 Personal Blog Agent</p>
+          <h1>个人技术博客</h1>
+        </div>
+        <el-button :icon="Refresh" :loading="loading" @click="loadArticles()">刷新文章</el-button>
+      </header>
+
+      <section class="blog-layout">
+        <main class="blog-main">
+          <section class="write-box markdown-writer">
+            <header class="writer-heading">
+              <h2><el-icon><EditPen /></el-icon> Markdown 写作台</h2>
+              <el-button type="primary" :loading="publishing" @click="publishDraft">发布并加入知识库</el-button>
+            </header>
+
+            <div class="writer-fields">
+              <el-input v-model="draft.title" size="large" placeholder="文章标题" />
+              <el-input v-model="draft.summary" placeholder="摘要，会显示在文章卡片里" />
+              <div class="writer-meta">
+                <el-input v-model="draft.category" placeholder="分类" />
+                <el-input v-model="draft.tags" placeholder="标签，逗号分隔" />
+              </div>
+            </div>
+
+            <MdEditor
+              v-model="draft.content"
+              language="zh-CN"
+              preview-theme="github"
+              code-theme="github"
+              :toolbars-exclude="['github']"
+              :show-code-row-number="true"
+              :footers="['markdownTotal', 'scrollSwitch']"
+              :on-upload-img="handleEditorUpload"
+              :placeholder="'用 Markdown 写正文，可插入标题、列表、代码块、表格、链接、图片、流程图和公式。'"
+              class="blog-md-editor"
+            />
+
+            <p v-if="editorError" class="editor-error">{{ editorError }}</p>
+            <div class="writer-footer">
+              <span>{{ uploadingImage ? "图片上传中..." : "支持工具栏、预览、全屏、代码块、表格、链接和图片上传" }}</span>
+              <el-button type="primary" :loading="publishing" @click="publishDraft">发布文章</el-button>
+            </div>
+          </section>
+
+          <section v-if="currentArticle" class="article-detail">
+            <button class="text-link" type="button" @click="currentArticle = null; router.push('/blog')">返回文章列表</button>
+            <h2>{{ currentArticle.title }}</h2>
+            <div class="article-meta">
+              <span>{{ currentArticle.category?.name || "未分类" }}</span>
+              <span>{{ currentArticle.view_count }} 次浏览</span>
+              <span v-if="currentArticle.knowledge_document_id">已进入知识库</span>
+            </div>
+            <p class="summary">{{ currentArticle.summary }}</p>
+            <MdPreview
+              :model-value="currentArticle.content || ''"
+              language="zh-CN"
+              preview-theme="github"
+              code-theme="github"
+              :show-code-row-number="true"
+              class="article-content blog-md-preview"
+            />
+            <div class="tag-row">
+              <span v-for="tag in currentArticle.tags" :key="tag.id">{{ tag.name }}</span>
+            </div>
+            <div class="article-actions">
+              <el-button type="primary" :icon="ChatDotRound" @click="askAgent(currentArticle)">让 Agent 总结这篇文章</el-button>
+              <el-button
+                v-if="!currentArticle.knowledge_document_id"
+                :loading="publishing"
+                @click="syncArticleKnowledge(currentArticle)"
+              >
+                同步到知识库
+              </el-button>
+            </div>
+            <section class="comment-section">
+              <h3>评论</h3>
+              <article v-for="comment in currentArticle.comments" :key="comment.id" class="comment-item">
+                <strong>{{ comment.author_name }}</strong>
+                <p>{{ comment.content }}</p>
+              </article>
+              <form class="comment-form" @submit.prevent="submitComment(currentArticle)">
+                <el-input v-model="commentDraft.author_name" placeholder="昵称" />
+                <el-input v-model="commentDraft.content" type="textarea" :rows="3" placeholder="写下你的想法" />
+                <el-button type="primary" native-type="submit" :loading="submittingComment">发表评论</el-button>
+              </form>
+            </section>
+          </section>
+
+          <section v-else class="article-list">
+            <article v-for="article in articles" :key="article.id" class="article-card" @click="openArticle(article)">
+              <div>
+                <h2>{{ article.title }}</h2>
+                <p>{{ article.summary }}</p>
+              </div>
+              <footer>
+                <span>{{ article.category?.name || "未分类" }}</span>
+                <span>{{ article.view_count }} views</span>
+                <strong v-if="article.knowledge_document_id">Knowledge Ready</strong>
+              </footer>
+            </article>
+          </section>
+        </main>
+
+        <aside class="blog-panel">
+          <section class="side-box">
+            <h2><el-icon><CollectionTag /></el-icon> 标签</h2>
+            <div class="tag-cloud">
+              <button v-for="tag in tags" :key="tag.id" type="button" @click="applyFilter({ tag: tag.slug })">
+                {{ tag.name }} {{ tag.article_count }}
+              </button>
+            </div>
+          </section>
+
+          <section class="side-box">
+            <h2>分类</h2>
+            <div class="tag-cloud">
+              <button
+                v-for="category in categories"
+                :key="category.id"
+                type="button"
+                @click="applyFilter({ category: category.slug })"
+              >
+                {{ category.name }} {{ category.article_count }}
+              </button>
+            </div>
+          </section>
+
+          <section class="side-box">
+            <h2><el-icon><Files /></el-icon> 归档</h2>
+            <button v-for="group in archive" :key="group.month" type="button" class="archive-item">
+              {{ group.month }} / {{ group.articles.length }} 篇
+            </button>
+          </section>
+
+          <section v-if="about" class="side-box about-box">
+            <h2><el-icon><Promotion /></el-icon> 关于我</h2>
+            <p>{{ about.content }}</p>
+            <span v-for="item in about.highlights" :key="item">{{ item }}</span>
+          </section>
+        </aside>
+      </section>
+    </section>
+
+    <section class="blog-agent-widget" :class="{ open: blogAgentOpen }">
+      <button class="blog-agent-fab" type="button" @click="blogAgentOpen = !blogAgentOpen">
+        <el-icon><ChatDotRound /></el-icon>
+        <span>问博客智能体</span>
+      </button>
+
+      <section v-if="blogAgentOpen" class="blog-agent-panel">
+        <header>
+          <div>
+            <strong>博客智能体</strong>
+            <small>仅回答公开博客、简历和 README 内容</small>
+          </div>
+          <button type="button" @click="blogAgentOpen = false">×</button>
+        </header>
+
+        <div class="blog-agent-messages">
+          <article
+            v-for="(message, index) in blogAgentMessages"
+            :key="index"
+            class="blog-agent-message"
+            :class="[message.role, { blocked: message.blocked, pending: message.pending }]"
+          >
+            <p>{{ message.content }}</p>
+            <div v-if="message.sources?.length" class="blog-agent-sources">
+              <span v-for="(source, sourceIndex) in message.sources" :key="source.title + sourceIndex">
+                [{{ sourceIndex + 1 }}] {{ source.title }}
+              </span>
+            </div>
+          </article>
+        </div>
+
+        <div class="blog-agent-suggestions">
+          <button v-for="item in blogAgentSuggestions" :key="item" type="button" @click="sendBlogAgentMessage(item)">
+            {{ item }}
+          </button>
+        </div>
+
+        <form class="blog-agent-composer" @submit.prevent="sendBlogAgentMessage()">
+          <el-input
+            v-model="blogAgentInput"
+            type="textarea"
+            :rows="2"
+            resize="none"
+            placeholder="问公开博客内容，例如：这个项目架构是什么？"
+            @keydown="handleBlogAgentKeydown"
+          />
+          <el-button type="primary" native-type="submit" :loading="blogAgentLoading">发送</el-button>
+        </form>
+      </section>
+    </section>
+  </main>
+</template>
