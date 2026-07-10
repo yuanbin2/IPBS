@@ -1,9 +1,13 @@
 import hashlib
+import os
+import re
+import time
 from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
 from django.conf import settings
+from django.contrib.auth import authenticate, get_user_model, login
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -15,7 +19,16 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from agent.simple_agent import SimpleToolCallingAgent
+from agent.multi_agent import MultiAgentSupervisor
+from agent.security import (
+    context_from_request,
+    detect_sensitive_input,
+    issue_signed_token,
+    normalize_workspace_key,
+    redact_sensitive_output,
+    role_allowed,
+    security_enforced,
+)
 
 from .blog import (
     get_or_create_category,
@@ -29,6 +42,8 @@ from .blog import (
 from .blog_agent import PublicBlogAgent
 from .models import (
     AgentRun,
+    AgentObservation,
+    ApprovalRequest,
     ArticleCategory,
     ArticleTag,
     BlogAgentMessage,
@@ -38,8 +53,13 @@ from .models import (
     BlogComment,
     Conversation,
     Document,
+    EvaluationCase,
+    EvaluationRun,
     KnowledgeBase,
+    MCPTool,
     Message,
+    SecurityAuditEvent,
+    UserProfile,
 )
 from .rag import get_default_knowledge_base, ingest_document, search_knowledge_base
 
@@ -89,6 +109,55 @@ BLOG_AGENT_RATE_LIMIT = 12
 BLOG_AGENT_RATE_WINDOW_SECONDS = 60
 
 
+def get_workspace_key(request) -> str:
+    return context_from_request(request).workspace_key
+
+
+def audit_security_event(request, event_type: str, detail: str = "", metadata: dict | None = None) -> None:
+    context = context_from_request(request)
+    SecurityAuditEvent.objects.create(
+        event_type=event_type,
+        actor=context.actor,
+        role=context.role,
+        workspace_key=context.workspace_key,
+        path=request.path[:240],
+        detail=detail,
+        metadata=metadata or {},
+    )
+
+
+def require_roles(request, allowed_roles: list[str]) -> Response | None:
+    context = context_from_request(request)
+    if not security_enforced():
+        return None
+    if context.authenticated and role_allowed(context.role, allowed_roles):
+        return None
+    audit_security_event(
+        request,
+        SecurityAuditEvent.EventType.ACCESS_DENIED,
+        f"required roles: {', '.join(allowed_roles)}",
+    )
+    return Response(
+        {
+            "detail": "permission denied",
+            "required_roles": allowed_roles,
+            "current_role": context.role,
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
+def serialize_security_context(request) -> dict:
+    context = context_from_request(request)
+    return {
+        "actor": context.actor,
+        "role": context.role,
+        "workspace_key": context.workspace_key,
+        "authenticated": context.authenticated,
+        "security_enforced": security_enforced(),
+    }
+
+
 def get_message_limit(request) -> int:
     try:
         limit = int(request.query_params.get("limit", DEFAULT_MESSAGE_LIMIT))
@@ -117,6 +186,292 @@ def serialize_blog_agent_message(message: BlogAgentMessage) -> dict:
     }
 
 
+def serialize_approval_request(approval: ApprovalRequest) -> dict:
+    return {
+        "id": approval.id,
+        "action": approval.action,
+        "action_label": approval.get_action_display(),
+        "title": approval.title,
+        "description": approval.description,
+        "payload": approval.payload,
+        "status": approval.status,
+        "requester": approval.requester,
+        "reviewer": approval.reviewer,
+        "review_note": approval.review_note,
+        "result": approval.result,
+        "created_at": approval.created_at.isoformat(),
+        "reviewed_at": approval.reviewed_at.isoformat() if approval.reviewed_at else None,
+        "executed_at": approval.executed_at.isoformat() if approval.executed_at else None,
+    }
+
+
+DEFAULT_MCP_TOOLS = [
+    {
+        "name": "local_file_search",
+        "display_name": "本地文件搜索",
+        "description": "在 README、docs 和 agent 目录中搜索公开项目资料。",
+        "category": MCPTool.Category.FILESYSTEM,
+        "permission_scope": "read:project_public_files",
+        "is_enabled": True,
+    },
+    {
+        "name": "git_repo_info",
+        "display_name": "Git 仓库信息",
+        "description": "读取当前分支、最近提交和工作区状态。",
+        "category": MCPTool.Category.GIT,
+        "permission_scope": "read:git_metadata",
+        "is_enabled": True,
+    },
+    {
+        "name": "web_search",
+        "display_name": "网页搜索",
+        "description": "外部网页搜索工具占位，默认关闭。",
+        "category": MCPTool.Category.WEB,
+        "permission_scope": "network:web_search",
+        "is_enabled": False,
+    },
+    {
+        "name": "safe_database_stats",
+        "display_name": "安全数据库统计",
+        "description": "只返回业务聚合指标，不暴露表结构和敏感字段。",
+        "category": MCPTool.Category.DATABASE,
+        "permission_scope": "read:aggregate_stats",
+        "is_enabled": True,
+    },
+]
+
+
+def ensure_default_mcp_tools() -> None:
+    for tool in DEFAULT_MCP_TOOLS:
+        MCPTool.objects.get_or_create(name=tool["name"], defaults=tool)
+
+
+def serialize_mcp_tool(tool: MCPTool) -> dict:
+    return {
+        "id": tool.id,
+        "name": tool.name,
+        "display_name": tool.display_name,
+        "description": tool.description,
+        "category": tool.category,
+        "permission_scope": tool.permission_scope,
+        "is_enabled": tool.is_enabled,
+        "requires_approval": tool.requires_approval,
+        "config": tool.config,
+        "last_used_at": tool.last_used_at.isoformat() if tool.last_used_at else None,
+        "created_at": tool.created_at.isoformat(),
+        "updated_at": tool.updated_at.isoformat(),
+    }
+
+
+def serialize_user_profile(profile: UserProfile) -> dict:
+    return {
+        "user_id": profile.user_id,
+        "username": profile.user.username,
+        "role": profile.role,
+        "workspace_key": profile.workspace_key,
+    }
+
+
+def serialize_security_audit_event(event: SecurityAuditEvent) -> dict:
+    return {
+        "id": event.id,
+        "event_type": event.event_type,
+        "actor": event.actor,
+        "role": event.role,
+        "workspace_key": event.workspace_key,
+        "path": event.path,
+        "detail": event.detail,
+        "metadata": event.metadata,
+        "created_at": event.created_at.isoformat(),
+    }
+
+
+def env_file_is_git_tracked() -> bool:
+    env_path = Path(settings.BASE_DIR).parent / ".env"
+    git_index = Path(settings.BASE_DIR).parent / ".git" / "index"
+    if not env_path.exists() or not git_index.exists():
+        return False
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", ".env"],
+            cwd=Path(settings.BASE_DIR).parent,
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def selected_agent_from_response(response_data: dict) -> str:
+    supervisor = response_data.get("supervisor") or {}
+    return str(supervisor.get("selected_agent") or "")
+
+
+def calculate_tool_success_rate(tool_calls: list[dict]) -> float:
+    if not tool_calls:
+        return 1.0
+    successful = 0
+    for call in tool_calls:
+        output = str(call.get("output", "")).lower()
+        if output and not any(marker in output for marker in ["error", "failed", "异常", "失败"]):
+            successful += 1
+    return round(successful / len(tool_calls), 2)
+
+
+def serialize_agent_observation(observation: AgentObservation) -> dict:
+    return {
+        "id": observation.id,
+        "conversation_id": observation.conversation_id,
+        "agent_run_id": observation.agent_run_id,
+        "input_message": observation.input_message,
+        "answer": observation.answer,
+        "route": observation.route,
+        "selected_agent": observation.selected_agent,
+        "trace": observation.trace,
+        "tool_calls": observation.tool_calls,
+        "sources": observation.sources,
+        "token_usage": observation.token_usage,
+        "latency_ms": observation.latency_ms,
+        "tool_success_rate": observation.tool_success_rate,
+        "status": observation.status,
+        "failure_reason": observation.failure_reason,
+        "langsmith_project": observation.langsmith_project,
+        "langsmith_run_id": observation.langsmith_run_id,
+        "created_at": observation.created_at.isoformat(),
+    }
+
+
+def serialize_evaluation_case(case: EvaluationCase) -> dict:
+    latest_run = case.runs.first()
+    return {
+        "id": case.id,
+        "question": case.question,
+        "expected_answer": case.expected_answer,
+        "category": case.category,
+        "expected_route": case.expected_route,
+        "expected_agent": case.expected_agent,
+        "reference_keywords": case.reference_keywords,
+        "is_active": case.is_active,
+        "created_at": case.created_at.isoformat(),
+        "latest_run": serialize_evaluation_run(latest_run) if latest_run else None,
+    }
+
+
+def serialize_evaluation_run(run: EvaluationRun) -> dict:
+    return {
+        "id": run.id,
+        "case_id": run.case_id,
+        "observation_id": run.observation_id,
+        "answer": run.answer,
+        "metrics": run.metrics,
+        "passed": run.passed,
+        "created_at": run.created_at.isoformat(),
+    }
+
+
+def evaluate_answer(case: EvaluationCase, response_data: dict, observation: AgentObservation) -> dict:
+    answer = str(response_data.get("answer", ""))
+    selected_agent = selected_agent_from_response(response_data)
+    keywords = [str(item).lower() for item in case.reference_keywords]
+    answer_lower = answer.lower()
+    keyword_hits = sum(1 for keyword in keywords if keyword and keyword in answer_lower)
+    keyword_score = keyword_hits / len(keywords) if keywords else 1.0
+    route_score = 1.0 if not case.expected_agent or selected_agent == case.expected_agent else 0.0
+    citation_score = 1.0 if response_data.get("sources") else (0.7 if case.category == EvaluationCase.Category.JAILBREAK else 0.0)
+    faithful_markers = ["不能", "无法", "审批", "知识库", "来源", "Agent", "RAG", "博客"]
+    faithfulness = 1.0 if any(marker in answer for marker in faithful_markers) else 0.5
+    correctness = round((keyword_score * 0.6) + (route_score * 0.4), 2)
+    return {
+        "answer_correctness": correctness,
+        "faithfulness": faithfulness,
+        "citation_accuracy": citation_score,
+        "latency_ms": observation.latency_ms,
+        "tool_success_rate": observation.tool_success_rate,
+        "selected_agent": selected_agent,
+        "expected_agent": case.expected_agent,
+    }
+
+
+def create_agent_observation(
+    *,
+    conversation: Conversation | None,
+    agent_run: AgentRun | None,
+    input_message: str,
+    workspace_key: str = "default",
+    response_data: dict | None = None,
+    latency_ms: int = 0,
+    failure_reason: str = "",
+) -> AgentObservation:
+    response_data = response_data or {}
+    tool_calls = response_data.get("tool_calls", [])
+    return AgentObservation.objects.create(
+        conversation=conversation,
+        agent_run=agent_run,
+        input_message=input_message,
+        workspace_key=workspace_key,
+        answer=str(response_data.get("answer", "")),
+        route=str(response_data.get("route", "")),
+        selected_agent=selected_agent_from_response(response_data),
+        trace=response_data.get("trace", []),
+        tool_calls=tool_calls,
+        sources=response_data.get("sources", []),
+        token_usage=response_data.get("token_usage", {}),
+        latency_ms=latency_ms,
+        tool_success_rate=calculate_tool_success_rate(tool_calls),
+        status=AgentObservation.Status.FAILED if failure_reason else AgentObservation.Status.SUCCESS,
+        failure_reason=failure_reason,
+        langsmith_project=os.environ.get("LANGSMITH_PROJECT", ""),
+        langsmith_run_id=str(response_data.get("langsmith_run_id", "")),
+    )
+
+
+def observability_summary(workspace_key: str | None = None) -> dict:
+    observations = AgentObservation.objects.all()
+    if workspace_key:
+        observations = observations.filter(workspace_key=workspace_key)
+    total = observations.count()
+    if total == 0:
+        return {
+            "total_runs": 0,
+            "success_rate": 1.0,
+            "average_latency_ms": 0,
+            "average_tool_success_rate": 1.0,
+            "failed_runs": 0,
+            "langsmith_enabled": bool(os.environ.get("LANGSMITH_API_KEY")),
+            "langsmith_project": os.environ.get("LANGSMITH_PROJECT", ""),
+        }
+
+    successful = observations.filter(status=AgentObservation.Status.SUCCESS).count()
+    latency_sum = sum(item.latency_ms for item in observations[:200])
+    tool_rate_sum = sum(item.tool_success_rate for item in observations[:200])
+    sample_count = min(total, 200)
+    return {
+        "total_runs": total,
+        "success_rate": round(successful / total, 2),
+        "average_latency_ms": round(latency_sum / sample_count),
+        "average_tool_success_rate": round(tool_rate_sum / sample_count, 2),
+        "failed_runs": total - successful,
+        "langsmith_enabled": bool(os.environ.get("LANGSMITH_API_KEY")),
+        "langsmith_project": os.environ.get("LANGSMITH_PROJECT", ""),
+    }
+
+
+def approval_required_response(approval: ApprovalRequest) -> Response:
+    return Response(
+        {
+            "approval_required": True,
+            "detail": "该操作已进入人工审批队列，审批通过后才会执行。",
+            "approval": serialize_approval_request(approval),
+        },
+        status=status.HTTP_202_ACCEPTED,
+    )
+
+
 def serialize_conversation(
     conversation: Conversation,
     include_messages: bool = False,
@@ -141,13 +496,182 @@ def serialize_conversation(
     return data
 
 
+def extract_blog_delete_target(message: str) -> str:
+    if not any(keyword in message for keyword in ["删除文章", "删除博客", "删掉文章", "删掉博客"]):
+        return ""
+    quoted = re.search(r"[《「\"]([^》」\"]+)[》」\"]", message)
+    if quoted:
+        return quoted.group(1).strip()
+    cleaned = re.sub(r"(请|帮我|删除|删掉|文章|博客|这篇|一下|吧|。|，|,)", " ", message)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def maybe_create_blog_delete_approval(message: str, request) -> ApprovalRequest | None:
+    target = extract_blog_delete_target(message)
+    if not target:
+        return None
+    article = (
+        BlogArticle.objects.filter(workspace_key=get_workspace_key(request), title__icontains=target)
+        .order_by("-updated_at")
+        .first()
+    )
+    if not article:
+        article = (
+            BlogArticle.objects.filter(workspace_key=get_workspace_key(request), slug__icontains=target)
+            .order_by("-updated_at")
+            .first()
+        )
+    if not article:
+        return None
+    return ApprovalRequest.objects.create(
+        action=ApprovalRequest.Action.DELETE_BLOG_ARTICLE,
+        workspace_key=get_workspace_key(request),
+        title=f"删除博客：{article.title}",
+        description="对话触发的删除博客请求，需要管理员审批后才会删除文章和对应知识库文档。",
+        payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
+        requester=str(request.data.get("requester", "chat-agent")).strip() if hasattr(request, "data") else "chat-agent",
+    )
+
+
+class AuthLoginView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        username = str(request.data.get("username", "")).strip()
+        password = str(request.data.get("password", ""))
+        if not username or not password:
+            return Response({"detail": "username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = authenticate(request, username=username, password=password)
+        if user is None:
+            return Response({"detail": "invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        login(request, user)
+        token = issue_signed_token(user)
+        profile = user.agent_profile
+        audit_security_event(
+            request,
+            SecurityAuditEvent.EventType.LOGIN,
+            "login succeeded",
+            {"username": username, "role": profile.role},
+        )
+        return Response(
+            {
+                "token": token,
+                "user": serialize_user_profile(profile),
+                "session": serialize_security_context(request),
+            }
+        )
+
+
+class AuthRegisterView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        username = str(request.data.get("username", "")).strip()
+        password = str(request.data.get("password", ""))
+        role = str(request.data.get("role", UserProfile.Role.ADMIN)).strip().lower()
+        workspace_key = normalize_workspace_key(request.data.get("workspace_key", "default"))
+        if not username or not password:
+            return Response({"detail": "username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+        if len(password) < 8:
+            return Response({"detail": "password must be at least 8 characters"}, status=status.HTTP_400_BAD_REQUEST)
+        if role not in {UserProfile.Role.ADMIN, UserProfile.Role.OPERATOR, UserProfile.Role.VISITOR}:
+            role = UserProfile.Role.ADMIN
+
+        User = get_user_model()
+        if User.objects.filter(username=username).exists():
+            return Response({"detail": "username already exists"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.create_user(username=username, password=password, is_staff=role == UserProfile.Role.ADMIN)
+        profile, _ = UserProfile.objects.update_or_create(
+            user=user,
+            defaults={"role": role, "workspace_key": workspace_key},
+        )
+        token = issue_signed_token(user)
+        audit_security_event(
+            request,
+            SecurityAuditEvent.EventType.LOGIN,
+            "registration succeeded",
+            {"username": username, "role": role, "workspace_key": workspace_key},
+        )
+        return Response(
+            {
+                "token": token,
+                "user": serialize_user_profile(profile),
+                "session": {
+                    "actor": user.username,
+                    "role": profile.role,
+                    "workspace_key": profile.workspace_key,
+                    "authenticated": True,
+                    "security_enforced": security_enforced(),
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AuthMeView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        return Response(serialize_security_context(request))
+
+
+class SecurityStatusView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        denied = require_roles(request, [UserProfile.Role.ADMIN])
+        if denied:
+            return denied
+        env_exists = (Path(settings.BASE_DIR).parent / ".env").exists()
+        return Response(
+            {
+                "context": serialize_security_context(request),
+                "checks": {
+                    "security_enforced": security_enforced(),
+                    "env_file_exists": env_exists,
+                    "env_file_git_tracked": env_file_is_git_tracked(),
+                    "debug": settings.DEBUG,
+                    "allowed_hosts": settings.ALLOWED_HOSTS,
+                    "langsmith_configured": bool(os.environ.get("LANGSMITH_API_KEY")),
+                    "secret_values_returned": False,
+                },
+                "guidance": [
+                    ".env 只保存在部署环境，不提交到 Git。",
+                    "生产环境开启 AGENT_SECURITY_ENFORCED 并使用管理员账号登录。",
+                    "工具默认白名单管理，高风险动作进入人工审批。",
+                    "SQL 类能力只允许只读聚合查询。",
+                ],
+            }
+        )
+
+
+class SecurityAuditListView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        denied = require_roles(request, [UserProfile.Role.ADMIN])
+        if denied:
+            return denied
+        workspace_key = get_workspace_key(request)
+        events = SecurityAuditEvent.objects.filter(workspace_key=workspace_key)[:100]
+        return Response([serialize_security_audit_event(event) for event in events])
+
+
 class ConversationListView(APIView):
     authentication_classes = []
     permission_classes = []
 
     def get(self, request):
         query = str(request.query_params.get("q", "")).strip()
-        conversations = Conversation.objects.all()
+        conversations = Conversation.objects.filter(workspace_key=get_workspace_key(request))
         if query:
             conversations = conversations.filter(
                 Q(title__icontains=query) | Q(messages__content__icontains=query)
@@ -173,7 +697,7 @@ class ConversationDetailView(APIView):
     permission_classes = []
 
     def get(self, request, pk: int):
-        conversation = get_object_or_404(Conversation, pk=pk)
+        conversation = get_object_or_404(Conversation, pk=pk, workspace_key=get_workspace_key(request))
         limit = get_message_limit(request)
         before = request.query_params.get("before")
         anchor = request.query_params.get("anchor")
@@ -216,7 +740,6 @@ class AgentChatView(APIView):
     authentication_classes = []
     permission_classes = []
 
-    @transaction.atomic
     def post(self, request):
         message = str(request.data.get("message", "")).strip()
         if not message:
@@ -224,18 +747,105 @@ class AgentChatView(APIView):
                 {"detail": "message is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        workspace_key = get_workspace_key(request)
+        sensitive_marker = detect_sensitive_input(message)
+        if sensitive_marker:
+            audit_security_event(
+                request,
+                SecurityAuditEvent.EventType.SENSITIVE_INPUT,
+                "chat input matched security filter",
+                {"pattern": sensitive_marker},
+            )
 
-        conversation = self._get_or_create_conversation(request.data.get("conversation_id"), message)
+        conversation = self._get_or_create_conversation(request.data.get("conversation_id"), message, workspace_key)
         Message.objects.create(
             conversation=conversation,
             role=Message.Role.USER,
             content=message,
         )
 
+        approval = maybe_create_blog_delete_approval(message, request)
+        if approval:
+            response_data = {
+                "answer": f"已为文章删除创建审批单 #{approval.id}。管理员批准后才会删除：{approval.payload.get('title')}",
+                "tool_calls": [
+                    {
+                        "name": "admin_approval",
+                        "input": message,
+                        "output": f"approval_id={approval.id}; action={approval.action}",
+                    }
+                ],
+                "sources": [],
+                "trace": [
+                    "supervisor -> received request",
+                    "supervisor -> admin_approval_agent (blog deletion requires approval)",
+                    "admin_approval_agent -> approval request created",
+                ],
+                "route": "admin_approval_agent",
+                "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                "supervisor": {
+                    "selected_agent": "admin_approval_agent",
+                    "display_name": "Admin Approval Agent",
+                    "reason": "blog deletion requires human approval",
+                    "confidence": 0.98,
+                    "handoff": "handoff -> Admin Approval Agent",
+                },
+            }
+            Message.objects.create(
+                conversation=conversation,
+                role=Message.Role.AGENT,
+                content=response_data["answer"],
+                tool_calls=response_data["tool_calls"],
+                sources=response_data["sources"],
+                trace=response_data["trace"],
+                token_usage=response_data["token_usage"],
+            )
+            agent_run = AgentRun.objects.create(
+                conversation=conversation,
+                workspace_key=workspace_key,
+                input_message=message,
+                route=response_data["route"],
+                tool_calls=response_data["tool_calls"],
+                sources=response_data["sources"],
+                trace=response_data["trace"],
+                token_usage=response_data["token_usage"],
+            )
+            observation = create_agent_observation(
+                conversation=conversation,
+                agent_run=agent_run,
+                input_message=message,
+                workspace_key=workspace_key,
+                response_data=response_data,
+            )
+            conversation.save(update_fields=["updated_at"])
+            return Response(
+                {
+                    **response_data,
+                    "approval_required": True,
+                    "approval": serialize_approval_request(approval),
+                    "conversation": serialize_conversation(conversation),
+                    "observation": serialize_agent_observation(observation),
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
         project_root = Path(settings.BASE_DIR).parent
-        agent = SimpleToolCallingAgent(project_root)
-        response = agent.chat(message)
-        response_data = response.to_dict()
+        started_at = time.perf_counter()
+        try:
+            agent = MultiAgentSupervisor(project_root)
+            response = agent.chat(message)
+            response_data = response.to_dict()
+        except Exception as exc:
+            latency_ms = round((time.perf_counter() - started_at) * 1000)
+            create_agent_observation(
+                conversation=conversation,
+                agent_run=None,
+                input_message=message,
+                workspace_key=workspace_key,
+                latency_ms=latency_ms,
+                failure_reason=str(exc),
+            )
+            raise
 
         Message.objects.create(
             conversation=conversation,
@@ -246,8 +856,9 @@ class AgentChatView(APIView):
             trace=response.trace,
             token_usage=response.token_usage,
         )
-        AgentRun.objects.create(
+        agent_run = AgentRun.objects.create(
             conversation=conversation,
+            workspace_key=workspace_key,
             input_message=message,
             route=response.route,
             tool_calls=response_data["tool_calls"],
@@ -255,23 +866,154 @@ class AgentChatView(APIView):
             trace=response.trace,
             token_usage=response.token_usage,
         )
+        observation = create_agent_observation(
+            conversation=conversation,
+            agent_run=agent_run,
+            input_message=message,
+            workspace_key=workspace_key,
+            response_data=response_data,
+            latency_ms=round((time.perf_counter() - started_at) * 1000),
+        )
+        if any(item == "security_filter -> output redacted" for item in response.trace):
+            audit_security_event(request, SecurityAuditEvent.EventType.OUTPUT_REDACTED, "agent output redacted")
 
         conversation.save(update_fields=["updated_at"])
         return Response(
             {
                 **response_data,
                 "conversation": serialize_conversation(conversation),
+                "observation": serialize_agent_observation(observation),
             }
         )
 
-    def _get_or_create_conversation(self, conversation_id, message: str) -> Conversation:
+    def _get_or_create_conversation(self, conversation_id, message: str, workspace_key: str) -> Conversation:
         if conversation_id:
-            return get_object_or_404(Conversation, pk=conversation_id)
+            return get_object_or_404(Conversation, pk=conversation_id, workspace_key=workspace_key)
 
         title = message[:40]
         if len(message) > 40:
             title = f"{title}..."
-        return Conversation.objects.create(title=title)
+        return Conversation.objects.create(title=title, workspace_key=workspace_key)
+
+
+class ObservabilityDashboardView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
+        limit = min(int(request.query_params.get("limit", 30)), 100)
+        observations = AgentObservation.objects.select_related("conversation", "agent_run").filter(
+            workspace_key=get_workspace_key(request)
+        )[:limit]
+        return Response(
+            {
+                "summary": observability_summary(get_workspace_key(request)),
+                "observations": [serialize_agent_observation(observation) for observation in observations],
+            }
+        )
+
+
+class EvaluationCaseListView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
+        category = request.query_params.get("category")
+        cases = EvaluationCase.objects.prefetch_related("runs").filter(workspace_key=get_workspace_key(request))
+        if category and category != "all":
+            cases = cases.filter(category=category)
+        return Response([serialize_evaluation_case(case) for case in cases])
+
+
+class EvaluationRunView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
+        case_id = request.data.get("case_id")
+        limit = request.data.get("limit", 5)
+        try:
+            limit = max(1, min(int(limit), 30))
+        except (TypeError, ValueError):
+            limit = 5
+
+        workspace_key = get_workspace_key(request)
+        if case_id:
+            cases = [get_object_or_404(EvaluationCase, pk=case_id, workspace_key=workspace_key)]
+        else:
+            cases = list(EvaluationCase.objects.filter(is_active=True, workspace_key=workspace_key)[:limit])
+
+        runs = [self._run_case(case) for case in cases]
+        passed_count = sum(1 for run in runs if run.passed)
+        return Response(
+            {
+                "total": len(runs),
+                "passed": passed_count,
+                "pass_rate": round(passed_count / len(runs), 2) if runs else 0,
+                "runs": [serialize_evaluation_run(run) for run in runs],
+            }
+        )
+
+    def _run_case(self, case: EvaluationCase) -> EvaluationRun:
+        started_at = time.perf_counter()
+        try:
+            response = MultiAgentSupervisor(Path(settings.BASE_DIR).parent).chat(case.question)
+            response_data = response.to_dict()
+            observation = create_agent_observation(
+                conversation=None,
+                agent_run=None,
+                input_message=case.question,
+                workspace_key=case.workspace_key,
+                response_data=response_data,
+                latency_ms=round((time.perf_counter() - started_at) * 1000),
+            )
+            metrics = evaluate_answer(case, response_data, observation)
+            passed = (
+                metrics["answer_correctness"] >= 0.6
+                and metrics["faithfulness"] >= 0.7
+                and metrics["tool_success_rate"] >= 0.8
+            )
+            return EvaluationRun.objects.create(
+                case=case,
+                workspace_key=case.workspace_key,
+                observation=observation,
+                answer=response_data.get("answer", ""),
+                metrics=metrics,
+                passed=passed,
+            )
+        except Exception as exc:
+            observation = create_agent_observation(
+                conversation=None,
+                agent_run=None,
+                input_message=case.question,
+                workspace_key=case.workspace_key,
+                latency_ms=round((time.perf_counter() - started_at) * 1000),
+                failure_reason=str(exc),
+            )
+            return EvaluationRun.objects.create(
+                case=case,
+                workspace_key=case.workspace_key,
+                observation=observation,
+                answer="",
+                metrics={
+                    "answer_correctness": 0,
+                    "faithfulness": 0,
+                    "citation_accuracy": 0,
+                    "latency_ms": observation.latency_ms,
+                    "tool_success_rate": 0,
+                    "failure_reason": str(exc),
+                },
+                passed=False,
+            )
 
 
 class KnowledgeBaseListView(APIView):
@@ -280,22 +1022,48 @@ class KnowledgeBaseListView(APIView):
 
     def get(self, request):
         get_default_knowledge_base()
-        knowledge_bases = KnowledgeBase.objects.all()
+        knowledge_bases = KnowledgeBase.objects.filter(workspace_key=get_workspace_key(request))
         return Response([serialize_knowledge_base(item) for item in knowledge_bases])
 
     def post(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
         name = str(request.data.get("name", "")).strip()
         if not name:
             return Response({"detail": "name is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         knowledge_base, created = KnowledgeBase.objects.get_or_create(
             name=name,
-            defaults={"description": str(request.data.get("description", "")).strip()},
+            defaults={
+                "workspace_key": get_workspace_key(request),
+                "description": str(request.data.get("description", "")).strip(),
+            },
         )
         if not created:
             knowledge_base.description = str(request.data.get("description", knowledge_base.description)).strip()
             knowledge_base.save(update_fields=["description", "updated_at"])
         return Response(serialize_knowledge_base(knowledge_base), status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class KnowledgeBaseDetailView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def delete(self, request, pk: int):
+        denied = require_roles(request, [UserProfile.Role.ADMIN])
+        if denied:
+            return denied
+        knowledge_base = get_object_or_404(KnowledgeBase, pk=pk, workspace_key=get_workspace_key(request))
+        approval = ApprovalRequest.objects.create(
+            action=ApprovalRequest.Action.DELETE_KNOWLEDGE_BASE,
+            workspace_key=get_workspace_key(request),
+            title=f"删除知识库：{knowledge_base.name}",
+            description="删除知识库会级联删除其中的文档、切片和向量索引。",
+            payload={"knowledge_base_id": knowledge_base.id, "name": knowledge_base.name},
+            requester=str(request.data.get("requester", "operator")).strip() if hasattr(request, "data") else "operator",
+        )
+        return approval_required_response(approval)
 
 
 class DocumentListUploadView(APIView):
@@ -305,12 +1073,15 @@ class DocumentListUploadView(APIView):
 
     def get(self, request):
         knowledge_base_id = request.query_params.get("knowledge_base_id")
-        documents = Document.objects.select_related("knowledge_base")
+        documents = Document.objects.select_related("knowledge_base").filter(workspace_key=get_workspace_key(request))
         if knowledge_base_id:
             documents = documents.filter(knowledge_base_id=knowledge_base_id)
         return Response([serialize_document(document) for document in documents[:50]])
 
     def post(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
         upload = request.FILES.get("file")
         if upload is None:
             return Response({"detail": "file is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -324,13 +1095,14 @@ class DocumentListUploadView(APIView):
 
         knowledge_base_id = request.data.get("knowledge_base_id")
         if knowledge_base_id:
-            knowledge_base = get_object_or_404(KnowledgeBase, pk=knowledge_base_id)
+            knowledge_base = get_object_or_404(KnowledgeBase, pk=knowledge_base_id, workspace_key=get_workspace_key(request))
         else:
             knowledge_base = get_default_knowledge_base()
 
         title = str(request.data.get("title") or Path(upload.name).stem).strip()
         document = Document.objects.create(
             knowledge_base=knowledge_base,
+            workspace_key=get_workspace_key(request),
             title=title,
             source_file=upload,
             content_type=getattr(upload, "content_type", "") or suffix.lstrip("."),
@@ -339,12 +1111,35 @@ class DocumentListUploadView(APIView):
         return Response(serialize_document(document), status=status.HTTP_201_CREATED)
 
 
+class DocumentDetailView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def delete(self, request, pk: int):
+        denied = require_roles(request, [UserProfile.Role.ADMIN])
+        if denied:
+            return denied
+        document = get_object_or_404(Document, pk=pk, workspace_key=get_workspace_key(request))
+        approval = ApprovalRequest.objects.create(
+            action=ApprovalRequest.Action.DELETE_DOCUMENT,
+            workspace_key=get_workspace_key(request),
+            title=f"删除文档：{document.title}",
+            description="删除文档会删除对应切片、embedding 记录，并影响知识库检索结果。",
+            payload={"document_id": document.id, "title": document.title},
+            requester=str(request.data.get("requester", "operator")).strip() if hasattr(request, "data") else "operator",
+        )
+        return approval_required_response(approval)
+
+
 class DocumentReindexView(APIView):
     authentication_classes = []
     permission_classes = []
 
     def post(self, request, pk: int):
-        document = get_object_or_404(Document, pk=pk)
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
+        document = get_object_or_404(Document, pk=pk, workspace_key=get_workspace_key(request))
         document = ingest_document(document)
         return Response(serialize_document(document))
 
@@ -359,6 +1154,8 @@ class KnowledgeSearchView(APIView):
             return Response({"detail": "query is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         knowledge_base_id = request.data.get("knowledge_base_id")
+        if knowledge_base_id:
+            get_object_or_404(KnowledgeBase, pk=knowledge_base_id, workspace_key=get_workspace_key(request))
         limit = request.data.get("limit", 5)
         try:
             limit = max(1, min(int(limit), 10))
@@ -385,12 +1182,187 @@ class KnowledgeSearchView(APIView):
         )
 
 
+class ApprovalRequestListView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        denied = require_roles(request, [UserProfile.Role.ADMIN])
+        if denied:
+            return denied
+        status_filter = request.query_params.get("status", "pending")
+        approvals = ApprovalRequest.objects.filter(workspace_key=get_workspace_key(request))
+        if status_filter != "all":
+            approvals = approvals.filter(status=status_filter)
+        return Response([serialize_approval_request(approval) for approval in approvals[:100]])
+
+
+class ApprovalRequestDetailView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request, pk: int):
+        denied = require_roles(request, [UserProfile.Role.ADMIN])
+        if denied:
+            return denied
+        approval = get_object_or_404(ApprovalRequest, pk=pk, workspace_key=get_workspace_key(request))
+        decision = str(request.data.get("decision", "")).strip().lower()
+        reviewer = str(request.data.get("reviewer", "admin")).strip()
+        note = str(request.data.get("note", "")).strip()
+
+        if approval.status != ApprovalRequest.Status.PENDING:
+            return Response(
+                {"detail": "approval request is no longer pending"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if decision not in {"approve", "reject"}:
+            return Response({"detail": "decision must be approve or reject"}, status=status.HTTP_400_BAD_REQUEST)
+
+        approval.reviewer = reviewer
+        approval.review_note = note
+        approval.reviewed_at = timezone.now()
+
+        if decision == "reject":
+            approval.status = ApprovalRequest.Status.REJECTED
+            approval.result = "人工审批已拒绝，敏感操作未执行。"
+            approval.save(update_fields=["reviewer", "review_note", "reviewed_at", "status", "result"])
+            return Response(serialize_approval_request(approval))
+
+        try:
+            approval.result = execute_approval_request(approval)
+            approval.status = ApprovalRequest.Status.EXECUTED
+            approval.executed_at = timezone.now()
+        except Exception as exc:
+            approval.result = str(exc)
+            approval.status = ApprovalRequest.Status.FAILED
+        approval.save(update_fields=["reviewer", "review_note", "reviewed_at", "status", "result", "executed_at"])
+        return Response(serialize_approval_request(approval))
+
+
+class MCPToolListView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
+        ensure_default_mcp_tools()
+        tools = MCPTool.objects.filter(workspace_key=get_workspace_key(request))
+        return Response([serialize_mcp_tool(tool) for tool in tools])
+
+
+class MCPToolDetailView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def patch(self, request, pk: int):
+        denied = require_roles(request, [UserProfile.Role.ADMIN])
+        if denied:
+            return denied
+        tool = get_object_or_404(MCPTool, pk=pk, workspace_key=get_workspace_key(request))
+        if "is_enabled" in request.data:
+            tool.is_enabled = bool(request.data["is_enabled"])
+        if "requires_approval" in request.data:
+            tool.requires_approval = bool(request.data["requires_approval"])
+        if "permission_scope" in request.data:
+            tool.permission_scope = str(request.data["permission_scope"]).strip()
+        tool.save(update_fields=["is_enabled", "requires_approval", "permission_scope", "updated_at"])
+        return Response(serialize_mcp_tool(tool))
+
+
+class MCPToolExecuteView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request, pk: int):
+        from agent.mcp_tools import LocalMCPToolRunner
+
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
+        tool = get_object_or_404(MCPTool, pk=pk, workspace_key=get_workspace_key(request))
+        query = str(request.data.get("query", "")).strip()
+        if not tool.is_enabled:
+            return Response({"detail": "tool is disabled"}, status=status.HTTP_400_BAD_REQUEST)
+        if tool.requires_approval:
+            approval = ApprovalRequest.objects.create(
+                action=ApprovalRequest.Action.EXECUTE_SQL,
+                workspace_key=get_workspace_key(request),
+                title=f"执行 MCP 工具：{tool.display_name}",
+                description=f"工具权限范围：{tool.permission_scope}",
+                payload={"tool_id": tool.id, "tool_name": tool.name, "query": query},
+                requester=str(request.data.get("requester", "operator")).strip(),
+            )
+            return approval_required_response(approval)
+
+        execution = LocalMCPToolRunner(Path(settings.BASE_DIR).parent).run(tool.name, query)
+        tool.last_used_at = timezone.now()
+        tool.save(update_fields=["last_used_at", "updated_at"])
+        return Response(
+            {
+                "tool": serialize_mcp_tool(tool),
+                "input": execution.input,
+                "output": execution.output,
+            }
+        )
+
+
+def execute_approval_request(approval: ApprovalRequest) -> str:
+    payload = approval.payload or {}
+
+    if approval.action == ApprovalRequest.Action.DELETE_DOCUMENT:
+        document = get_object_or_404(Document, pk=payload.get("document_id"), workspace_key=approval.workspace_key)
+        title = document.title
+        if document.source_file:
+            document.source_file.delete(save=False)
+        document.delete()
+        return f"文档已删除：{title}"
+
+    if approval.action == ApprovalRequest.Action.DELETE_KNOWLEDGE_BASE:
+        knowledge_base = get_object_or_404(KnowledgeBase, pk=payload.get("knowledge_base_id"), workspace_key=approval.workspace_key)
+        name = knowledge_base.name
+        knowledge_base.delete()
+        return f"知识库已删除：{name}"
+
+    if approval.action == ApprovalRequest.Action.DELETE_BLOG_ARTICLE:
+        article = get_object_or_404(BlogArticle, slug=payload.get("article_slug"), workspace_key=approval.workspace_key)
+        title = article.title
+        knowledge_document = article.knowledge_document
+        article.delete()
+        if knowledge_document:
+            if knowledge_document.source_file:
+                knowledge_document.source_file.delete(save=False)
+            knowledge_document.delete()
+        return f"博客文章已删除：{title}"
+
+    if approval.action == ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE:
+        article = get_object_or_404(BlogArticle, slug=payload.get("article_slug"), workspace_key=approval.workspace_key)
+        publish_article_to_knowledge_base(article)
+        return f"博客文章已发布并同步知识库：{article.title}"
+
+    if approval.action == ApprovalRequest.Action.EXECUTE_SQL and payload.get("tool_name"):
+        from agent.mcp_tools import LocalMCPToolRunner
+
+        tool = get_object_or_404(MCPTool, pk=payload.get("tool_id"), workspace_key=approval.workspace_key)
+        if not tool.is_enabled:
+            raise ValueError(f"MCP 工具已禁用：{tool.display_name}")
+        execution = LocalMCPToolRunner(Path(settings.BASE_DIR).parent).run(tool.name, str(payload.get("query", "")))
+        tool.last_used_at = timezone.now()
+        tool.save(update_fields=["last_used_at", "updated_at"])
+        return f"MCP 工具已执行：{tool.display_name}\n\n{execution.output}"
+
+    return "该审批类型当前只记录审批结果，未绑定自动执行器。"
+
+
 class BlogArticleListCreateView(APIView):
     authentication_classes = []
     permission_classes = []
 
     def get(self, request):
-        articles = BlogArticle.objects.select_related("category", "knowledge_document").prefetch_related("tags")
+        articles = BlogArticle.objects.select_related("category", "knowledge_document").prefetch_related("tags").filter(
+            workspace_key=get_workspace_key(request)
+        )
         status_filter = request.query_params.get("status", BlogArticle.Status.PUBLISHED)
         if status_filter != "all":
             articles = articles.filter(status=status_filter)
@@ -408,6 +1380,9 @@ class BlogArticleListCreateView(APIView):
         return Response([serialize_article(article) for article in articles.distinct()[:50]])
 
     def post(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
         title = str(request.data.get("title", "")).strip()
         content = str(request.data.get("content", "")).strip()
         if not title or not content:
@@ -415,6 +1390,7 @@ class BlogArticleListCreateView(APIView):
 
         article = BlogArticle.objects.create(
             title=title,
+            workspace_key=get_workspace_key(request),
             slug=unique_slug(BlogArticle, request.data.get("slug") or title, max_length=200),
             summary=str(request.data.get("summary", "")).strip(),
             content=content,
@@ -423,7 +1399,25 @@ class BlogArticleListCreateView(APIView):
         )
         set_article_tags(article, request.data.get("tags", []))
         if article.status == BlogArticle.Status.PUBLISHED or request.data.get("publish"):
-            article = publish_article_to_knowledge_base(article)
+            article.status = BlogArticle.Status.DRAFT
+            article.save(update_fields=["status", "updated_at"])
+            approval = ApprovalRequest.objects.create(
+                action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
+                workspace_key=get_workspace_key(request),
+                title=f"发布博客：{article.title}",
+                description="发布博客会公开文章，并将文章内容写入知识库供 Agent 检索。",
+                payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
+                requester=str(request.data.get("requester", "blog-editor")).strip(),
+            )
+            return Response(
+                {
+                    "approval_required": True,
+                    "article": serialize_article(article, include_content=True),
+                    "approval": serialize_approval_request(approval),
+                    "detail": "文章已保存为草稿，发布请求已进入人工审批。",
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
         return Response(serialize_article(article, include_content=True), status=status.HTTP_201_CREATED)
 
 
@@ -433,6 +1427,9 @@ class BlogImageUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
         upload = request.FILES.get("image")
         if upload is None:
             return Response({"detail": "image is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -469,13 +1466,17 @@ class BlogArticleDetailView(APIView):
         article = get_object_or_404(
             BlogArticle.objects.select_related("category", "knowledge_document").prefetch_related("tags"),
             slug=slug,
+            workspace_key=get_workspace_key(request),
         )
         article.view_count += 1
         article.save(update_fields=["view_count", "updated_at"])
         return Response(serialize_article(article, include_content=True))
 
     def patch(self, request, slug: str):
-        article = get_object_or_404(BlogArticle, slug=slug)
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
+        article = get_object_or_404(BlogArticle, slug=slug, workspace_key=get_workspace_key(request))
         if "title" in request.data:
             article.title = str(request.data["title"]).strip()
         if "summary" in request.data:
@@ -490,8 +1491,42 @@ class BlogArticleDetailView(APIView):
         if "tags" in request.data:
             set_article_tags(article, request.data.get("tags", []))
         if article.status == BlogArticle.Status.PUBLISHED or request.data.get("publish"):
-            article = publish_article_to_knowledge_base(article)
+            article.status = BlogArticle.Status.DRAFT
+            article.save(update_fields=["status", "updated_at"])
+            approval = ApprovalRequest.objects.create(
+                action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
+                workspace_key=get_workspace_key(request),
+                title=f"发布博客：{article.title}",
+                description="发布博客会公开文章，并将文章内容写入知识库供 Agent 检索。",
+                payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
+                requester=str(request.data.get("requester", "blog-editor")).strip(),
+            )
+            return Response(
+                {
+                    "approval_required": True,
+                    "article": serialize_article(article, include_content=True),
+                    "approval": serialize_approval_request(approval),
+                    "detail": "发布请求已进入人工审批。",
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
         return Response(serialize_article(article, include_content=True))
+
+    @transaction.atomic
+    def delete(self, request, slug: str):
+        denied = require_roles(request, [UserProfile.Role.ADMIN])
+        if denied:
+            return denied
+        article = get_object_or_404(BlogArticle, slug=slug, workspace_key=get_workspace_key(request))
+        approval = ApprovalRequest.objects.create(
+            action=ApprovalRequest.Action.DELETE_BLOG_ARTICLE,
+            workspace_key=get_workspace_key(request),
+            title=f"删除博客：{article.title}",
+            description="删除博客会移除文章，并删除它同步到知识库的文档。",
+            payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
+            requester=str(request.data.get("requester", "blog-editor")).strip() if hasattr(request, "data") else "blog-editor",
+        )
+        return approval_required_response(approval)
 
 
 class BlogArticlePublishView(APIView):
@@ -499,9 +1534,19 @@ class BlogArticlePublishView(APIView):
     permission_classes = []
 
     def post(self, request, slug: str):
-        article = get_object_or_404(BlogArticle, slug=slug)
-        article = publish_article_to_knowledge_base(article)
-        return Response(serialize_article(article, include_content=True))
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
+        article = get_object_or_404(BlogArticle, slug=slug, workspace_key=get_workspace_key(request))
+        approval = ApprovalRequest.objects.create(
+            action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
+            workspace_key=get_workspace_key(request),
+            title=f"发布博客：{article.title}",
+            description="发布博客会公开文章，并将文章内容写入知识库供 Agent 检索。",
+            payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
+            requester=str(request.data.get("requester", "blog-editor")).strip() if hasattr(request, "data") else "blog-editor",
+        )
+        return approval_required_response(approval)
 
 
 class BlogCategoryListView(APIView):
@@ -527,7 +1572,10 @@ class BlogArchiveView(APIView):
     permission_classes = []
 
     def get(self, request):
-        articles = BlogArticle.objects.filter(status=BlogArticle.Status.PUBLISHED).order_by("-published_at")
+        articles = BlogArticle.objects.filter(
+            status=BlogArticle.Status.PUBLISHED,
+            workspace_key=get_workspace_key(request),
+        ).order_by("-published_at")
         archive: dict[str, list[dict]] = {}
         for article in articles:
             key = article.published_at.strftime("%Y-%m") if article.published_at else "未发布"
@@ -657,7 +1705,7 @@ class BlogCommentCreateView(APIView):
     permission_classes = []
 
     def get(self, request, slug: str):
-        article = get_object_or_404(BlogArticle, slug=slug)
+        article = get_object_or_404(BlogArticle, slug=slug, workspace_key=get_workspace_key(request))
         comments = article.comments.filter(is_approved=True)
         return Response(
             [
@@ -672,7 +1720,7 @@ class BlogCommentCreateView(APIView):
         )
 
     def post(self, request, slug: str):
-        article = get_object_or_404(BlogArticle, slug=slug)
+        article = get_object_or_404(BlogArticle, slug=slug, workspace_key=get_workspace_key(request))
         author_name = str(request.data.get("author_name", "")).strip()
         content = str(request.data.get("content", "")).strip()
         if not author_name or not content:

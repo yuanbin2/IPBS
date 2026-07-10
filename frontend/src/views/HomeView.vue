@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChatDotRound, Connection, Cpu, DataAnalysis, Files, UploadFilled } from "@element-plus/icons-vue";
+import { ChatDotRound, Connection, Cpu, DataAnalysis, Files, Lock, UploadFilled, UserFilled } from "@element-plus/icons-vue";
 import { RouterLink } from "vue-router";
 import { usePlatformStore } from "../stores/platform";
 
@@ -11,6 +11,10 @@ const modules = [
   { title: "Agentic RAG", detail: "检索、评分、改写问题、生成答案并给出引用来源。", icon: DataAnalysis },
   { title: "工具调用", detail: "知识库检索、用户资料、计算器工具已接入。", icon: Cpu },
   { title: "对话入口", detail: "通过 /api/agent/chat/ 与 LangGraph Agent 交互。", icon: ChatDotRound, path: "/chat" }
+  ,
+  { title: "人工审批", detail: "敏感操作先进入审批队列，批准后才执行。", icon: Lock, path: "/admin-approvals" },
+  { title: "观测评估", detail: "记录 Agent trace、耗时、工具成功率，并用评估集验证效果。", icon: DataAnalysis, path: "/observability" },
+  { title: "权限安全", detail: "登录、RBAC、workspace 隔离、审计和输出脱敏。", icon: UserFilled, path: "/security" }
 ];
 </script>
 
@@ -23,7 +27,8 @@ const modules = [
         <RouterLink to="/blog">博客</RouterLink>
         <RouterLink to="/knowledge">知识库</RouterLink>
         <RouterLink to="/chat">对话</RouterLink>
-        <a>评估</a>
+        <RouterLink to="/observability">评估</RouterLink>
+        <RouterLink to="/security">安全</RouterLink>
       </nav>
     </aside>
 

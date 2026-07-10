@@ -4,6 +4,26 @@
 
 这个仓库是一个企业级 Agent 工程化学习项目。第一阶段目标是搭建可启动的 monorepo，并逐步完成个人博客、企业知识库、Agentic RAG、多智能体协作、Human-in-the-loop、MCP 工具接入、可观测性和 CI/CD。
 
+## 项目亮点
+
+- 个人博客内容可自动进入知识库，成为 Agent 回答的个人经历来源。
+- Multi-Agent Supervisor 根据问题类型路由到 RAG、Blog、MCP、SQL Analysis、Review、Approval、Writing 等 Agent。
+- Human-in-the-loop 审批覆盖删除、发布和 MCP 工具调用等敏感操作。
+- MCP 工具注册表支持启用/禁用、权限范围、审批开关和调用记录。
+- 可观测性记录 trace、latency、tool success rate，并内置 30 条评估题。
+- 安全层包含登录注册、RBAC、workspace 隔离、prompt injection 拦截、输出脱敏和安全审计。
+- Docker Compose 一键启动 Nginx、Vue、Django、PostgreSQL、Redis、Celery Worker、Celery Beat。
+
+## 文档导航
+
+- [部署说明](docs/deployment.md)
+- [API 文档](docs/api.md)
+- [系统架构图](docs/system-architecture.md)
+- [评估报告](docs/evaluation-report.md)
+- [简历包装](docs/resume.md)
+- [演示视频脚本](docs/demo-script.md)
+- [最终总结博客](docs/final-blog-post.md)
+
 ## 架构
 
 ```text
@@ -29,6 +49,17 @@ deploy/    Docker Compose、Nginx、部署配置
 | 工程质量 | pytest, pre-commit, GitHub Actions | 单测、接口测试、CI 检查 |
 
 ## 本地启动
+
+### Docker 一键启动
+
+```bash
+copy .env.example .env
+docker compose up -d --build
+```
+
+访问：`http://localhost/`
+
+部署说明见 [docs/deployment.md](docs/deployment.md)，接口文档见 [docs/api.md](docs/api.md)，架构图见 [docs/system-architecture.md](docs/system-architecture.md)。
 
 ### 1. 启动基础设施
 
@@ -85,3 +116,12 @@ npm run dev
 - 增加 conditional edge，普通问题直接回答，工具型问题进入工具节点
 - 后端持久化 `Conversation`、`Message`、`AgentRun`
 - 前端聊天页支持刷新后加载历史记录
+
+## 第 9-14 天完成项
+
+- Human-in-the-loop：删除、发布、敏感操作进入审批队列。
+- MCP 工具：本地文件、Git、网页搜索占位、安全数据库统计工具注册表。
+- 可观测性：Agent trace、耗时、工具成功率、评估集和评估运行。
+- 权限安全：登录、RBAC、workspace 隔离、安全审计、prompt injection 防护、输出脱敏。
+- Docker + CI/CD：Django、Vue、PostgreSQL、Redis、Celery、Nginx Compose 部署，GitHub Actions 覆盖测试、构建和 Compose 校验。
+- 简历与演示：项目简历描述、评估报告、演示脚本和最终复盘博客。

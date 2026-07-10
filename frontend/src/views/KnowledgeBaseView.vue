@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { Back, Files, Refresh, Search, UploadFilled } from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { Back, Delete, Files, Refresh, Search, UploadFilled } from "@element-plus/icons-vue";
 import { RouterLink } from "vue-router";
 
 interface KnowledgeBase {
@@ -42,6 +43,8 @@ const loading = ref(false);
 const uploading = ref(false);
 const searching = ref(false);
 const reindexingDocumentId = ref<number | null>(null);
+const deletingKnowledgeBaseId = ref<number | null>(null);
+const deletingDocumentId = ref<number | null>(null);
 
 onMounted(async () => {
   await loadKnowledgeBases();
@@ -141,6 +144,114 @@ async function reindexDocument(document: KnowledgeDocument) {
     reindexingDocumentId.value = null;
   }
 }
+
+async function deleteKnowledgeBase(base: KnowledgeBase) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除知识库「${base.name}」吗？里面的文档、切片和向量索引都会一起删除。`,
+      "删除知识库",
+      {
+        confirmButtonText: "删除",
+        cancelButtonText: "取消",
+        type: "warning",
+        confirmButtonClass: "el-button--danger"
+      }
+    );
+  } catch {
+    return;
+  }
+
+  deletingKnowledgeBaseId.value = base.id;
+  try {
+    const response = await fetch(`/api/agent/knowledge-bases/${base.id}/`, {
+      method: "DELETE"
+    });
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, "删除知识库失败"));
+    }
+    const payload = await readOptionalJson(response);
+    if (payload?.approval_required) {
+      ElMessage.warning(`已提交审批 #${payload.approval.id}，批准后才会删除知识库`);
+    } else {
+      if (selectedKnowledgeBaseId.value === base.id) {
+        selectedKnowledgeBaseId.value = null;
+      }
+      ElMessage.success("知识库已删除");
+    }
+    await loadKnowledgeBases();
+    if (!selectedKnowledgeBaseId.value && knowledgeBases.value.length > 0) {
+      selectedKnowledgeBaseId.value = knowledgeBases.value[0].id;
+    }
+    await loadDocuments();
+    searchResults.value = [];
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "删除知识库失败");
+  } finally {
+    deletingKnowledgeBaseId.value = null;
+  }
+}
+
+async function deleteDocument(document: KnowledgeDocument) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除文档「${document.title}」吗？它的切片和向量索引也会删除。`,
+      "删除文档",
+      {
+        confirmButtonText: "删除",
+        cancelButtonText: "取消",
+        type: "warning",
+        confirmButtonClass: "el-button--danger"
+      }
+    );
+  } catch {
+    return;
+  }
+
+  deletingDocumentId.value = document.id;
+  try {
+    const response = await fetch(`/api/agent/documents/${document.id}/`, {
+      method: "DELETE"
+    });
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, "删除文档失败"));
+    }
+    const payload = await readOptionalJson(response);
+    await loadKnowledgeBases();
+    await loadDocuments();
+    if (payload?.approval_required) {
+      ElMessage.warning(`已提交审批 #${payload.approval.id}，批准后才会删除文档`);
+    } else {
+      searchResults.value = searchResults.value.filter((item) => item.document_id !== document.id);
+      ElMessage.success("文档已删除");
+    }
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "删除文档失败");
+  } finally {
+    deletingDocumentId.value = null;
+  }
+}
+
+async function readOptionalJson(response: Response) {
+  if (response.status === 204) return null;
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) return null;
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+}
+
+async function readErrorMessage(response: Response, fallback: string) {
+  const contentType = response.headers.get("content-type") ?? "";
+  const text = await response.text();
+  if (contentType.includes("application/json") && text) {
+    try {
+      const payload = JSON.parse(text);
+      return payload.detail ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 220) || fallback;
+}
 </script>
 
 <template>
@@ -174,17 +285,29 @@ async function reindexDocument(document: KnowledgeDocument) {
             <el-button :icon="Refresh" circle :loading="loading" @click="loadKnowledgeBases" />
           </div>
 
-          <button
+          <div
             v-for="base in knowledgeBases"
             :key="base.id"
-            type="button"
-            class="knowledge-base-button"
+            class="knowledge-base-row"
             :class="{ active: base.id === selectedKnowledgeBaseId }"
-            @click="selectedKnowledgeBaseId = base.id; loadDocuments()"
           >
-            <strong>{{ base.name }}</strong>
+            <button
+              type="button"
+              class="knowledge-base-button"
+              @click="selectedKnowledgeBaseId = base.id; loadDocuments()"
+            >
+              <strong>{{ base.name }}</strong>
             <span>{{ base.document_count }} 个文档 / {{ base.chunk_count }} 个片段</span>
-          </button>
+            </button>
+            <el-button
+              :icon="Delete"
+              circle
+              plain
+              type="danger"
+              :loading="deletingKnowledgeBaseId === base.id"
+              @click="deleteKnowledgeBase(base)"
+            />
+          </div>
         </aside>
 
         <section class="knowledge-main">
@@ -230,6 +353,16 @@ async function reindexDocument(document: KnowledgeDocument) {
                       @click="reindexDocument(document)"
                     >
                       重新处理
+                    </el-button>
+                    <el-button
+                      size="small"
+                      type="danger"
+                      plain
+                      :icon="Delete"
+                      :loading="deletingDocumentId === document.id"
+                      @click="deleteDocument(document)"
+                    >
+                      删除
                     </el-button>
                   </td>
                 </tr>

@@ -3,11 +3,13 @@ import { computed, onMounted, ref, watch } from "vue";
 import {
   ChatDotRound,
   CollectionTag,
+  Delete,
   EditPen,
   Files,
   Promotion,
   Refresh,
 } from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { MdEditor, MdPreview, type UploadImgEvent } from "md-editor-v3";
 import "md-editor-v3/lib/style.css";
 import { RouterLink, useRoute, useRouter } from "vue-router";
@@ -84,7 +86,13 @@ const loading = ref(false);
 const publishing = ref(false);
 const submittingComment = ref(false);
 const uploadingImage = ref(false);
+const deletingArticleSlug = ref("");
 const editorError = ref("");
+const approvalDialogOpen = ref(false);
+const pendingApproval = ref<ApprovalRequest | null>(null);
+const reviewingApproval = ref(false);
+const reviewer = ref("admin");
+const reviewNote = ref("");
 const blogAgentOpen = ref(false);
 const blogAgentLoading = ref(false);
 const blogAgentInput = ref("这个博客项目的技术栈是什么？");
@@ -121,15 +129,59 @@ const draft = ref({
   ].join("\n")
 });
 
+interface ApprovalRequest {
+  id: number;
+  title: string;
+  description: string;
+  payload: Record<string, unknown>;
+  status: "pending" | "executed" | "rejected" | "failed";
+  result: string;
+}
+
+const noteTemplates = [
+  {
+    name: "项目复盘",
+    content: "## 背景\n\n## 目标\n\n## 技术方案\n\n## 关键实现\n\n## 遇到的问题\n\n## 复盘总结\n"
+  },
+  {
+    name: "论文笔记",
+    content: "## 论文信息\n\n## 核心问题\n\n## 方法概述\n\n## 实验结论\n\n## 可借鉴点\n"
+  },
+  {
+    name: "技术方案",
+    content: "## 需求\n\n## 架构设计\n\n## 数据模型\n\n## API 设计\n\n## 风险与取舍\n\n## 下一步\n"
+  }
+];
+
+const editorStats = computed(() => {
+  const plain = draft.value.content.replace(/```[\s\S]*?```/g, "").replace(/[#>*_\-\[\]()`]/g, "");
+  const compact = plain.replace(/\s+/g, "");
+  const englishWords = plain.match(/[A-Za-z0-9]+/g)?.length ?? 0;
+  const count = compact.length + englishWords;
+  return {
+    words: count,
+    readingMinutes: Math.max(1, Math.ceil(count / 450)),
+    headings: draft.value.content
+      .split("\n")
+      .filter((line) => /^#{1,3}\s+/.test(line))
+      .map((line) => line.replace(/^#{1,3}\s+/, "").trim())
+  };
+});
+
 const activeSlug = computed(() => String(route.params.slug ?? ""));
 
 onMounted(async () => {
+  restoreDraft();
   await Promise.all([loadArticles(), loadTags(), loadCategories(), loadArchive(), loadAbout()]);
   if (activeSlug.value) {
     await loadArticle(activeSlug.value);
   }
   await loadBlogAgentHistory();
 });
+
+watch(draft, () => {
+  localStorage.setItem("blogWriterDraft", JSON.stringify(draft.value));
+}, { deep: true });
 
 watch(activeSlug, async (slug) => {
   if (slug) {
@@ -188,7 +240,7 @@ async function publishDraft() {
 
   publishing.value = true;
   try {
-    const article = await requestJson("/api/agent/blog/articles/", {
+    const payload = await requestJson("/api/agent/blog/articles/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -199,7 +251,12 @@ async function publishDraft() {
     });
     await loadArticles();
     await loadArchive();
-    await openArticle(article);
+    if (payload.approval_required) {
+      openApprovalDialog(payload.approval);
+      ElMessage.warning(`文章已保存为草稿，发布审批 #${payload.approval.id} 已创建`);
+      return;
+    }
+    await openArticle(payload);
   } catch (error) {
     editorError.value = error instanceof Error ? error.message : "发布失败，请稍后重试。";
   } finally {
@@ -210,11 +267,111 @@ async function publishDraft() {
 async function syncArticleKnowledge(article: BlogArticle) {
   publishing.value = true;
   try {
-    await requestJson(`/api/agent/blog/articles/${encodeURIComponent(article.slug)}/publish/`, { method: "POST" });
+    const payload = await requestJson(`/api/agent/blog/articles/${encodeURIComponent(article.slug)}/publish/`, { method: "POST" });
     await Promise.all([loadArticles(), loadArchive()]);
+    if (payload.approval_required) {
+      openApprovalDialog(payload.approval);
+      ElMessage.warning(`发布审批 #${payload.approval.id} 已创建，批准后才会进入知识库`);
+      return;
+    }
     await loadArticle(article.slug);
   } finally {
     publishing.value = false;
+  }
+}
+
+async function deleteArticle(article: BlogArticle) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除文章「${article.title}」吗？如果它已经进入知识库，对应的知识库文档也会一起删除。`,
+      "删除文章",
+      {
+        confirmButtonText: "删除",
+        cancelButtonText: "取消",
+        type: "warning",
+        confirmButtonClass: "el-button--danger"
+      }
+    );
+  } catch {
+    return;
+  }
+
+  deletingArticleSlug.value = article.slug;
+  try {
+    const payload = await requestJson(`/api/agent/blog/articles/${encodeURIComponent(article.slug)}/`, {
+      method: "DELETE"
+    });
+    if (payload?.approval_required) {
+      openApprovalDialog(payload.approval);
+      ElMessage.warning(`删除审批 #${payload.approval.id} 已创建，批准后才会删除文章`);
+      return;
+    }
+    if (currentArticle.value?.slug === article.slug) {
+      currentArticle.value = null;
+      await router.push("/blog");
+    }
+    await Promise.all([loadArticles(), loadArchive(), loadTags(), loadCategories()]);
+    ElMessage.success("文章已删除");
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "删除文章失败");
+  } finally {
+    deletingArticleSlug.value = "";
+  }
+}
+
+function restoreDraft() {
+  const cached = localStorage.getItem("blogWriterDraft");
+  if (!cached) return;
+  try {
+    Object.assign(draft.value, JSON.parse(cached));
+  } catch {
+    localStorage.removeItem("blogWriterDraft");
+  }
+}
+
+function applyTemplate(content: string) {
+  draft.value.content = content;
+}
+
+function insertSnippet(snippet: string) {
+  draft.value.content = `${draft.value.content.trim()}\n\n${snippet}\n`;
+}
+
+function clearDraftCache() {
+  localStorage.removeItem("blogWriterDraft");
+  ElMessage.success("本地草稿缓存已清理");
+}
+
+function openApprovalDialog(approval: ApprovalRequest) {
+  pendingApproval.value = approval;
+  approvalDialogOpen.value = true;
+}
+
+async function reviewCurrentApproval(decision: "approve" | "reject") {
+  if (!pendingApproval.value) return;
+  reviewingApproval.value = true;
+  try {
+    const payload = await requestJson(`/api/agent/approvals/${pendingApproval.value.id}/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, reviewer: reviewer.value, note: reviewNote.value })
+    });
+    pendingApproval.value = payload;
+    approvalDialogOpen.value = false;
+    ElMessage.success(decision === "approve" ? "审批已通过并执行" : "审批已拒绝");
+    await Promise.all([loadArticles(), loadArchive(), loadTags(), loadCategories()]);
+    if (currentArticle.value?.slug) {
+      try {
+        await loadArticle(currentArticle.value.slug);
+      } catch {
+        currentArticle.value = null;
+        await router.push("/blog");
+      }
+    }
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "审批处理失败");
+  } finally {
+    reviewingApproval.value = false;
   }
 }
 
@@ -390,6 +547,26 @@ async function requestJson(url: string, options: RequestInit = {}) {
               </div>
             </div>
 
+            <section class="note-workbench">
+              <div class="note-actions">
+                <el-button v-for="item in noteTemplates" :key="item.name" @click="applyTemplate(item.content)">
+                  {{ item.name }}
+                </el-button>
+                <el-button @click="insertSnippet('> 这里记录一个关键观察。')">引用</el-button>
+                <el-button @click="insertSnippet('```python\n# code here\n```')">代码块</el-button>
+                <el-button plain @click="clearDraftCache">清理本地草稿</el-button>
+              </div>
+              <div class="note-stats">
+                <span>{{ editorStats.words }} 字</span>
+                <span>约 {{ editorStats.readingMinutes }} 分钟阅读</span>
+                <span>自动保存</span>
+              </div>
+              <div v-if="editorStats.headings.length" class="note-outline">
+                <strong>大纲</strong>
+                <span v-for="heading in editorStats.headings" :key="heading">{{ heading }}</span>
+              </div>
+            </section>
+
             <MdEditor
               v-model="draft.content"
               language="zh-CN"
@@ -439,6 +616,15 @@ async function requestJson(url: string, options: RequestInit = {}) {
               >
                 同步到知识库
               </el-button>
+              <el-button
+                type="danger"
+                plain
+                :icon="Delete"
+                :loading="deletingArticleSlug === currentArticle.slug"
+                @click="deleteArticle(currentArticle)"
+              >
+                删除文章
+              </el-button>
             </div>
             <section class="comment-section">
               <h3>评论</h3>
@@ -464,6 +650,16 @@ async function requestJson(url: string, options: RequestInit = {}) {
                 <span>{{ article.category?.name || "未分类" }}</span>
                 <span>{{ article.view_count }} views</span>
                 <strong v-if="article.knowledge_document_id">Knowledge Ready</strong>
+                <el-button
+                  size="small"
+                  type="danger"
+                  plain
+                  :icon="Delete"
+                  :loading="deletingArticleSlug === article.slug"
+                  @click.stop="deleteArticle(article)"
+                >
+                  删除
+                </el-button>
               </footer>
             </article>
           </section>
@@ -507,6 +703,27 @@ async function requestJson(url: string, options: RequestInit = {}) {
           </section>
         </aside>
       </section>
+
+      <el-dialog v-model="approvalDialogOpen" title="审批博客操作" width="560px" align-center>
+        <section v-if="pendingApproval" class="approval-dialog-body">
+          <p>{{ pendingApproval.description }}</p>
+          <dl>
+            <div v-for="(value, key) in pendingApproval.payload" :key="key">
+              <dt>{{ key }}</dt>
+              <dd>{{ value }}</dd>
+            </div>
+          </dl>
+          <el-input v-model="reviewer" placeholder="审批人" />
+          <el-input v-model="reviewNote" placeholder="审批备注" type="textarea" :rows="3" />
+          <p v-if="pendingApproval.result" class="approval-result">{{ pendingApproval.result }}</p>
+        </section>
+        <template #footer>
+          <el-button :loading="reviewingApproval" @click="reviewCurrentApproval('reject')">拒绝</el-button>
+          <el-button type="primary" :loading="reviewingApproval" @click="reviewCurrentApproval('approve')">
+            批准并执行
+          </el-button>
+        </template>
+      </el-dialog>
     </section>
 
     <section class="blog-agent-widget" :class="{ open: blogAgentOpen }">

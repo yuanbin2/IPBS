@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue";
 import { Back, ChatDotRound, Cpu, Plus, Promotion, Refresh, Search } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
 import { RouterLink } from "vue-router";
 
 const MESSAGE_PAGE_SIZE = 30;
@@ -26,6 +27,14 @@ interface TokenUsage {
   total_tokens: number;
 }
 
+interface SupervisorDecision {
+  selected_agent: string;
+  display_name: string;
+  reason: string;
+  confidence: number;
+  handoff: string;
+}
+
 interface ChatMessage {
   id?: number;
   role: "user" | "agent";
@@ -34,6 +43,7 @@ interface ChatMessage {
   sources?: SourceCitation[];
   trace?: string[];
   tokenUsage?: TokenUsage;
+  supervisor?: SupervisorDecision;
   pending?: boolean;
 }
 
@@ -59,6 +69,15 @@ interface ConversationDetail extends Conversation {
   has_more_after: boolean;
 }
 
+interface ApprovalRequest {
+  id: number;
+  title: string;
+  description: string;
+  payload: Record<string, unknown>;
+  status: "pending" | "executed" | "rejected" | "failed";
+  result: string;
+}
+
 const emptyUsage: TokenUsage = {
   prompt_tokens: 0,
   completion_tokens: 0,
@@ -82,8 +101,22 @@ const conversations = ref<Conversation[]>([]);
 const messages = ref<ChatMessage[]>([welcomeMessage]);
 const latestTokenUsage = ref<TokenUsage | null>(null);
 const conversationScroller = ref<HTMLElement | null>(null);
+const approvalDialogOpen = ref(false);
+const pendingApproval = ref<ApprovalRequest | null>(null);
+const reviewingApproval = ref(false);
+const reviewer = ref("admin");
+const reviewNote = ref("");
 
 const suggestions = ["什么是 LangGraph？", "帮我计算 12 * 8", "检索 MCP 工具接入"];
+const agentRoster = [
+  { name: "Supervisor", detail: "路由与任务拆分" },
+  { name: "RAG Agent", detail: "知识库检索问答" },
+  { name: "Blog Agent", detail: "博客与项目经历" },
+  { name: "SQL Analysis", detail: "安全统计分析" },
+  { name: "Writing", detail: "写作与总结" },
+  { name: "Review", detail: "质量与引用检查" },
+  { name: "Admin Approval", detail: "高风险操作审批" }
+];
 const canSend = computed(() => input.value.trim().length > 0 && !loading.value);
 
 onMounted(() => {
@@ -174,7 +207,8 @@ function mapApiMessage(message: ConversationDetail["messages"][number]): ChatMes
     toolCalls: message.tool_calls,
     sources: message.sources,
     trace: message.trace,
-    tokenUsage: message.token_usage
+    tokenUsage: message.token_usage,
+    supervisor: parseSupervisorDecision(message.trace)
   };
 }
 
@@ -238,8 +272,13 @@ async function sendMessage(prompt?: string) {
       sources: payload.sources,
       trace: payload.trace,
       tokenUsage: payload.token_usage,
+      supervisor: payload.supervisor,
       pending: false
     });
+    if (payload.approval_required && payload.approval) {
+      pendingApproval.value = payload.approval;
+      approvalDialogOpen.value = true;
+    }
     latestTokenUsage.value = payload.token_usage;
     await loadConversations();
     await nextTick();
@@ -254,6 +293,48 @@ async function sendMessage(prompt?: string) {
   }
 }
 
+async function reviewCurrentApproval(decision: "approve" | "reject") {
+  if (!pendingApproval.value) return;
+  reviewingApproval.value = true;
+  try {
+    const response = await fetch(`/api/agent/approvals/${pendingApproval.value.id}/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        decision,
+        reviewer: reviewer.value,
+        note: reviewNote.value
+      })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.detail ?? "审批处理失败");
+    }
+    pendingApproval.value = payload;
+    messages.value.push({
+      role: "agent",
+      content: payload.result || (decision === "approve" ? "审批已通过并执行。" : "审批已拒绝。"),
+      toolCalls: [
+        {
+          name: "admin_approval",
+          input: `approval_id=${payload.id}`,
+          output: payload.result
+        }
+      ],
+      tokenUsage: emptyUsage
+    });
+    approvalDialogOpen.value = false;
+    ElMessage.success(decision === "approve" ? "审批已通过并执行" : "审批已拒绝");
+    await loadConversations();
+    await nextTick();
+    scrollToBottom();
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "审批处理失败");
+  } finally {
+    reviewingApproval.value = false;
+  }
+}
+
 function handleComposerKeydown(event: KeyboardEvent) {
   if (event.key !== "Enter" || event.shiftKey || event.isComposing) {
     return;
@@ -264,7 +345,7 @@ function handleComposerKeydown(event: KeyboardEvent) {
 }
 
 function isRetrievalTool(call: ToolCall) {
-  return call.name === "knowledge_search" || call.name === "blog_search";
+  return call.name === "knowledge_search" || call.name === "blog_search" || call.name === "blog_agent_search";
 }
 
 function toolPanelTitle(call: ToolCall) {
@@ -277,7 +358,47 @@ function toolPanelTitle(call: ToolCall) {
   if (call.name === "current_user_profile") {
     return "用户资料上下文";
   }
+  if (call.name === "safe_sql_analytics") {
+    return "SQL Analysis Agent 统计结果";
+  }
+  if (call.name === "writing_outline") {
+    return "Writing Agent 写作结构";
+  }
+  if (call.name === "answer_review") {
+    return "Review Agent 审查结果";
+  }
+  if (call.name === "admin_approval") {
+    return "Admin Approval Agent 审批建议";
+  }
+  if (call.name.startsWith("mcp:")) {
+    return "MCP 工具调用结果";
+  }
   return call.name;
+}
+
+function parseSupervisorDecision(trace?: string[]): SupervisorDecision | undefined {
+  const routeTrace = trace?.find((item) => item.startsWith("supervisor -> ") && item.includes("_agent"));
+  if (!routeTrace) return undefined;
+  const selectedAgent = routeTrace.match(/supervisor -> ([a-z_]+)/)?.[1] ?? "unknown_agent";
+  return {
+    selected_agent: selectedAgent,
+    display_name: formatAgentName(selectedAgent),
+    reason: routeTrace.replace(/^supervisor -> [a-z_]+ \(/, "").replace(/\)$/, ""),
+    confidence: 0,
+    handoff: `handoff -> ${formatAgentName(selectedAgent)}`
+  };
+}
+
+function formatAgentName(agentName: string) {
+  const names: Record<string, string> = {
+    rag_agent: "RAG Agent",
+    blog_agent: "Blog Agent",
+    sql_analysis_agent: "SQL Analysis Agent",
+    writing_agent: "Writing Agent",
+    review_agent: "Review Agent",
+    admin_approval_agent: "Admin Approval Agent"
+  };
+  return names[agentName] ?? agentName;
 }
 </script>
 
@@ -322,6 +443,14 @@ function toolPanelTitle(call: ToolCall) {
             </div>
             <div class="message-body" :class="{ pending: message.pending }">
               <p>{{ message.content }}</p>
+              <section v-if="message.role === 'agent' && message.supervisor" class="supervisor-card">
+                <header>
+                  <strong>{{ message.supervisor.display_name }}</strong>
+                  <span v-if="message.supervisor.confidence">confidence {{ message.supervisor.confidence.toFixed(2) }}</span>
+                </header>
+                <p>{{ message.supervisor.reason }}</p>
+                <small>{{ message.supervisor.handoff }}</small>
+              </section>
               <div v-if="message.role === 'agent' && message.tokenUsage" class="token-usage">
                 <span>Prompt {{ message.tokenUsage.prompt_tokens }}</span>
                 <span>Completion {{ message.tokenUsage.completion_tokens }}</span>
@@ -398,6 +527,14 @@ function toolPanelTitle(call: ToolCall) {
             <small v-else>等待下一次回答</small>
           </section>
 
+          <section class="agent-roster">
+            <h3>Multi-Agent</h3>
+            <article v-for="agent in agentRoster" :key="agent.name">
+              <strong>{{ agent.name }}</strong>
+              <span>{{ agent.detail }}</span>
+            </article>
+          </section>
+
           <div class="history-list">
             <button
               v-for="conversation in conversations"
@@ -440,6 +577,26 @@ function toolPanelTitle(call: ToolCall) {
           发送
         </el-button>
       </form>
+
+      <el-dialog v-model="approvalDialogOpen" title="审批对话触发的操作" width="560px" align-center>
+        <section v-if="pendingApproval" class="approval-dialog-body">
+          <p>{{ pendingApproval.description }}</p>
+          <dl>
+            <div v-for="(value, key) in pendingApproval.payload" :key="key">
+              <dt>{{ key }}</dt>
+              <dd>{{ value }}</dd>
+            </div>
+          </dl>
+          <el-input v-model="reviewer" placeholder="审批人" />
+          <el-input v-model="reviewNote" placeholder="审批备注" type="textarea" :rows="3" />
+        </section>
+        <template #footer>
+          <el-button :loading="reviewingApproval" @click="reviewCurrentApproval('reject')">拒绝</el-button>
+          <el-button type="primary" :loading="reviewingApproval" @click="reviewCurrentApproval('approve')">
+            批准并执行
+          </el-button>
+        </template>
+      </el-dialog>
     </section>
   </main>
 </template>
