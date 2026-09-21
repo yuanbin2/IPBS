@@ -2271,7 +2271,6 @@ h1 {
     margin-left: 0;
   }
 
-  .blog-shell .left-panel-resizer,
   .blog-shell .right-panel-resizer,
   .blog-shell .panel-toggle {
     display: none;
@@ -2285,8 +2284,8 @@ h1 {
     height: 100vh;
   }
 
-  .status-grid,
-  .module-grid,
+  .dashboard-stats,
+  .dashboard-links,
   .observability-metrics {
     grid-template-columns: 1fr;
   }
