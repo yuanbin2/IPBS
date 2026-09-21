@@ -1,0 +1,20 @@
+{
+  "name": "Enterprise Knowledge Agent",
+  "short_name": "Knowledge Agent",
+  "description": "企业知识智能体平台 + 个人博客智能体系统",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#667eea",
+  "background_color": "#764ba2",
+  "display": "standalone"
+}
