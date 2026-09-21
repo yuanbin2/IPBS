@@ -47,9 +47,8 @@ export const useAuthStore = defineStore("auth", {
         const payload = await this.requestJson("/api/agent/auth/me/");
         this.session = payload;
       } catch {
+        // If backend is not available, just logout silently
         this.logout();
-      } finally {
-        this.loaded = true;
       }
     },
     async login(username: string, password: string) {

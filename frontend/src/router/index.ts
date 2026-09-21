@@ -11,10 +11,17 @@ const KnowledgeBaseView = () => import("../views/KnowledgeBaseView.vue");
 const LoginView = () => import("../views/LoginView.vue");
 const MCPToolsView = () => import("../views/MCPToolsView.vue");
 const ObservabilityView = () => import("../views/ObservabilityView.vue");
+const LandingView = () => import("../views/LandingView.vue");
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: "/landing",
+      name: "landing",
+      component: LandingView,
+      meta: { public: true }
+    },
     {
       path: "/login",
       name: "login",
@@ -69,6 +76,10 @@ router.beforeEach(async (to) => {
     return auth.isAuthenticated ? "/" : true;
   }
   if (!auth.isAuthenticated) {
+    // If going to root, show landing page; otherwise redirect to login
+    if (to.path === "/") {
+      return { path: "/landing" };
+    }
     return { path: "/login", query: { redirect: to.fullPath } };
   }
   if (to.meta.requiresAdmin && auth.session.role !== "admin") {
