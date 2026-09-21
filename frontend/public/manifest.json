@@ -1,0 +1,16 @@
+{
+  "name": "Enterprise Knowledge Agent",
+  "short_name": "Knowledge Agent",
+  "description": "企业知识智能体平台 + 个人博客智能体系统",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#667eea",
+  "theme_color": "#764ba2",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}
