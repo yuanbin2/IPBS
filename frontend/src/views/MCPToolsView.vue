@@ -3,6 +3,9 @@ import { onMounted, ref } from "vue";
 import { Back, Cpu, Refresh, SwitchButton, Tools } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { RouterLink, useRouter } from "vue-router";
+import { useAuthStore } from "../stores/auth";
+
+const auth = useAuthStore();
 
 interface MCPTool {
   id: number;
@@ -80,8 +83,10 @@ async function executeTool(tool: MCPTool) {
     });
     if (payload.approval_required) {
       ElMessage.warning(`工具执行审批 #${payload.approval.id} 已创建`);
-      pendingApproval.value = payload.approval;
-      approvalDialogOpen.value = true;
+      if (auth.session.role === "admin") {
+        pendingApproval.value = payload.approval;
+        approvalDialogOpen.value = true;
+      }
       executionOutput.value = payload.detail;
     } else {
       executionOutput.value = payload.output;
@@ -143,7 +148,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
         <RouterLink to="/blog">博客</RouterLink>
         <RouterLink to="/knowledge">知识库</RouterLink>
         <RouterLink to="/chat">对话</RouterLink>
-        <RouterLink to="/admin-approvals">审批</RouterLink>
+        <RouterLink v-if="auth.session.role === 'admin'" to="/admin-approvals">审批</RouterLink>
         <RouterLink class="active" to="/mcp-tools">MCP 工具</RouterLink>
       </nav>
     </aside>
@@ -201,7 +206,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
 
       <section v-if="executionOutput" class="mcp-output">
         <h2><el-icon><Cpu /></el-icon> 调用结果</h2>
-        <div v-if="pendingApproval" class="mcp-approval-alert">
+        <div v-if="pendingApproval && auth.session.role === 'admin'" class="mcp-approval-alert">
           <strong>审批单 #{{ pendingApproval.id }} 已创建</strong>
           <span>{{ pendingApproval.title }}</span>
           <el-button type="primary" @click="goApproval">去审批页处理</el-button>

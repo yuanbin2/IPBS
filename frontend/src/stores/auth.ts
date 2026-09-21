@@ -25,6 +25,7 @@ const emptySession: AuthSession = {
 export const useAuthStore = defineStore("auth", {
   state: () => ({
     token: localStorage.getItem("agent_auth_token") || "",
+    refreshToken: localStorage.getItem("agent_refresh_token") || "",
     session: { ...emptySession },
     user: null as AuthUser | null,
     loaded: false
@@ -72,12 +73,15 @@ export const useAuthStore = defineStore("auth", {
       this.session = { ...emptySession };
       this.user = null;
       localStorage.removeItem("agent_auth_token");
+      localStorage.removeItem("agent_refresh_token");
     },
-    applyAuthPayload(payload: { token: string; user?: AuthUser; session: AuthSession }) {
-      this.token = payload.token;
+    applyAuthPayload(payload: { token?: string; access?: string; refresh?: string; user?: AuthUser; session: AuthSession }) {
+      this.token = payload.access ?? payload.token ?? "";
+      this.refreshToken = payload.refresh ?? "";
       this.user = payload.user ?? null;
       this.session = payload.session;
-      localStorage.setItem("agent_auth_token", payload.token);
+      localStorage.setItem("agent_auth_token", this.token);
+      localStorage.setItem("agent_refresh_token", this.refreshToken);
     },
     async requestJson(url: string, options: RequestInit = {}) {
       const response = await fetch(url, options);

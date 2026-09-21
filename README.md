@@ -12,13 +12,15 @@
 - MCP 工具注册表支持启用/禁用、权限范围、审批开关和调用记录。
 - 可观测性记录 trace、latency、tool success rate，并内置 30 条评估题。
 - 安全层包含登录注册、RBAC、workspace 隔离、prompt injection 拦截、输出脱敏和安全审计。
-- Docker Compose 一键启动 Nginx、Vue、Django、PostgreSQL、Redis、Celery Worker、Celery Beat。
+- Docker Compose 一键启动 Vue/Nginx、Django、PostgreSQL、Redis、RabbitMQ、Celery Worker、Celery Beat。
 
 ## 文档导航
 
+- [岗位准备、从零搭建、学习清单与面试题](docs/job-preparation-guide.md)
 - [部署说明](docs/deployment.md)
 - [API 文档](docs/api.md)
 - [系统架构图](docs/system-architecture.md)
+- [项目修复与验证报告](docs/repair-report.md)
 - [评估报告](docs/evaluation-report.md)
 - [简历包装](docs/resume.md)
 - [演示视频脚本](docs/demo-script.md)
@@ -50,46 +52,79 @@ deploy/    Docker Compose、Nginx、部署配置
 
 ## 本地启动
 
+### 最简单：本机一键启动
+
+需要先安装 Python 3.12+ 和 Node.js 20+。
+
+Windows 直接双击：
+
+```bash
+start.bat
+```
+
+Linux/macOS：
+
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+脚本会自动创建虚拟环境、安装依赖、构建前端、执行数据库迁移，并使用
+SQLite、本地内存缓存和同步任务模式启动完整项目，不要求预先安装
+PostgreSQL、Redis 或 RabbitMQ。启动后访问 `http://127.0.0.1:8000/`。
+这种模式下向量检索会使用 Django/SQLite 兼容兜底，方便本机调试。
+
+未配置模型 API Key 时，RAG、本地检索、博客、审批和基础 Agent 功能仍可
+运行，模型回答会自动使用本地降级路径。需要真实大模型和远程 embedding
+时，再将 `.env.example` 复制为 `.env` 并填写对应 Key。
+
 ### Docker 一键启动
 
 ```bash
-copy .env.example .env
+cp .env.example .env
 docker compose up -d --build
 ```
 
-访问：`http://localhost/`
+Windows PowerShell 可使用：
+
+```powershell
+Copy-Item .env.example .env
+docker compose up -d --build
+```
+
+访问：`http://localhost/`。Docker 模式会启动完整的 PostgreSQL、Redis、
+RabbitMQ 和 Celery 基础设施。
+知识库向量会写入 PostgreSQL 的 pgvector 索引表 `agent_api_vectorindex`，
+检索时使用数据库侧向量距离 Top-K，再结合关键词分数重排；可通过
+`RAG_VECTOR_BACKEND=django` 临时退回旧兼容检索。
+
+联网搜索通过注册的 `web_search` MCP 工具执行。用户明确输入“网页搜索/
+联网搜索”时会直接调用该工具；普通问题只有打开聊天输入框旁的“联网”开关
+才会联网增强。如果后端所在机器需要代理访问外网，可在 `.env` 中设置
+`WEB_SEARCH_PROXY=http://127.0.0.1:7890`。
 
 部署说明见 [docs/deployment.md](docs/deployment.md)，接口文档见 [docs/api.md](docs/api.md)，架构图见 [docs/system-architecture.md](docs/system-architecture.md)。
 
-### 1. 启动基础设施
+### 手动开发模式
 
 ```bash
-docker compose up -d postgres redis
-```
-
-### 2. 启动后端
-
-```bash
-cd backend
 python -m venv .venv
-.venv/Scripts/activate
-pip install -r requirements.txt
-copy ..\.env.example ..\.env
-python manage.py migrate
-python manage.py runserver
+.venv/Scripts/python -m pip install -r backend/requirements.txt
+npm --prefix frontend install
+npm --prefix frontend run build
+set BLOG_LOCAL_MODE=true
+.venv/Scripts/python backend/manage.py migrate
+.venv/Scripts/python backend/manage.py runserver 127.0.0.1:8000
 ```
 
-后端健康检查：`http://127.0.0.1:8000/api/health/`
-
-### 3. 启动前端
+Linux/macOS 将 `.venv/Scripts/python` 改为 `.venv/bin/python`，并使用
+`export BLOG_LOCAL_MODE=true`。如需前端热更新，可另开终端运行：
 
 ```bash
-cd frontend
-npm install
-npm run dev
+npm --prefix frontend run dev
 ```
 
-前端地址：`http://127.0.0.1:5173/`
+健康检查：`http://127.0.0.1:8000/api/health/`
 
 ## 第 1 天完成项
 

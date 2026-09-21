@@ -10,8 +10,9 @@ media/
 staticfiles/
 node_modules/
 dist/
+backend/frontend_dist/
 .vite/
 .idea/
 .vscode/
 *.log
-
+celerybeat-schedule*

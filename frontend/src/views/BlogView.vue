@@ -1,77 +1,28 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
-  ChatDotRound,
-  CollectionTag,
-  Delete,
-  EditPen,
-  Files,
-  Promotion,
   Refresh,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { MdEditor, MdPreview, type UploadImgEvent } from "md-editor-v3";
+import { type UploadImgEvent } from "md-editor-v3";
 import "md-editor-v3/lib/style.css";
 import { RouterLink, useRoute, useRouter } from "vue-router";
+import { useAuthStore } from "../stores/auth";
+import BlogSidebar from "../features/blog/components/BlogSidebar.vue";
+import BlogAgentWidget from "../features/blog/components/BlogAgentWidget.vue";
+import BlogWriter from "../features/blog/components/BlogWriter.vue";
+import ArticleDetail from "../features/blog/components/ArticleDetail.vue";
+import ArticleList from "../features/blog/components/ArticleList.vue";
+import type {
+  ApprovalRequest,
+  ArchiveGroup,
+  BlogAgentChatMessage,
+  BlogArticle,
+  BlogCategory,
+  BlogTag
+} from "../features/blog/types";
 
-interface BlogTag {
-  id: number;
-  name: string;
-  slug: string;
-  article_count: number;
-}
-
-interface BlogCategory {
-  id: number;
-  name: string;
-  slug: string;
-  description: string;
-  article_count: number;
-}
-
-interface BlogArticle {
-  id: number;
-  title: string;
-  slug: string;
-  summary: string;
-  content?: string;
-  status: string;
-  view_count: number;
-  category: BlogCategory | null;
-  tags: BlogTag[];
-  published_at: string | null;
-  knowledge_document_id: number | null;
-  comment_count: number;
-  comments?: BlogComment[];
-}
-
-interface BlogComment {
-  id: number;
-  author_name: string;
-  content: string;
-  created_at: string;
-}
-
-interface ArchiveGroup {
-  month: string;
-  articles: BlogArticle[];
-}
-
-interface BlogAgentSource {
-  title: string;
-  kind: string;
-  content: string;
-  score: number;
-  url: string;
-}
-
-interface BlogAgentChatMessage {
-  role: "user" | "agent";
-  content: string;
-  sources?: BlogAgentSource[];
-  blocked?: boolean;
-  pending?: boolean;
-}
+const auth = useAuthStore();
 
 const route = useRoute();
 const router = useRouter();
@@ -129,15 +80,6 @@ const draft = ref({
   ].join("\n")
 });
 
-interface ApprovalRequest {
-  id: number;
-  title: string;
-  description: string;
-  payload: Record<string, unknown>;
-  status: "pending" | "executed" | "rejected" | "failed";
-  result: string;
-}
-
 const noteTemplates = [
   {
     name: "项目复盘",
@@ -169,6 +111,55 @@ const editorStats = computed(() => {
 });
 
 const activeSlug = computed(() => String(route.params.slug ?? ""));
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+const storedLeftWidth = Number(localStorage.getItem("blogLayoutLeftWidth"));
+const storedRightWidth = Number(localStorage.getItem("blogLayoutRightWidth"));
+const leftSidebarVisible = ref(localStorage.getItem("blogLayoutLeftVisible") !== "false");
+const rightPanelVisible = ref(localStorage.getItem("blogLayoutRightVisible") !== "false");
+const leftSidebarWidth = ref(clamp(Number.isFinite(storedLeftWidth) && storedLeftWidth > 0 ? storedLeftWidth : 240, 180, 360));
+const rightPanelWidth = ref(clamp(Number.isFinite(storedRightWidth) && storedRightWidth > 0 ? storedRightWidth : 360, 260, 560));
+const resizingPanel = ref<"left" | "right" | null>(null);
+const clearingDraft = ref(false);
+const blogLayoutStyle = computed(() => ({
+  "--blog-sidebar-width": `${leftSidebarWidth.value}px`,
+  "--blog-panel-width": `${rightPanelWidth.value}px`
+}));
+
+function resizePanels(event: PointerEvent) {
+  if (resizingPanel.value === "left") {
+    if (event.clientX <= 150) {
+      leftSidebarVisible.value = false;
+      stopPanelResize();
+      return;
+    }
+    leftSidebarWidth.value = clamp(event.clientX, 180, 360);
+  } else if (resizingPanel.value === "right") {
+    const nextWidth = window.innerWidth - event.clientX;
+    if (nextWidth <= 210) {
+      rightPanelVisible.value = false;
+      stopPanelResize();
+      return;
+    }
+    rightPanelWidth.value = clamp(nextWidth, 260, 560);
+  }
+}
+
+function stopPanelResize() {
+  if (!resizingPanel.value) return;
+  resizingPanel.value = null;
+  document.body.classList.remove("blog-panel-resizing");
+  window.removeEventListener("pointermove", resizePanels);
+  window.removeEventListener("pointerup", stopPanelResize);
+}
+
+function startPanelResize(panel: "left" | "right", event: PointerEvent) {
+  if (window.matchMedia("(max-width: 980px)").matches) return;
+  resizingPanel.value = panel;
+  document.body.classList.add("blog-panel-resizing");
+  window.addEventListener("pointermove", resizePanels);
+  window.addEventListener("pointerup", stopPanelResize);
+  event.preventDefault();
+}
 
 onMounted(async () => {
   restoreDraft();
@@ -180,6 +171,7 @@ onMounted(async () => {
 });
 
 watch(draft, () => {
+  if (clearingDraft.value) return;
   localStorage.setItem("blogWriterDraft", JSON.stringify(draft.value));
 }, { deep: true });
 
@@ -190,6 +182,21 @@ watch(activeSlug, async (slug) => {
     currentArticle.value = null;
   }
 });
+
+watch([leftSidebarWidth, rightPanelWidth, leftSidebarVisible, rightPanelVisible], () => {
+  localStorage.setItem("blogLayoutLeftWidth", String(leftSidebarWidth.value));
+  localStorage.setItem("blogLayoutRightWidth", String(rightPanelWidth.value));
+  localStorage.setItem("blogLayoutLeftVisible", String(leftSidebarVisible.value));
+  localStorage.setItem("blogLayoutRightVisible", String(rightPanelVisible.value));
+  window.dispatchEvent(new CustomEvent("blog-layout-change", {
+    detail: {
+      leftVisible: leftSidebarVisible.value,
+      leftWidth: leftSidebarWidth.value
+    }
+  }));
+});
+
+onBeforeUnmount(stopPanelResize);
 
 async function loadArticles(params: Record<string, string> = {}) {
   loading.value = true;
@@ -337,12 +344,37 @@ function insertSnippet(snippet: string) {
   draft.value.content = `${draft.value.content.trim()}\n\n${snippet}\n`;
 }
 
-function clearDraftCache() {
+async function clearDraftCache() {
+  try {
+    await ElMessageBox.confirm(
+      "将清空标题、摘要、分类、标签和正文，且无法从本地草稿恢复。是否继续？",
+      "清空本地草稿",
+      {
+        confirmButtonText: "确认清空",
+        cancelButtonText: "取消",
+        type: "warning"
+      }
+    );
+  } catch {
+    return;
+  }
+
+  clearingDraft.value = true;
+  draft.value = {
+    title: "",
+    summary: "",
+    category: "",
+    tags: "",
+    content: ""
+  };
+  await nextTick();
   localStorage.removeItem("blogWriterDraft");
-  ElMessage.success("本地草稿缓存已清理");
+  clearingDraft.value = false;
+  ElMessage.success("本地草稿和编辑器内容已清空");
 }
 
 function openApprovalDialog(approval: ApprovalRequest) {
+  if (auth.session.role !== "admin") return;
   pendingApproval.value = approval;
   approvalDialogOpen.value = true;
 }
@@ -509,8 +541,16 @@ async function requestJson(url: string, options: RequestInit = {}) {
 </script>
 
 <template>
-  <main class="shell">
-    <aside class="sidebar">
+  <main
+    class="shell blog-shell"
+    :class="{
+      'left-sidebar-hidden': !leftSidebarVisible,
+      'right-panel-hidden': !rightPanelVisible,
+      'is-resizing': resizingPanel
+    }"
+    :style="blogLayoutStyle"
+  >
+    <aside v-show="leftSidebarVisible" class="sidebar">
       <div class="brand">Knowledge Agent</div>
       <nav class="nav">
         <RouterLink to="/">概览</RouterLink>
@@ -520,6 +560,23 @@ async function requestJson(url: string, options: RequestInit = {}) {
         <a>评估</a>
       </nav>
     </aside>
+    <button
+      class="panel-toggle left-panel-toggle"
+      type="button"
+      :aria-label="leftSidebarVisible ? '隐藏导航栏' : '显示导航栏'"
+      :title="leftSidebarVisible ? '隐藏导航栏' : '显示导航栏'"
+      @click="leftSidebarVisible = !leftSidebarVisible"
+    >
+      {{ leftSidebarVisible ? "‹" : "›" }}
+    </button>
+    <button
+      v-show="leftSidebarVisible"
+      class="panel-resizer left-panel-resizer"
+      type="button"
+      aria-label="拖动调整导航栏宽度"
+      title="拖动调整导航栏宽度"
+      @pointerdown="startPanelResize('left', $event)"
+    />
 
     <section class="workspace blog-workspace">
       <header class="topbar">
@@ -527,181 +584,75 @@ async function requestJson(url: string, options: RequestInit = {}) {
           <p class="eyebrow">Day 6 Personal Blog Agent</p>
           <h1>个人技术博客</h1>
         </div>
-        <el-button :icon="Refresh" :loading="loading" @click="loadArticles()">刷新文章</el-button>
+        <div class="blog-layout-controls">
+          <el-button :icon="Refresh" :loading="loading" @click="loadArticles()">刷新文章</el-button>
+        </div>
       </header>
 
       <section class="blog-layout">
+        <button
+          class="panel-toggle right-panel-toggle"
+          type="button"
+          :aria-label="rightPanelVisible ? '隐藏辅助栏' : '显示辅助栏'"
+          :title="rightPanelVisible ? '隐藏辅助栏' : '显示辅助栏'"
+          @click="rightPanelVisible = !rightPanelVisible"
+        >
+          {{ rightPanelVisible ? "›" : "‹" }}
+        </button>
         <main class="blog-main">
-          <section class="write-box markdown-writer">
-            <header class="writer-heading">
-              <h2><el-icon><EditPen /></el-icon> Markdown 写作台</h2>
-              <el-button type="primary" :loading="publishing" @click="publishDraft">发布并加入知识库</el-button>
-            </header>
+          <BlogWriter
+            :draft="draft"
+            :templates="noteTemplates"
+            :stats="editorStats"
+            :publishing="publishing"
+            :uploading-image="uploadingImage"
+            :error="editorError"
+            :upload-handler="handleEditorUpload"
+            @publish="publishDraft"
+            @apply-template="applyTemplate"
+            @insert-snippet="insertSnippet"
+            @clear-draft="clearDraftCache"
+          />
 
-            <div class="writer-fields">
-              <el-input v-model="draft.title" size="large" placeholder="文章标题" />
-              <el-input v-model="draft.summary" placeholder="摘要，会显示在文章卡片里" />
-              <div class="writer-meta">
-                <el-input v-model="draft.category" placeholder="分类" />
-                <el-input v-model="draft.tags" placeholder="标签，逗号分隔" />
-              </div>
-            </div>
-
-            <section class="note-workbench">
-              <div class="note-actions">
-                <el-button v-for="item in noteTemplates" :key="item.name" @click="applyTemplate(item.content)">
-                  {{ item.name }}
-                </el-button>
-                <el-button @click="insertSnippet('> 这里记录一个关键观察。')">引用</el-button>
-                <el-button @click="insertSnippet('```python\n# code here\n```')">代码块</el-button>
-                <el-button plain @click="clearDraftCache">清理本地草稿</el-button>
-              </div>
-              <div class="note-stats">
-                <span>{{ editorStats.words }} 字</span>
-                <span>约 {{ editorStats.readingMinutes }} 分钟阅读</span>
-                <span>自动保存</span>
-              </div>
-              <div v-if="editorStats.headings.length" class="note-outline">
-                <strong>大纲</strong>
-                <span v-for="heading in editorStats.headings" :key="heading">{{ heading }}</span>
-              </div>
-            </section>
-
-            <MdEditor
-              v-model="draft.content"
-              language="zh-CN"
-              preview-theme="github"
-              code-theme="github"
-              :toolbars-exclude="['github']"
-              :show-code-row-number="true"
-              :footers="['markdownTotal', 'scrollSwitch']"
-              :on-upload-img="handleEditorUpload"
-              :placeholder="'用 Markdown 写正文，可插入标题、列表、代码块、表格、链接、图片、流程图和公式。'"
-              class="blog-md-editor"
-            />
-
-            <p v-if="editorError" class="editor-error">{{ editorError }}</p>
-            <div class="writer-footer">
-              <span>{{ uploadingImage ? "图片上传中..." : "支持工具栏、预览、全屏、代码块、表格、链接和图片上传" }}</span>
-              <el-button type="primary" :loading="publishing" @click="publishDraft">发布文章</el-button>
-            </div>
-          </section>
-
-          <section v-if="currentArticle" class="article-detail">
-            <button class="text-link" type="button" @click="currentArticle = null; router.push('/blog')">返回文章列表</button>
-            <h2>{{ currentArticle.title }}</h2>
-            <div class="article-meta">
-              <span>{{ currentArticle.category?.name || "未分类" }}</span>
-              <span>{{ currentArticle.view_count }} 次浏览</span>
-              <span v-if="currentArticle.knowledge_document_id">已进入知识库</span>
-            </div>
-            <p class="summary">{{ currentArticle.summary }}</p>
-            <MdPreview
-              :model-value="currentArticle.content || ''"
-              language="zh-CN"
-              preview-theme="github"
-              code-theme="github"
-              :show-code-row-number="true"
-              class="article-content blog-md-preview"
-            />
-            <div class="tag-row">
-              <span v-for="tag in currentArticle.tags" :key="tag.id">{{ tag.name }}</span>
-            </div>
-            <div class="article-actions">
-              <el-button type="primary" :icon="ChatDotRound" @click="askAgent(currentArticle)">让 Agent 总结这篇文章</el-button>
-              <el-button
-                v-if="!currentArticle.knowledge_document_id"
-                :loading="publishing"
-                @click="syncArticleKnowledge(currentArticle)"
-              >
-                同步到知识库
-              </el-button>
-              <el-button
-                type="danger"
-                plain
-                :icon="Delete"
-                :loading="deletingArticleSlug === currentArticle.slug"
-                @click="deleteArticle(currentArticle)"
-              >
-                删除文章
-              </el-button>
-            </div>
-            <section class="comment-section">
-              <h3>评论</h3>
-              <article v-for="comment in currentArticle.comments" :key="comment.id" class="comment-item">
-                <strong>{{ comment.author_name }}</strong>
-                <p>{{ comment.content }}</p>
-              </article>
-              <form class="comment-form" @submit.prevent="submitComment(currentArticle)">
-                <el-input v-model="commentDraft.author_name" placeholder="昵称" />
-                <el-input v-model="commentDraft.content" type="textarea" :rows="3" placeholder="写下你的想法" />
-                <el-button type="primary" native-type="submit" :loading="submittingComment">发表评论</el-button>
-              </form>
-            </section>
-          </section>
-
-          <section v-else class="article-list">
-            <article v-for="article in articles" :key="article.id" class="article-card" @click="openArticle(article)">
-              <div>
-                <h2>{{ article.title }}</h2>
-                <p>{{ article.summary }}</p>
-              </div>
-              <footer>
-                <span>{{ article.category?.name || "未分类" }}</span>
-                <span>{{ article.view_count }} views</span>
-                <strong v-if="article.knowledge_document_id">Knowledge Ready</strong>
-                <el-button
-                  size="small"
-                  type="danger"
-                  plain
-                  :icon="Delete"
-                  :loading="deletingArticleSlug === article.slug"
-                  @click.stop="deleteArticle(article)"
-                >
-                  删除
-                </el-button>
-              </footer>
-            </article>
-          </section>
+          <ArticleDetail
+            v-if="currentArticle"
+            :article="currentArticle"
+            :comment-draft="commentDraft"
+            :publishing="publishing"
+            :submitting-comment="submittingComment"
+            :deleting-slug="deletingArticleSlug"
+            @back="currentArticle = null; router.push('/blog')"
+            @ask-agent="askAgent"
+            @sync="syncArticleKnowledge"
+            @remove="deleteArticle"
+            @submit-comment="submitComment"
+          />
+          <ArticleList
+            v-else
+            :articles="articles"
+            :deleting-slug="deletingArticleSlug"
+            @open="openArticle"
+            @remove="deleteArticle"
+          />
         </main>
 
-        <aside class="blog-panel">
-          <section class="side-box">
-            <h2><el-icon><CollectionTag /></el-icon> 标签</h2>
-            <div class="tag-cloud">
-              <button v-for="tag in tags" :key="tag.id" type="button" @click="applyFilter({ tag: tag.slug })">
-                {{ tag.name }} {{ tag.article_count }}
-              </button>
-            </div>
-          </section>
+        <button
+          v-show="rightPanelVisible"
+          class="panel-resizer right-panel-resizer"
+          type="button"
+          aria-label="拖动调整辅助栏宽度"
+          title="拖动调整辅助栏宽度"
+          @pointerdown="startPanelResize('right', $event)"
+        />
 
-          <section class="side-box">
-            <h2>分类</h2>
-            <div class="tag-cloud">
-              <button
-                v-for="category in categories"
-                :key="category.id"
-                type="button"
-                @click="applyFilter({ category: category.slug })"
-              >
-                {{ category.name }} {{ category.article_count }}
-              </button>
-            </div>
-          </section>
-
-          <section class="side-box">
-            <h2><el-icon><Files /></el-icon> 归档</h2>
-            <button v-for="group in archive" :key="group.month" type="button" class="archive-item">
-              {{ group.month }} / {{ group.articles.length }} 篇
-            </button>
-          </section>
-
-          <section v-if="about" class="side-box about-box">
-            <h2><el-icon><Promotion /></el-icon> 关于我</h2>
-            <p>{{ about.content }}</p>
-            <span v-for="item in about.highlights" :key="item">{{ item }}</span>
-          </section>
-        </aside>
+        <BlogSidebar
+          v-show="rightPanelVisible"
+          :tags="tags"
+          :categories="categories"
+          :archive="archive"
+          :about="about"
+          @filter="applyFilter"
+        />
       </section>
 
       <el-dialog v-model="approvalDialogOpen" title="审批博客操作" width="560px" align-center>
@@ -726,55 +677,14 @@ async function requestJson(url: string, options: RequestInit = {}) {
       </el-dialog>
     </section>
 
-    <section class="blog-agent-widget" :class="{ open: blogAgentOpen }">
-      <button class="blog-agent-fab" type="button" @click="blogAgentOpen = !blogAgentOpen">
-        <el-icon><ChatDotRound /></el-icon>
-        <span>问博客智能体</span>
-      </button>
-
-      <section v-if="blogAgentOpen" class="blog-agent-panel">
-        <header>
-          <div>
-            <strong>博客智能体</strong>
-            <small>仅回答公开博客、简历和 README 内容</small>
-          </div>
-          <button type="button" @click="blogAgentOpen = false">×</button>
-        </header>
-
-        <div class="blog-agent-messages">
-          <article
-            v-for="(message, index) in blogAgentMessages"
-            :key="index"
-            class="blog-agent-message"
-            :class="[message.role, { blocked: message.blocked, pending: message.pending }]"
-          >
-            <p>{{ message.content }}</p>
-            <div v-if="message.sources?.length" class="blog-agent-sources">
-              <span v-for="(source, sourceIndex) in message.sources" :key="source.title + sourceIndex">
-                [{{ sourceIndex + 1 }}] {{ source.title }}
-              </span>
-            </div>
-          </article>
-        </div>
-
-        <div class="blog-agent-suggestions">
-          <button v-for="item in blogAgentSuggestions" :key="item" type="button" @click="sendBlogAgentMessage(item)">
-            {{ item }}
-          </button>
-        </div>
-
-        <form class="blog-agent-composer" @submit.prevent="sendBlogAgentMessage()">
-          <el-input
-            v-model="blogAgentInput"
-            type="textarea"
-            :rows="2"
-            resize="none"
-            placeholder="问公开博客内容，例如：这个项目架构是什么？"
-            @keydown="handleBlogAgentKeydown"
-          />
-          <el-button type="primary" native-type="submit" :loading="blogAgentLoading">发送</el-button>
-        </form>
-      </section>
-    </section>
+    <BlogAgentWidget
+      v-model:open="blogAgentOpen"
+      v-model:input="blogAgentInput"
+      :loading="blogAgentLoading"
+      :messages="blogAgentMessages"
+      :suggestions="blogAgentSuggestions"
+      @send="sendBlogAgentMessage"
+      @keydown="handleBlogAgentKeydown"
+    />
   </main>
 </template>

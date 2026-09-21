@@ -1,27 +1,23 @@
 services:
-  nginx:
-    image: nginx:1.27-alpine
-    container_name: knowledge-agent-nginx
-    depends_on:
-      - frontend
-      - backend
-    ports:
-      - "${NGINX_PORT:-80}:80"
-    volumes:
-      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - frontend_dist:/usr/share/nginx/html:ro
-      - media_data:/app/media:ro
-      - static_data:/app/staticfiles:ro
-    restart: unless-stopped
-
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
     container_name: knowledge-agent-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${NGINX_PORT:-80}:80"
     volumes:
-      - frontend_dist:/usr/share/nginx/html
-    restart: "no"
+      - media_data:/app/media:ro
+      - static_data:/app/staticfiles:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
 
   backend:
     build:
@@ -33,13 +29,18 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-knowledge_agent}
       REDIS_URL: redis://redis:6379/0
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend,nginx}
+      REDIS_CACHE_URL: redis://redis:6379/1
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-blog}:${RABBITMQ_PASSWORD:-blog}@rabbitmq:5672/${RABBITMQ_VHOST:-blog}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend,frontend}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
       AGENT_SECURITY_ENFORCED: ${AGENT_SECURITY_ENFORCED:-true}
+      RAG_VECTOR_BACKEND: ${RAG_VECTOR_BACKEND:-pgvector}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     volumes:
       - media_data:/app/backend/media
@@ -61,9 +62,12 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-knowledge_agent}
       REDIS_URL: redis://redis:6379/0
+      REDIS_CACHE_URL: redis://redis:6379/1
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-blog}:${RABBITMQ_PASSWORD:-blog}@rabbitmq:5672/${RABBITMQ_VHOST:-blog}
+      RAG_VECTOR_BACKEND: ${RAG_VECTOR_BACKEND:-pgvector}
       RUN_MIGRATIONS: "false"
       COLLECT_STATIC: "false"
-    command: ["celery", "-A", "config", "worker", "--loglevel=INFO"]
+    command: ["celery", "-A", "config", "worker", "--loglevel=INFO", "--queues=celery,documents"]
     depends_on:
       backend:
         condition: service_healthy
@@ -81,6 +85,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-knowledge_agent}
       REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-blog}:${RABBITMQ_PASSWORD:-blog}@rabbitmq:5672/${RABBITMQ_VHOST:-blog}
       RUN_MIGRATIONS: "false"
       COLLECT_STATIC: "false"
     command: ["celery", "-A", "config", "beat", "--loglevel=INFO"]
@@ -122,9 +127,28 @@ services:
       retries: 5
     restart: unless-stopped
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: knowledge-agent-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-blog}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-blog}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-blog}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
+  rabbitmq_data:
   media_data:
   static_data:
-  frontend_dist:

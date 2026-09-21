@@ -65,6 +65,11 @@ async function submit() {
           {{ mode === "login" ? "登录" : "注册并进入" }}
         </el-button>
       </form>
+
+      <p class="auth-security-note">
+        <el-icon><Lock /></el-icon>
+        账号受身份认证、角色权限和 Workspace 数据隔离保护；请勿与他人共享密码或访问令牌。
+      </p>
     </section>
   </main>
 </template>

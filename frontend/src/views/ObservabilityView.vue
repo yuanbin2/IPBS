@@ -115,7 +115,6 @@ async function requestJson(url: string, options: RequestInit = {}) {
         <RouterLink to="/blog">博客</RouterLink>
         <RouterLink to="/knowledge">知识库</RouterLink>
         <RouterLink to="/chat">对话</RouterLink>
-        <RouterLink to="/admin-approvals">审批</RouterLink>
         <RouterLink to="/mcp-tools">MCP 工具</RouterLink>
         <RouterLink class="active" to="/observability">观测评估</RouterLink>
       </nav>

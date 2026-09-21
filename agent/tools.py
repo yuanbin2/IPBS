@@ -1,3 +1,8 @@
+"""Agent 可调用的确定性工具与知识检索适配函数。
+
+该层把底层实现包装成统一 ToolResult，供 LangGraph 节点记录调用轨迹。
+"""
+
 from __future__ import annotations
 
 import ast
@@ -81,7 +86,7 @@ def search_project_files(project_root: Path, query: str) -> str:
 
 def search_knowledge(query: str, project_root: Path) -> str:
     try:
-        from apps.agent_api.rag import format_search_results, search_knowledge_base
+        from apps.agent_api.services.rag import format_search_results, search_knowledge_base
 
         results = search_knowledge_base(query, limit=5)
         if results:

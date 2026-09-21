@@ -1,5 +1,7 @@
 import tempfile
+import json
 from pathlib import Path
+from urllib.error import URLError
 from unittest.mock import patch
 
 from django.conf import settings
@@ -29,7 +31,14 @@ from .models import (
     SecurityAuditEvent,
     UserProfile,
 )
-from .rag import LOCAL_EMBEDDING_MODEL, search_knowledge_base
+from .services.rag import (
+    LOCAL_EMBEDDING_DIMENSIONS,
+    LOCAL_EMBEDDING_MODEL,
+    expand_multilingual_query,
+    keyword_similarity,
+    search_knowledge_base,
+)
+from .services.vector_store import VectorMatch, vector_literal
 
 
 NO_MODEL_ENV = {
@@ -67,7 +76,7 @@ class AgentChatTests(TestCase):
         self.assertGreaterEqual(AgentObservation.objects.first().latency_ms, 0)
 
     @patch.dict("os.environ", NO_MODEL_ENV)
-    def test_agent_chat_tells_joke_without_searching_database(self):
+    def test_agent_chat_searches_before_joke_generation(self):
         response = self.client.post(
             "/api/agent/chat/",
             {"message": "说一个笑话"},
@@ -77,8 +86,8 @@ class AgentChatTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["route"], "direct")
-        self.assertEqual(payload["tool_calls"], [])
+        self.assertEqual(payload["route"], "retrieve")
+        self.assertEqual(payload["tool_calls"][0]["name"], "knowledge_search")
         self.assertEqual(payload["sources"], [])
         self.assertNotIn("数据库中没有", payload["answer"])
 
@@ -96,6 +105,147 @@ class AgentChatTests(TestCase):
         self.assertEqual(payload["supervisor"]["selected_agent"], "blog_agent")
         self.assertIn("supervisor -> blog_agent", payload["trace"][1])
         self.assertGreaterEqual(len(payload["tool_calls"]), 1)
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_uploaded_resume_request_routes_to_private_workspace_rag(self):
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "看一下卫晓斌的简历"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["supervisor"]["selected_agent"], "rag_agent")
+        self.assertIn("uploaded private workspace document", payload["supervisor"]["reason"])
+
+    def test_chinese_person_affiliation_query_adds_english_name_aliases(self):
+        expanded = expand_multilingual_query("苏轩是哪个学校")
+
+        self.assertIn("Xuan Su", expanded)
+        self.assertIn("Su Xuan", expanded)
+        self.assertIn("university affiliation institution", expanded)
+
+    def test_three_character_chinese_name_and_resume_title_match(self):
+        expanded = expand_multilingual_query("卫晓斌相关信息")
+
+        self.assertIn("Xiaobin Wei", expanded)
+        self.assertIn("Wei Xiaobin", expanded)
+        self.assertGreaterEqual(
+            keyword_similarity("卫晓斌相关信息", "卫晓斌简历", "Python developer"),
+            0.8,
+        )
+
+    def test_chinese_scattering_imaging_query_adds_english_technical_aliases(self):
+        expanded = expand_multilingual_query("散射成像")
+
+        self.assertIn("scattering imaging", expanded)
+        self.assertIn("imaging through scattering media", expanded)
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_unseen_short_technical_topic_routes_to_query_expansion_rag(self):
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "医学成像"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["supervisor"]["selected_agent"], "rag_agent")
+        self.assertIn("agent-generated multilingual retrieval", payload["supervisor"]["reason"])
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_system_stack_question_returns_grounded_complete_stack_without_generic_technologies(self):
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "本博客系统所使用的技术栈", "internet_enabled": False},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["supervisor"]["selected_agent"], "blog_agent")
+        self.assertIn("system technology-stack facts", payload["supervisor"]["reason"])
+        for technology in [
+            "Vue 3",
+            "TypeScript",
+            "Django REST Framework",
+            "PostgreSQL",
+            "Redis",
+            "RabbitMQ",
+            "Celery",
+            "LangGraph",
+            "MCP",
+            "Docker Compose",
+            "Nginx",
+            "GitHub Actions",
+        ]:
+            self.assertIn(technology, payload["answer"])
+        for unsupported in ["Java", "Spring", "Angular", "AWS", "Azure"]:
+            self.assertNotIn(unsupported, payload["answer"])
+        self.assertEqual(payload["sources"][0]["document_title"], "本博客系统完整技术栈与架构")
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_follow_up_uses_previous_messages_from_same_conversation(self):
+        first = self.client.post(
+            "/api/agent/chat/",
+            {"message": "本博客系统所使用的技术栈"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        conversation_id = first.json()["conversation"]["id"]
+
+        second = self.client.post(
+            "/api/agent/chat/",
+            {"message": "那后端呢？", "conversation_id": conversation_id},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(second.status_code, 200)
+        payload = second.json()
+        self.assertEqual(payload["supervisor"]["selected_agent"], "blog_agent")
+        self.assertIn("context_memory -> 2 previous messages", payload["trace"])
+        self.assertEqual(Message.objects.filter(conversation_id=conversation_id).count(), 4)
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_rag_follow_up_rewrites_pronoun_with_previous_person_context(self):
+        first = self.client.post(
+            "/api/agent/chat/",
+            {"message": "检索卫晓斌的信息"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        conversation_id = first.json()["conversation"]["id"]
+
+        second = self.client.post(
+            "/api/agent/chat/",
+            {"message": "他是哪个学校的？", "conversation_id": conversation_id},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(second.status_code, 200)
+        payload = second.json()
+        self.assertEqual(payload["supervisor"]["selected_agent"], "rag_agent")
+        self.assertTrue(
+            any(
+                item.startswith("context_query_rewrite ->")
+                and "卫晓斌" in item
+                and "学校" in item
+                for item in payload["trace"]
+            )
+        )
+        knowledge_calls = [
+            item for item in payload["tool_calls"]
+            if item["name"] == "knowledge_search"
+        ]
+        self.assertTrue(knowledge_calls)
+        self.assertIn("卫晓斌", knowledge_calls[0]["input"])
 
     @patch.dict("os.environ", NO_MODEL_ENV)
     def test_supervisor_routes_statistics_question_to_sql_analysis_agent(self):
@@ -120,6 +270,47 @@ class AgentChatTests(TestCase):
         self.assertIn("published_articles", payload["tool_calls"][0]["output"])
         self.assertNotIn("CREATE TABLE", payload["answer"])
 
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_explicit_retrieval_uses_private_workspace_rag(self):
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "检索博客中关于项目成功的内容", "internet_enabled": False},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["supervisor"]["selected_agent"], "rag_agent")
+        self.assertEqual(payload["tool_calls"][0]["name"], "knowledge_search")
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_destructive_knowledge_base_request_prioritizes_approval(self):
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "删除知识库中的旧资料"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["supervisor"]["selected_agent"], "admin_approval_agent")
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_specialized_response_keeps_sql_supervisor_identity(self):
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "统计文章数量"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route"], "sql_analysis_agent")
+        self.assertEqual(payload["supervisor"]["selected_agent"], "sql_analysis_agent")
+
     def test_mcp_tool_registry_lists_default_tools(self):
         response = self.client.get("/api/agent/mcp-tools/", HTTP_HOST="localhost")
 
@@ -129,6 +320,138 @@ class AgentChatTests(TestCase):
         self.assertIn("local_file_search", names)
         self.assertIn("git_repo_info", names)
         self.assertIn("safe_database_stats", names)
+        self.assertIn("web_search", names)
+        self.assertIn("current_time", names)
+
+    @patch.dict("os.environ", {**NO_MODEL_ENV, "APP_TIMEZONE": "Asia/Shanghai"})
+    def test_current_time_question_returns_direct_tool_result_without_web_search(self):
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "告诉我现在时间是几点", "internet_enabled": True},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["supervisor"]["selected_agent"], "mcp_tool_agent")
+        self.assertEqual(payload["tool_calls"][0]["name"], "mcp:current_time")
+        self.assertIn("Asia/Shanghai", payload["answer"])
+        self.assertNotIn("http", payload["answer"])
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_general_question_retrieves_before_model_fallback(self):
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "解释一下 Python 的 GIL", "internet_enabled": False},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["supervisor"]["selected_agent"], "rag_agent")
+        self.assertEqual(payload["sources"], [])
+        self.assertEqual(payload["tool_calls"][0]["name"], "knowledge_search")
+        self.assertIn("retrieval_fallback -> no relevant source; direct generation", payload["trace"])
+
+    @patch("agent.mcp_tools.LocalMCPToolRunner.run")
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_internet_toggle_searches_web_and_then_uses_answer_path(self, mocked_run):
+        from agent.mcp_tools import MCPToolExecution
+
+        MCPTool.objects.update_or_create(
+            name="web_search",
+            defaults={
+                "display_name": "网页搜索",
+                "category": MCPTool.Category.WEB,
+                "permission_scope": "network:web_search",
+                "is_enabled": True,
+                "requires_approval": False,
+            },
+        )
+        mocked_run.return_value = MCPToolExecution("web_search", "Python 3.14", "[1] Python release notes")
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "Python 3.14 有什么变化？", "internet_enabled": True},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route"], "internet")
+        self.assertEqual(payload["tool_calls"][0]["name"], "mcp:web_search")
+        self.assertIn("网页搜索结果", payload["answer"])
+
+    @patch("agent.mcp_tools.LocalMCPToolRunner.run")
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_explicit_web_search_runs_even_when_internet_toggle_is_off(self, mocked_run):
+        from agent.mcp_tools import MCPToolExecution
+
+        MCPTool.objects.update_or_create(
+            name="web_search",
+            defaults={
+                "display_name": "网页搜索",
+                "category": MCPTool.Category.WEB,
+                "permission_scope": "network:web_search",
+                "is_enabled": True,
+                "requires_approval": False,
+            },
+        )
+        mocked_run.return_value = MCPToolExecution("web_search", "Python 官方文档", "[1] Python docs")
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "网页搜索 Python 官方文档", "internet_enabled": False},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["tool_calls"][0]["name"], "mcp:web_search")
+        mocked_run.assert_called_once()
+
+    @patch("agent.mcp_tools.LocalMCPToolRunner.run")
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_internet_follow_up_rewrites_search_query_with_conversation_context(self, mocked_run):
+        from agent.mcp_tools import MCPToolExecution
+
+        MCPTool.objects.update_or_create(
+            name="web_search",
+            defaults={
+                "display_name": "网页搜索",
+                "category": MCPTool.Category.WEB,
+                "permission_scope": "network:web_search",
+                "is_enabled": True,
+                "requires_approval": False,
+            },
+        )
+        mocked_run.return_value = MCPToolExecution("web_search", "query", "[1] result")
+        first = self.client.post(
+            "/api/agent/chat/",
+            {"message": "介绍一下 Python 3.14"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        conversation_id = first.json()["conversation"]["id"]
+
+        second = self.client.post(
+            "/api/agent/chat/",
+            {
+                "message": "那它有哪些重要的新特性？",
+                "conversation_id": conversation_id,
+                "internet_enabled": True,
+            },
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(second.status_code, 200)
+        rewritten_query = mocked_run.call_args.args[1]
+        self.assertIn("Python 3.14", rewritten_query)
+        self.assertIn("重要的新特性", rewritten_query)
+        self.assertEqual(second.json()["tool_calls"][0]["input"], rewritten_query)
+        self.assertTrue(any("internet_query_rewrite" in item for item in second.json()["trace"]))
 
     @patch.dict("os.environ", NO_MODEL_ENV)
     def test_observability_dashboard_lists_agent_runs(self):
@@ -218,6 +541,61 @@ class AgentChatTests(TestCase):
         self.assertIn("token", payload)
         self.assertEqual(payload["user"]["role"], UserProfile.Role.ADMIN)
         self.assertEqual(payload["user"]["workspace_key"], "team-a")
+
+    @override_settings(AGENT_SECURITY_ENFORCED=True)
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_users_in_same_workspace_cannot_read_or_continue_each_others_conversations(self):
+        User = get_user_model()
+        user_a = User.objects.create_user(username="chat-user-a", password="pass12345")
+        user_b = User.objects.create_user(username="chat-user-b", password="pass12345")
+        UserProfile.objects.create(user=user_a, role=UserProfile.Role.VISITOR, workspace_key="shared")
+        UserProfile.objects.create(user=user_b, role=UserProfile.Role.VISITOR, workspace_key="shared")
+
+        login_a = self.client.post(
+            "/api/agent/auth/login/",
+            {"username": "chat-user-a", "password": "pass12345"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        token_a = login_a.json()["token"]
+        chat = self.client.post(
+            "/api/agent/chat/",
+            {"message": "private question"},
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token_a}",
+            HTTP_HOST="localhost",
+        )
+        conversation_id = chat.json()["conversation"]["id"]
+
+        login_b = self.client.post(
+            "/api/agent/auth/login/",
+            {"username": "chat-user-b", "password": "pass12345"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        token_b = login_b.json()["token"]
+        list_response = self.client.get(
+            "/api/agent/conversations/",
+            HTTP_AUTHORIZATION=f"Bearer {token_b}",
+            HTTP_HOST="localhost",
+        )
+        detail_response = self.client.get(
+            f"/api/agent/conversations/{conversation_id}/",
+            HTTP_AUTHORIZATION=f"Bearer {token_b}",
+            HTTP_HOST="localhost",
+        )
+        continue_response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "try to continue", "conversation_id": conversation_id},
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token_b}",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(list_response.json(), [])
+        self.assertEqual(detail_response.status_code, 404)
+        self.assertEqual(continue_response.status_code, 404)
 
     @patch.dict("os.environ", NO_MODEL_ENV)
     def test_prompt_injection_is_routed_to_admin_approval_and_audited(self):
@@ -320,6 +698,141 @@ class AgentChatTests(TestCase):
         tool.refresh_from_db()
         self.assertFalse(tool.is_enabled)
 
+    @patch("agent.mcp_tools.urlopen")
+    def test_web_search_returns_external_results(self, mocked_urlopen):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def read(self):
+                return json.dumps(
+                    {
+                        "RelatedTopics": [
+                            {
+                                "Text": "Django official documentation",
+                                "FirstURL": "https://www.djangoproject.com/",
+                            }
+                        ]
+                    }
+                ).encode("utf-8")
+
+        mocked_urlopen.return_value = FakeResponse()
+        tool, _ = MCPTool.objects.update_or_create(
+            name="web_search",
+            defaults={
+                "display_name": "网页搜索",
+                "category": MCPTool.Category.WEB,
+                "permission_scope": "network:web_search",
+                "is_enabled": True,
+            },
+        )
+
+        response = self.client.post(
+            f"/api/agent/mcp-tools/{tool.id}/execute/",
+            {"query": "Django"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Django official documentation", response.json()["output"])
+        self.assertIn("provider=duckduckgo", response.json()["output"])
+
+    @patch("agent.mcp_tools.urlopen", side_effect=URLError("network blocked"))
+    def test_web_search_reports_network_failure_instead_of_empty_results(self, _mocked_urlopen):
+        tool, _ = MCPTool.objects.update_or_create(
+            name="web_search",
+            defaults={
+                "display_name": "网页搜索",
+                "category": MCPTool.Category.WEB,
+                "permission_scope": "network:web_search",
+                "is_enabled": True,
+            },
+        )
+
+        response = self.client.post(
+            f"/api/agent/mcp-tools/{tool.id}/execute/",
+            {"query": "Django"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("网页搜索失败", response.json()["output"])
+        self.assertIn("network blocked", response.json()["output"])
+
+    @patch("agent.mcp_tools.urlopen")
+    def test_web_search_falls_back_to_bing_when_duckduckgo_fails(self, mocked_urlopen):
+        class FakeResponse:
+            def __init__(self, body: str):
+                self.body = body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def read(self):
+                return self.body.encode("utf-8")
+
+        mocked_urlopen.side_effect = [
+            URLError("duckduckgo blocked"),
+            URLError("duckduckgo api blocked"),
+            FakeResponse(
+                '<html><body><li class="b_algo"><h2>'
+                '<a href="https://docs.djangoproject.com/">Django documentation</a>'
+                "</h2><p>Official Django docs.</p></li></body></html>"
+            ),
+        ]
+        tool, _ = MCPTool.objects.update_or_create(
+            name="web_search",
+            defaults={
+                "display_name": "网页搜索",
+                "category": MCPTool.Category.WEB,
+                "permission_scope": "network:web_search",
+                "is_enabled": True,
+            },
+        )
+
+        response = self.client.post(
+            f"/api/agent/mcp-tools/{tool.id}/execute/",
+            {"query": "Django official documentation"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("provider=bing", response.json()["output"])
+        self.assertIn("Django documentation", response.json()["output"])
+
+    def test_web_search_rewrites_query_reranks_official_result_and_blocks_private_url(self):
+        from agent.mcp_tools import LocalMCPToolRunner
+
+        runner = LocalMCPToolRunner(Path(settings.BASE_DIR).parent)
+        queries = runner._build_search_queries("请帮我网页搜索 Django 官方文档有哪些")
+        ranked = runner._deduplicate_and_rerank(
+            "Django 官方文档",
+            [
+                ("Django tutorial from a blog", "https://example.com/django"),
+                ("Django documentation", "https://docs.djangoproject.com/"),
+                ("duplicate", "https://docs.djangoproject.com/"),
+            ],
+            limit=8,
+        )
+
+        self.assertEqual(queries[0], "Django 官方文档")
+        self.assertEqual(
+            runner._build_search_queries("please web search Django REST Framework official documentation")[0],
+            "Django REST Framework official documentation",
+        )
+        self.assertEqual(ranked[0][1], "https://docs.djangoproject.com/")
+        self.assertEqual(len(ranked), 2)
+        self.assertEqual(runner._normalize_duckduckgo_url("https://127.0.0.1/admin"), "")
+
     @patch.dict("os.environ", NO_MODEL_ENV)
     def test_supervisor_routes_mcp_question_to_mcp_tool_agent(self):
         MCPTool.objects.update_or_create(
@@ -343,6 +856,75 @@ class AgentChatTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["supervisor"]["selected_agent"], "mcp_tool_agent")
         self.assertEqual(payload["tool_calls"][0]["name"], "mcp:git_repo_info")
+
+    @patch("agent.mcp_tools.LocalMCPToolRunner.run")
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_chat_exposes_every_registered_mcp_capability(self, mocked_run):
+        from agent.mcp_tools import MCPToolExecution
+
+        tools = {
+            "local_file_search": MCPTool.Category.FILESYSTEM,
+            "git_repo_info": MCPTool.Category.GIT,
+            "web_search": MCPTool.Category.WEB,
+            "safe_database_stats": MCPTool.Category.DATABASE,
+        }
+        for name, category in tools.items():
+            MCPTool.objects.update_or_create(
+                name=name,
+                defaults={
+                    "display_name": name,
+                    "category": category,
+                    "permission_scope": f"test:{name}",
+                    "is_enabled": True,
+                    "requires_approval": False,
+                },
+            )
+
+        cases = [
+            ("MCP 搜索本地文件中的 LangGraph", "local_file_search"),
+            ("用 MCP 查看 Git 仓库状态", "git_repo_info"),
+            ("网页搜索 Django 官方文档", "web_search"),
+            ("用 MCP 统计系统数据", "safe_database_stats"),
+        ]
+        for message, expected_tool in cases:
+            mocked_run.return_value = MCPToolExecution(expected_tool, message, "mocked output")
+            with self.subTest(tool=expected_tool):
+                response = self.client.post(
+                    "/api/agent/chat/",
+                    {"message": message},
+                    content_type="application/json",
+                    HTTP_HOST="localhost",
+                )
+                self.assertEqual(response.status_code, 200)
+                payload = response.json()
+                self.assertEqual(payload["supervisor"]["selected_agent"], "mcp_tool_agent")
+                self.assertEqual(payload["tool_calls"][0]["name"], f"mcp:{expected_tool}")
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_chat_does_not_bypass_mcp_approval(self):
+        tool, _ = MCPTool.objects.update_or_create(
+            name="web_search",
+            defaults={
+                "display_name": "网页搜索",
+                "category": MCPTool.Category.WEB,
+                "permission_scope": "network:web_search",
+                "is_enabled": True,
+                "requires_approval": True,
+            },
+        )
+
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "网页搜索 Django 官方文档"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 202)
+        payload = response.json()
+        self.assertTrue(payload["approval_required"])
+        self.assertEqual(payload["approval"]["action"], ApprovalRequest.Action.EXECUTE_MCP_TOOL)
+        self.assertEqual(payload["approval"]["payload"]["tool_id"], tool.id)
 
     def test_agent_chat_requires_message(self):
         response = self.client.post(
@@ -448,13 +1030,42 @@ class AgentChatTests(TestCase):
             HTTP_HOST="localhost",
         )
 
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 202)
         payload = response.json()
-        self.assertEqual(payload["status"], Document.Status.READY)
-        self.assertGreaterEqual(payload["chunk_count"], 1)
+        self.assertIn("task_id", payload)
+        self.assertEqual(payload["task_state"], "SUCCESS")
+        self.assertNotIn("task_url", payload)
+        document = Document.objects.get(pk=payload["id"])
+        self.assertEqual(document.status, Document.Status.READY)
+        self.assertGreaterEqual(document.chunk_count, 1)
         self.assertEqual(KnowledgeBase.objects.count(), 1)
-        self.assertEqual(DocumentChunk.objects.count(), payload["chunk_count"])
-        self.assertEqual(EmbeddingRecord.objects.count(), payload["chunk_count"])
+        self.assertEqual(DocumentChunk.objects.count(), document.chunk_count)
+        self.assertEqual(EmbeddingRecord.objects.count(), document.chunk_count)
+
+    @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT, CELERY_TASK_ALWAYS_EAGER=False, DEBUG=True)
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    @patch("apps.agent_api.views.knowledge.ingest_document_task.delay", side_effect=ConnectionError("broker down"))
+    def test_document_upload_falls_back_to_inline_processing_when_broker_is_unavailable(self, _delay):
+        upload = SimpleUploadedFile(
+            "local-upload.txt",
+            "Local development upload should work without a broker.".encode("utf-8"),
+            content_type="text/plain",
+        )
+
+        response = self.client.post(
+            "/api/agent/documents/",
+            {"file": upload, "title": "Local Upload"},
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 202)
+        payload = response.json()
+        self.assertEqual(payload["task_state"], "SUCCESS")
+        self.assertNotIn("task_url", payload)
+        _delay.assert_not_called()
+        document = Document.objects.get(pk=payload["id"])
+        self.assertEqual(document.status, Document.Status.READY)
+        self.assertGreaterEqual(document.chunk_count, 1)
 
     @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
     @patch.dict("os.environ", NO_MODEL_ENV)
@@ -484,6 +1095,124 @@ class AgentChatTests(TestCase):
         payload = response.json()
         self.assertGreaterEqual(len(payload), 1)
         self.assertEqual(payload[0]["document_title"], "Agentic RAG")
+
+    @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_uploaded_sample_is_indexed_searchable_and_available_to_chat_rag(self):
+        workspace = "sample-workspace"
+        upload = SimpleUploadedFile(
+            "codex-rag-smoke.txt",
+            (
+                "Codex RAG smoke marker ALPHA42.\n\n"
+                "The uploaded sample says the retrieval answer color is teal."
+            ).encode("utf-8"),
+            content_type="text/plain",
+        )
+
+        upload_response = self.client.post(
+            "/api/agent/documents/",
+            {"file": upload, "title": "Codex RAG Smoke Sample"},
+            HTTP_HOST="localhost",
+            HTTP_X_WORKSPACE=workspace,
+        )
+
+        self.assertEqual(upload_response.status_code, 202)
+        upload_payload = upload_response.json()
+        document = Document.objects.select_related("knowledge_base").get(pk=upload_payload["id"])
+        self.assertEqual(document.status, Document.Status.READY)
+        self.assertEqual(document.workspace_key, workspace)
+        self.assertEqual(document.knowledge_base.workspace_key, workspace)
+        self.assertGreaterEqual(document.chunk_count, 1)
+        self.assertEqual(DocumentChunk.objects.filter(document=document).count(), document.chunk_count)
+        self.assertEqual(EmbeddingRecord.objects.filter(chunk__document=document).count(), document.chunk_count)
+
+        search_response = self.client.post(
+            "/api/agent/knowledge-search/",
+            {"query": "ALPHA42 retrieval answer color teal", "limit": 3},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+            HTTP_X_WORKSPACE=workspace,
+        )
+
+        self.assertEqual(search_response.status_code, 200)
+        search_payload = search_response.json()
+        self.assertGreaterEqual(len(search_payload), 1)
+        self.assertEqual(search_payload[0]["document_title"], "Codex RAG Smoke Sample")
+        self.assertIn("teal", search_payload[0]["content"])
+
+        chat_response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "请根据知识库回答 ALPHA42 的 retrieval answer color 是什么？"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+            HTTP_X_WORKSPACE=workspace,
+        )
+
+        self.assertEqual(chat_response.status_code, 200)
+        chat_payload = chat_response.json()
+        self.assertEqual(chat_payload["supervisor"]["selected_agent"], "rag_agent")
+        self.assertEqual(chat_payload["tool_calls"][0]["name"], "knowledge_search")
+        self.assertGreaterEqual(len(chat_payload["sources"]), 1)
+        self.assertEqual(chat_payload["sources"][0]["document_title"], "Codex RAG Smoke Sample")
+        self.assertIn("teal", chat_payload["sources"][0]["content"])
+
+    @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_uploaded_wei_xiaobin_resume_is_searchable_from_related_info_question(self):
+        workspace = "resume-workspace"
+        upload = SimpleUploadedFile(
+            "wei-xiaobin-resume.txt",
+            (
+                "卫晓斌个人简历\n\n"
+                "姓名：卫晓斌\n"
+                "教育经历：重庆三峡科技大学 硕士 计算机技术 2024-2027；晋中学院 本科 计算机科学与技术 2020-2024。\n"
+                "方向：Python 后端开发、Django、Vue、RAG 知识库和 Agent 工程。\n"
+                "项目：构建个人博客智能体系统，支持文档上传、知识库检索和问答引用。"
+            ).encode("utf-8"),
+            content_type="text/plain",
+        )
+
+        upload_response = self.client.post(
+            "/api/agent/documents/",
+            {"file": upload, "title": "卫晓斌-agent开发"},
+            HTTP_HOST="localhost",
+            HTTP_X_WORKSPACE=workspace,
+        )
+        self.assertEqual(upload_response.status_code, 202)
+        document = Document.objects.get(pk=upload_response.json()["id"])
+        self.assertEqual(document.status, Document.Status.READY)
+
+        search_response = self.client.post(
+            "/api/agent/knowledge-search/",
+            {"query": "卫晓斌相关信息", "limit": 3},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+            HTTP_X_WORKSPACE=workspace,
+        )
+        self.assertEqual(search_response.status_code, 200)
+        search_payload = search_response.json()
+        self.assertGreaterEqual(len(search_payload), 1)
+        self.assertEqual(search_payload[0]["document_title"], "卫晓斌-agent开发")
+        self.assertGreaterEqual(search_payload[0]["score"], SimpleToolCallingAgent.min_relevance_score)
+        self.assertIn("Python 后端开发", search_payload[0]["content"])
+
+        chat_response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "卫晓斌是哪个学校的"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+            HTTP_X_WORKSPACE=workspace,
+        )
+        self.assertEqual(chat_response.status_code, 200)
+        chat_payload = chat_response.json()
+        self.assertEqual(chat_payload["supervisor"]["selected_agent"], "rag_agent")
+        self.assertEqual(chat_payload["tool_calls"][0]["name"], "knowledge_search")
+        self.assertGreaterEqual(len(chat_payload["sources"]), 1)
+        self.assertEqual(chat_payload["sources"][0]["document_title"], "卫晓斌-agent开发")
+        self.assertIn("卫晓斌", chat_payload["sources"][0]["content"])
+        self.assertIn("硕士：重庆三峡科技大学", chat_payload["answer"])
+        self.assertIn("本科：晋中学院", chat_payload["answer"])
+        self.assertNotIn("我先根据本地知识库找到了这些", chat_payload["answer"])
 
     @patch.dict("os.environ", NO_MODEL_ENV)
     def test_knowledge_search_uses_keyword_signal_when_vectors_are_weak(self):
@@ -523,6 +1252,55 @@ class AgentChatTests(TestCase):
         self.assertGreaterEqual(len(results), 1)
         self.assertEqual(results[0].chunk_id, strong_chunk.id)
 
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    @patch("apps.agent_api.services.rag.search_pgvector")
+    def test_knowledge_search_prefers_pgvector_candidates_when_available(self, mocked_search_pgvector):
+        mocked_search_pgvector.return_value = [
+            VectorMatch(
+                document_id=9,
+                document_title="Vector DB Resume",
+                chunk_id=42,
+                chunk_index=0,
+                content="卫晓斌 教育经历 重庆三峡科技大学 硕士 计算机技术。",
+                vector_score=0.93,
+            )
+        ]
+
+        results = search_knowledge_base("卫晓斌是哪个学校的", limit=3, workspace_key="default")
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].chunk_id, 42)
+        self.assertIn("重庆三峡科技大学", results[0].content)
+        mocked_search_pgvector.assert_called_once()
+
+    @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    @patch("apps.agent_api.services.rag.upsert_chunk_vector")
+    @patch("apps.agent_api.services.rag.should_use_pgvector", return_value=True)
+    def test_document_ingestion_syncs_vectors_to_pgvector_store(self, _should_use_pgvector, mocked_upsert):
+        upload = SimpleUploadedFile(
+            "pgvector-sync.txt",
+            "This document should be embedded and written to the vector store.".encode("utf-8"),
+            content_type="text/plain",
+        )
+
+        response = self.client.post(
+            "/api/agent/documents/",
+            {"file": upload, "title": "pgvector sync"},
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 202)
+        document = Document.objects.get(pk=response.json()["id"])
+        self.assertEqual(document.status, Document.Status.READY)
+        self.assertGreaterEqual(mocked_upsert.call_count, 1)
+        record = EmbeddingRecord.objects.get(chunk__document=document)
+        self.assertEqual(record.vector, [])
+        self.assertEqual(record.vector_dimensions, LOCAL_EMBEDDING_DIMENSIONS)
+
+    def test_vector_literal_formats_pgvector_input(self):
+        self.assertEqual(vector_literal([0, 0.25, -1.5]), "[0,0.25,-1.5]")
+
     @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
     @patch.dict("os.environ", NO_MODEL_ENV)
     def test_document_reindex_rebuilds_chunks(self):
@@ -545,9 +1323,11 @@ class AgentChatTests(TestCase):
             HTTP_HOST="localhost",
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["status"], Document.Status.READY)
-        self.assertGreaterEqual(response.json()["chunk_count"], 1)
+        self.assertEqual(response.status_code, 202)
+        self.assertIn("task_id", response.json())
+        document = Document.objects.get(pk=document_id)
+        self.assertEqual(document.status, Document.Status.READY)
+        self.assertGreaterEqual(document.chunk_count, 1)
 
     def test_document_delete_removes_chunks_and_embeddings(self):
         knowledge_base = KnowledgeBase.objects.create(name="delete-doc")

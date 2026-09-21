@@ -1,82 +1,24 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from "vue";
-import { Back, ChatDotRound, Cpu, Plus, Promotion, Refresh, Search } from "@element-plus/icons-vue";
+import { computed, nextTick, onMounted, reactive, ref } from "vue";
+import { Back } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { RouterLink } from "vue-router";
+import { useAuthStore } from "../stores/auth";
+import ChatMessageList from "../features/chat/components/ChatMessageList.vue";
+import ConversationSidebar from "../features/chat/components/ConversationSidebar.vue";
+import ChatComposer from "../features/chat/components/ChatComposer.vue";
+import ChatApprovalDialog from "../features/chat/components/ChatApprovalDialog.vue";
+import type {
+  ApprovalRequest,
+  ChatMessage,
+  Conversation,
+  ConversationDetail,
+  SupervisorDecision,
+  TokenUsage
+} from "../features/chat/types";
 
 const MESSAGE_PAGE_SIZE = 30;
-
-interface ToolCall {
-  name: string;
-  input: string;
-  output: string;
-}
-
-interface SourceCitation {
-  document_id: number;
-  document_title: string;
-  chunk_id: number;
-  chunk_index: number;
-  score: number;
-  content: string;
-}
-
-interface TokenUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-}
-
-interface SupervisorDecision {
-  selected_agent: string;
-  display_name: string;
-  reason: string;
-  confidence: number;
-  handoff: string;
-}
-
-interface ChatMessage {
-  id?: number;
-  role: "user" | "agent";
-  content: string;
-  toolCalls?: ToolCall[];
-  sources?: SourceCitation[];
-  trace?: string[];
-  tokenUsage?: TokenUsage;
-  supervisor?: SupervisorDecision;
-  pending?: boolean;
-}
-
-interface Conversation {
-  id: number;
-  title: string;
-  created_at: string;
-  updated_at: string;
-  matched_message_id?: number;
-}
-
-interface ConversationDetail extends Conversation {
-  messages: Array<{
-    id: number;
-    role: "user" | "agent";
-    content: string;
-    tool_calls: ToolCall[];
-    sources: SourceCitation[];
-    trace: string[];
-    token_usage: TokenUsage;
-  }>;
-  has_more_before: boolean;
-  has_more_after: boolean;
-}
-
-interface ApprovalRequest {
-  id: number;
-  title: string;
-  description: string;
-  payload: Record<string, unknown>;
-  status: "pending" | "executed" | "rejected" | "failed";
-  result: string;
-}
+const auth = useAuthStore();
 
 const emptyUsage: TokenUsage = {
   prompt_tokens: 0,
@@ -86,13 +28,15 @@ const emptyUsage: TokenUsage = {
 
 const welcomeMessage: ChatMessage = {
   role: "agent",
-  content: "我现在是一个 LangGraph 状态图 Agent。你可以普通提问，也可以让我检索项目文档、读取当前用户资料或做简单计算。",
+  content: "我现在是一个 LangGraph 多智能体助手。你可以普通提问，也可以直接让我调用 MCP：搜索本地文件、查看 Git、搜索网页或统计系统数据。",
   tokenUsage: emptyUsage
 };
+
 
 const input = ref("帮我检索 LangGraph 和 RAG 的关系");
 const historySearch = ref("");
 const loading = ref(false);
+const internetEnabled = ref(false);
 const conversationsLoading = ref(false);
 const messagesLoading = ref(false);
 const hasMoreBefore = ref(false);
@@ -100,19 +44,25 @@ const currentConversationId = ref<number | null>(null);
 const conversations = ref<Conversation[]>([]);
 const messages = ref<ChatMessage[]>([welcomeMessage]);
 const latestTokenUsage = ref<TokenUsage | null>(null);
-const conversationScroller = ref<HTMLElement | null>(null);
+const getConversationScroller = () => document.querySelector<HTMLElement>(".conversation");
 const approvalDialogOpen = ref(false);
 const pendingApproval = ref<ApprovalRequest | null>(null);
 const reviewingApproval = ref(false);
 const reviewer = ref("admin");
 const reviewNote = ref("");
 
-const suggestions = ["什么是 LangGraph？", "帮我计算 12 * 8", "检索 MCP 工具接入"];
+const suggestions = [
+  "MCP 搜索本地文件中的 LangGraph",
+  "用 MCP 查看 Git 仓库状态",
+  "网页搜索 Django REST Framework 官方文档",
+  "用 MCP 统计系统数据"
+];
 const agentRoster = [
   { name: "Supervisor", detail: "路由与任务拆分" },
   { name: "RAG Agent", detail: "知识库检索问答" },
   { name: "Blog Agent", detail: "博客与项目经历" },
   { name: "SQL Analysis", detail: "安全统计分析" },
+  { name: "MCP Tool Agent", detail: "文件、Git、网页与数据库工具" },
   { name: "Writing", detail: "写作与总结" },
   { name: "Review", detail: "质量与引用检查" },
   { name: "Admin Approval", detail: "高风险操作审批" }
@@ -170,7 +120,8 @@ async function loadOlderMessages() {
   const firstPersistedMessage = messages.value.find((message) => message.id);
   if (!firstPersistedMessage?.id) return;
 
-  const scroller = conversationScroller.value;
+  // 记录插入旧消息前的高度，加载后恢复视觉位置，避免滚动条突然跳到顶部。
+  const scroller = getConversationScroller();
   const previousHeight = scroller?.scrollHeight ?? 0;
   messagesLoading.value = true;
 
@@ -194,7 +145,7 @@ async function loadOlderMessages() {
 }
 
 function handleConversationScroll() {
-  if ((conversationScroller.value?.scrollTop ?? 0) < 40) {
+  if ((getConversationScroller()?.scrollTop ?? 0) < 40) {
     void loadOlderMessages();
   }
 }
@@ -213,7 +164,7 @@ function mapApiMessage(message: ConversationDetail["messages"][number]): ChatMes
 }
 
 function scrollToBottom() {
-  const scroller = conversationScroller.value;
+  const scroller = getConversationScroller();
   if (scroller) {
     scroller.scrollTop = scroller.scrollHeight;
   }
@@ -236,13 +187,17 @@ async function sendMessage(prompt?: string) {
   const message = (prompt ?? input.value).trim();
   if (!message || loading.value) return;
 
+  // 先乐观插入用户消息和占位回答，降低模型响应期间的界面等待感。
   messages.value.push({ role: "user", content: message });
-  const pendingMessage: ChatMessage = {
+  // 后续响应会原位更新这条占位消息，因此必须持有响应式代理。
+  // 如果这里只保存普通对象，直接 Object.assign 原始引用不会通知 Vue 重渲染，
+  // 就会出现“后台已有答案，但刷新页面后才显示”的现象。
+  const pendingMessage = reactive<ChatMessage>({
     role: "agent",
     content: "正在生成回答，token 消耗统计中...",
     tokenUsage: emptyUsage,
     pending: true
-  };
+  });
   messages.value.push(pendingMessage);
   latestTokenUsage.value = null;
   input.value = "";
@@ -256,7 +211,8 @@ async function sendMessage(prompt?: string) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message,
-        conversation_id: currentConversationId.value
+        conversation_id: currentConversationId.value,
+        internet_enabled: internetEnabled.value
       })
     });
 
@@ -266,6 +222,7 @@ async function sendMessage(prompt?: string) {
     }
 
     currentConversationId.value = payload.conversation.id;
+    // 原位替换占位对象，避免整个消息列表重建并丢失当前滚动位置。
     Object.assign(pendingMessage, {
       content: payload.answer,
       toolCalls: payload.tool_calls,
@@ -275,7 +232,7 @@ async function sendMessage(prompt?: string) {
       supervisor: payload.supervisor,
       pending: false
     });
-    if (payload.approval_required && payload.approval) {
+    if (payload.approval_required && payload.approval && auth.session.role === "admin") {
       pendingApproval.value = payload.approval;
       approvalDialogOpen.value = true;
     }
@@ -344,39 +301,9 @@ function handleComposerKeydown(event: KeyboardEvent) {
   void sendMessage();
 }
 
-function isRetrievalTool(call: ToolCall) {
-  return call.name === "knowledge_search" || call.name === "blog_search" || call.name === "blog_agent_search";
-}
-
-function toolPanelTitle(call: ToolCall) {
-  if (isRetrievalTool(call)) {
-    return "检索到的相关内容";
-  }
-  if (call.name === "calculator") {
-    return "计算工具结果";
-  }
-  if (call.name === "current_user_profile") {
-    return "用户资料上下文";
-  }
-  if (call.name === "safe_sql_analytics") {
-    return "SQL Analysis Agent 统计结果";
-  }
-  if (call.name === "writing_outline") {
-    return "Writing Agent 写作结构";
-  }
-  if (call.name === "answer_review") {
-    return "Review Agent 审查结果";
-  }
-  if (call.name === "admin_approval") {
-    return "Admin Approval Agent 审批建议";
-  }
-  if (call.name.startsWith("mcp:")) {
-    return "MCP 工具调用结果";
-  }
-  return call.name;
-}
 
 function parseSupervisorDecision(trace?: string[]): SupervisorDecision | undefined {
+  // 历史消息只持久化 trace，因此回放时从轨迹恢复 Supervisor 展示信息。
   const routeTrace = trace?.find((item) => item.startsWith("supervisor -> ") && item.includes("_agent"));
   if (!routeTrace) return undefined;
   const selectedAgent = routeTrace.match(/supervisor -> ([a-z_]+)/)?.[1] ?? "unknown_agent";
@@ -396,7 +323,8 @@ function formatAgentName(agentName: string) {
     sql_analysis_agent: "SQL Analysis Agent",
     writing_agent: "Writing Agent",
     review_agent: "Review Agent",
-    admin_approval_agent: "Admin Approval Agent"
+    admin_approval_agent: "Admin Approval Agent",
+    mcp_tool_agent: "MCP Tool Agent"
   };
   return names[agentName] ?? agentName;
 }
@@ -427,176 +355,47 @@ function formatAgentName(agentName: string) {
       </header>
 
       <section class="chat-layout">
-        <div ref="conversationScroller" class="conversation" @scroll="handleConversationScroll">
-          <button v-if="hasMoreBefore" type="button" class="load-older" :disabled="messagesLoading" @click="loadOlderMessages">
-            {{ messagesLoading ? "加载中..." : "加载更早消息" }}
-          </button>
-          <article
-            v-for="(message, index) in messages"
-            :key="message.id ?? index"
-            class="message"
-            :class="message.role"
-            :data-message-id="message.id"
-          >
-            <div class="message-icon">
-              <el-icon><ChatDotRound v-if="message.role === 'agent'" /><Promotion v-else /></el-icon>
-            </div>
-            <div class="message-body" :class="{ pending: message.pending }">
-              <p>{{ message.content }}</p>
-              <section v-if="message.role === 'agent' && message.supervisor" class="supervisor-card">
-                <header>
-                  <strong>{{ message.supervisor.display_name }}</strong>
-                  <span v-if="message.supervisor.confidence">confidence {{ message.supervisor.confidence.toFixed(2) }}</span>
-                </header>
-                <p>{{ message.supervisor.reason }}</p>
-                <small>{{ message.supervisor.handoff }}</small>
-              </section>
-              <div v-if="message.role === 'agent' && message.tokenUsage" class="token-usage">
-                <span>Prompt {{ message.tokenUsage.prompt_tokens }}</span>
-                <span>Completion {{ message.tokenUsage.completion_tokens }}</span>
-                <strong>Total {{ message.tokenUsage.total_tokens }}</strong>
-              </div>
-              <section v-if="message.sources?.length" class="source-list">
-                <header>引用来源</header>
-                <article v-for="(source, sourceIndex) in message.sources" :key="source.chunk_id">
-                  <div>
-                    <strong>[{{ sourceIndex + 1 }}] {{ source.document_title }}</strong>
-                    <span>score {{ source.score.toFixed(3) }} / chunk {{ source.chunk_index }}</span>
-                  </div>
-                  <p>{{ source.content }}</p>
-                </article>
-              </section>
-              <el-collapse v-if="message.toolCalls?.length" class="retrieval-collapse">
-                <el-collapse-item
-                  v-for="(call, callIndex) in message.toolCalls"
-                  :key="call.name + call.input + callIndex"
-                  :name="`${message.id ?? index}-${callIndex}`"
-                >
-                  <template #title>
-                    <span class="retrieval-title">
-                      <strong>{{ toolPanelTitle(call) }}</strong>
-                      <small>{{ call.name }}</small>
-                    </span>
-                  </template>
-                  <section class="retrieval-panel" :class="{ highlight: isRetrievalTool(call) }">
-                    <div class="retrieval-query">
-                      <span>查询</span>
-                      <p>{{ call.input || "无输入参数" }}</p>
-                    </div>
-                    <div class="retrieval-content">
-                      <span>{{ isRetrievalTool(call) ? "数据库 / 知识库上下文" : "工具输出" }}</span>
-                      <pre>{{ call.output }}</pre>
-                    </div>
-                  </section>
-                </el-collapse-item>
-              </el-collapse>
-              <div v-if="message.trace?.length" class="trace-list">
-                <span v-for="item in message.trace" :key="item">{{ item }}</span>
-              </div>
-            </div>
-          </article>
-        </div>
+        <ChatMessageList
+          :messages="messages"
+          :has-more-before="hasMoreBefore"
+          :loading-older="messagesLoading"
+          @load-older="loadOlderMessages"
+          @scroll="handleConversationScroll"
+        />
 
-        <aside class="agent-panel">
-          <div class="panel-actions">
-            <h2><el-icon><Cpu /></el-icon> 会话历史</h2>
-            <div>
-              <el-button :icon="Refresh" circle :loading="conversationsLoading" @click="loadConversations" />
-              <el-button :icon="Plus" circle @click="startNewConversation" />
-            </div>
-          </div>
-
-          <el-input
-            v-model="historySearch"
-            class="history-search"
-            clearable
-            :prefix-icon="Search"
-            placeholder="搜索历史消息"
-            @keyup.enter="loadConversations"
-            @clear="loadConversations"
-          />
-
-          <section class="token-card">
-            <span>本轮 Token</span>
-            <strong v-if="latestTokenUsage">{{ latestTokenUsage.total_tokens }}</strong>
-            <strong v-else-if="loading">统计中</strong>
-            <strong v-else>0</strong>
-            <small v-if="latestTokenUsage">
-              prompt {{ latestTokenUsage.prompt_tokens }} / completion {{ latestTokenUsage.completion_tokens }}
-            </small>
-            <small v-else>等待下一次回答</small>
-          </section>
-
-          <section class="agent-roster">
-            <h3>Multi-Agent</h3>
-            <article v-for="agent in agentRoster" :key="agent.name">
-              <strong>{{ agent.name }}</strong>
-              <span>{{ agent.detail }}</span>
-            </article>
-          </section>
-
-          <div class="history-list">
-            <button
-              v-for="conversation in conversations"
-              :key="conversation.id"
-              type="button"
-              :class="{ active: conversation.id === currentConversationId }"
-              @click="loadConversation(conversation)"
-            >
-              {{ conversation.title || `会话 ${conversation.id}` }}
-            </button>
-          </div>
-
-          <ol class="graph-flow">
-            <li>query_analyzer</li>
-            <li>retrieve</li>
-            <li>grade_documents</li>
-            <li>rewrite_query</li>
-            <li>generate</li>
-            <li>cite_sources</li>
-          </ol>
-
-          <div class="suggestions">
-            <button v-for="item in suggestions" :key="item" type="button" @click="sendMessage(item)">
-              {{ item }}
-            </button>
-          </div>
-        </aside>
+        <ConversationSidebar
+          v-model:history-search="historySearch"
+          :conversations="conversations"
+          :current-conversation-id="currentConversationId"
+          :conversations-loading="conversationsLoading"
+          :chat-loading="loading"
+          :latest-token-usage="latestTokenUsage"
+          :agents="agentRoster"
+          :suggestions="suggestions"
+          @refresh="loadConversations"
+          @create="startNewConversation"
+          @select="loadConversation"
+          @suggest="sendMessage"
+        />
       </section>
 
-      <form class="composer" @submit.prevent="sendMessage()">
-        <el-input
-          v-model="input"
-          type="textarea"
-          :rows="3"
-          resize="none"
-          placeholder="向 Agent 提问，例如：帮我计算 12 * 8"
-          @keydown="handleComposerKeydown"
-        />
-        <el-button type="primary" native-type="submit" :loading="loading" :disabled="!canSend">
-          发送
-        </el-button>
-      </form>
+      <ChatComposer
+        v-model:input="input"
+        v-model:internet-enabled="internetEnabled"
+        :loading="loading"
+        :can-send="canSend"
+        @send="sendMessage()"
+        @keydown="handleComposerKeydown"
+      />
 
-      <el-dialog v-model="approvalDialogOpen" title="审批对话触发的操作" width="560px" align-center>
-        <section v-if="pendingApproval" class="approval-dialog-body">
-          <p>{{ pendingApproval.description }}</p>
-          <dl>
-            <div v-for="(value, key) in pendingApproval.payload" :key="key">
-              <dt>{{ key }}</dt>
-              <dd>{{ value }}</dd>
-            </div>
-          </dl>
-          <el-input v-model="reviewer" placeholder="审批人" />
-          <el-input v-model="reviewNote" placeholder="审批备注" type="textarea" :rows="3" />
-        </section>
-        <template #footer>
-          <el-button :loading="reviewingApproval" @click="reviewCurrentApproval('reject')">拒绝</el-button>
-          <el-button type="primary" :loading="reviewingApproval" @click="reviewCurrentApproval('approve')">
-            批准并执行
-          </el-button>
-        </template>
-      </el-dialog>
+      <ChatApprovalDialog
+        v-model:open="approvalDialogOpen"
+        v-model:reviewer="reviewer"
+        v-model:note="reviewNote"
+        :approval="pendingApproval"
+        :reviewing="reviewingApproval"
+        @review="reviewCurrentApproval"
+      />
     </section>
   </main>
 </template>

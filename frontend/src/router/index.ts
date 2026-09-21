@@ -1,14 +1,16 @@
 import { createRouter, createWebHistory } from "vue-router";
-import AgentChatView from "../views/AgentChatView.vue";
-import AdminApprovalView from "../views/AdminApprovalView.vue";
-import BlogView from "../views/BlogView.vue";
-import HomeView from "../views/HomeView.vue";
-import KnowledgeBaseView from "../views/KnowledgeBaseView.vue";
-import LoginView from "../views/LoginView.vue";
-import MCPToolsView from "../views/MCPToolsView.vue";
-import ObservabilityView from "../views/ObservabilityView.vue";
-import SecurityView from "../views/SecurityView.vue";
 import { useAuthStore } from "../stores/auth";
+
+// Route-level lazy loading keeps the editor and visualization dependencies out
+// of the first screen's bundle. Each view becomes an independently cached chunk.
+const AgentChatView = () => import("../views/AgentChatView.vue");
+const AdminApprovalView = () => import("../views/AdminApprovalView.vue");
+const BlogView = () => import("../views/BlogView.vue");
+const HomeView = () => import("../views/HomeView.vue");
+const KnowledgeBaseView = () => import("../views/KnowledgeBaseView.vue");
+const LoginView = () => import("../views/LoginView.vue");
+const MCPToolsView = () => import("../views/MCPToolsView.vue");
+const ObservabilityView = () => import("../views/ObservabilityView.vue");
 
 const router = createRouter({
   history: createWebHistory(),
@@ -42,7 +44,8 @@ const router = createRouter({
     {
       path: "/admin-approvals",
       name: "admin-approvals",
-      component: AdminApprovalView
+      component: AdminApprovalView,
+      meta: { requiresAdmin: true }
     },
     {
       path: "/mcp-tools",
@@ -53,11 +56,6 @@ const router = createRouter({
       path: "/observability",
       name: "observability",
       component: ObservabilityView
-    },
-    {
-      path: "/security",
-      name: "security",
-      component: SecurityView
     }
   ]
 });
@@ -72,6 +70,9 @@ router.beforeEach(async (to) => {
   }
   if (!auth.isAuthenticated) {
     return { path: "/login", query: { redirect: to.fullPath } };
+  }
+  if (to.meta.requiresAdmin && auth.session.role !== "admin") {
+    return "/";
   }
   return true;
 });

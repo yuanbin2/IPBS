@@ -3,6 +3,14 @@ import vue from "@vitejs/plugin-vue";
 
 export default defineConfig({
   plugins: [vue()],
+  // Keep the conventional Vite output path. Both the frontend Nginx image and
+  // Django's local SPA fallback serve this same directory.
+  base: "/",
+  build: {
+    outDir: "dist",
+    emptyOutDir: true,
+    assetsDir: "assets"
+  },
   server: {
     port: 5173,
     proxy: {
@@ -13,4 +21,3 @@ export default defineConfig({
     }
   }
 });
-

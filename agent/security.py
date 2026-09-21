@@ -1,3 +1,5 @@
+"""Agent 请求的 JWT 身份、角色、工作区隔离和敏感信息过滤。"""
+
 from __future__ import annotations
 
 import re
@@ -6,7 +8,8 @@ from typing import Iterable
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core import signing
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 
 TOKEN_SALT = "knowledge-agent-auth"
@@ -42,18 +45,17 @@ class SecurityContext:
 
 
 def issue_signed_token(user) -> str:
-    profile = get_or_create_profile(user)
-    return signing.dumps(
-        {
-            "user_id": user.id,
-            "role": profile.role,
-            "workspace_key": profile.workspace_key,
-        },
-        salt=TOKEN_SALT,
-    )
+    """Return a standards-based short-lived JWT access token."""
+    return str(RefreshToken.for_user(user).access_token)
+
+
+def issue_jwt_pair(user) -> dict[str, str]:
+    refresh = RefreshToken.for_user(user)
+    return {"access": str(refresh.access_token), "refresh": str(refresh)}
 
 
 def context_from_request(request) -> SecurityContext:
+    # 优先使用 DRF 已认证用户；手动解析 Bearer Token 仅作为兼容路径。
     if getattr(request, "user", None) and request.user.is_authenticated:
         profile = get_or_create_profile(request.user)
         return SecurityContext(request.user.username, profile.role, profile.workspace_key, True)
@@ -65,6 +67,7 @@ def context_from_request(request) -> SecurityContext:
         if context.authenticated:
             return context
 
+    # X-Role 只在关闭强制安全的开发环境生效，生产环境不能靠请求头提权。
     workspace_key = normalize_workspace_key(request.META.get("HTTP_X_WORKSPACE", DEFAULT_WORKSPACE_KEY))
     role = request.META.get("HTTP_X_ROLE", "").strip().lower()
     if role in {"admin", "operator", "visitor"} and not security_enforced():
@@ -75,9 +78,9 @@ def context_from_request(request) -> SecurityContext:
 
 def context_from_token(token: str) -> SecurityContext:
     try:
-        payload = signing.loads(token, salt=TOKEN_SALT, max_age=TOKEN_MAX_AGE_SECONDS)
+        payload = AccessToken(token)
         user = get_user_model().objects.get(pk=payload["user_id"], is_active=True)
-    except Exception:
+    except (TokenError, KeyError, get_user_model().DoesNotExist):
         return SecurityContext("anonymous", "visitor", DEFAULT_WORKSPACE_KEY, False)
     profile = get_or_create_profile(user)
     return SecurityContext(user.username, profile.role, normalize_workspace_key(profile.workspace_key), True)
