@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Iterator, Literal
 
 from .simple_agent import AgentResponse, SimpleToolCallingAgent, SourceCitation, TokenUsage
 from .security import detect_sensitive_input, redact_sensitive_output
@@ -147,6 +147,134 @@ class MultiAgentSupervisor:
             token_usage=response.token_usage,
             supervisor=decision,
         )
+
+    def chat_stream(
+        self,
+        message: str,
+        internet_enabled: bool = False,
+        history: list[dict[str, str]] | None = None,
+    ) -> Iterator[dict]:
+        """Stream trace entries and final response as SSE-compatible dicts.
+
+        Each yield is a dict with a "type" key:
+        - {"type": "trace", "data": "trace entry text"}
+        - {"type": "response", "answer": ..., "tool_calls": ..., ...}
+        - {"type": "error", "detail": "error message"}
+        """
+        message = message.strip()
+        history = history or []
+
+        # Security check
+        sensitive_marker = detect_sensitive_input(message)
+        if sensitive_marker:
+            yield {"type": "trace", "data": "security_filter -> sensitive input detected"}
+            yield {"type": "trace", "data": f"security_filter -> pattern={sensitive_marker}"}
+            response = self._run_admin_approval_agent(message)
+            yield {
+                "type": "response",
+                "answer": response.answer,
+                "tool_calls": [asdict(call) for call in response.tool_calls],
+                "sources": [asdict(source) for source in response.sources],
+                "trace": response.trace,
+                "route": response.route,
+                "token_usage": response.token_usage,
+                "supervisor": asdict(self._decision(
+                    "admin_approval_agent", "Admin Approval Agent",
+                    "security filter requires human approval", 0.97,
+                )),
+            }
+            return
+
+        # Supervisor routing
+        decision = self._decide(self._routing_message(message, history))
+        explicit_web_search = self.is_mcp_request(message) and self.select_mcp_tool_name(message) == "web_search"
+
+        base_trace = [
+            "supervisor -> received request",
+            f"supervisor -> {decision.selected_agent} ({decision.reason})",
+            f"context_memory -> {len(history)} previous messages",
+            decision.handoff,
+        ]
+        for trace_entry in base_trace:
+            yield {"type": "trace", "data": trace_entry}
+
+        # Internet search path
+        if explicit_web_search or (
+            internet_enabled and (
+                not self.is_mcp_request(message) or self.select_mcp_tool_name(message) == "web_search"
+            )
+        ):
+            yield {"type": "trace", "data": "internet_agent -> starting web search"}
+            response = self._run_internet_agent(message, base_trace, history)
+            yield {
+                "type": "response",
+                "answer": response.answer,
+                "tool_calls": [asdict(call) for call in response.tool_calls],
+                "sources": [asdict(source) for source in response.sources],
+                "trace": [*base_trace, *response.trace],
+                "route": response.route,
+                "token_usage": response.token_usage,
+                "supervisor": asdict(decision),
+            }
+            return
+
+        # RAG agent — stream LangGraph execution
+        if decision.selected_agent == "rag_agent":
+            seen_trace = set()
+            for trace_entry in base_trace:
+                seen_trace.add(trace_entry)
+            for event in self.rag_agent.chat_stream(message, history=history):
+                if event["type"] == "trace":
+                    if event["data"] not in seen_trace:
+                        seen_trace.add(event["data"])
+                        yield event
+                elif event["type"] == "response":
+                    answer, redacted = redact_sensitive_output(event["answer"])
+                    extra_trace = ["security_filter -> output redacted"] if redacted else []
+                    yield {
+                        "type": "response",
+                        "answer": answer,
+                        "tool_calls": event["tool_calls"],
+                        "sources": event["sources"],
+                        "trace": [*base_trace, *event["trace"], *extra_trace],
+                        "route": event["route"],
+                        "token_usage": event["token_usage"],
+                        "supervisor": asdict(decision),
+                    }
+            return
+
+        # Other agents — synchronous, yield trace then response
+        if decision.selected_agent == "blog_agent":
+            yield {"type": "trace", "data": "blog_agent -> public blog/resume retrieval completed"}
+            response = self._run_blog_agent(message, history)
+        elif decision.selected_agent == "sql_analysis_agent":
+            yield {"type": "trace", "data": "sql_analysis_agent -> safe aggregate query completed"}
+            response = self._run_sql_analysis_agent(message)
+        elif decision.selected_agent == "mcp_tool_agent":
+            yield {"type": "trace", "data": "mcp_tool_agent -> executing tool"}
+            response = self._run_mcp_tool_agent(message)
+        elif decision.selected_agent == "review_agent":
+            yield {"type": "trace", "data": "review_agent -> quality checklist generated"}
+            response = self._run_review_agent(message)
+        elif decision.selected_agent == "admin_approval_agent":
+            yield {"type": "trace", "data": "admin_approval_agent -> manual approval required"}
+            response = self._run_admin_approval_agent(message)
+        else:
+            yield {"type": "trace", "data": "general_llm_agent -> no retrieval"}
+            response = self._run_writing_agent(message, history)
+
+        answer, redacted = redact_sensitive_output(response.answer)
+        extra_trace = ["security_filter -> output redacted"] if redacted else []
+        yield {
+            "type": "response",
+            "answer": answer,
+            "tool_calls": [asdict(call) for call in response.tool_calls],
+            "sources": [asdict(source) for source in response.sources],
+            "trace": [*base_trace, *response.trace, *extra_trace],
+            "route": response.route,
+            "token_usage": response.token_usage,
+            "supervisor": asdict(decision),
+        }
 
     def _from_agent_response(
         self,

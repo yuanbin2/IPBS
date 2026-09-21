@@ -240,6 +240,12 @@ DEFAULT_MCP_TOOLS = [
 def ensure_default_mcp_tools() -> None:
     for tool in DEFAULT_MCP_TOOLS:
         MCPTool.objects.get_or_create(name=tool["name"], defaults=tool)
+    # web_search should be enabled by default for internet search to work.
+    # The get_or_create above only sets defaults on first creation; if the row
+    # already existed with is_enabled=False (e.g. from an earlier seed), the
+    # migration 0012_enable_web_search handles enabling.  As a safety net we
+    # also enable it here in case the migration ran before the row existed.
+    MCPTool.objects.filter(name="web_search", is_enabled=False).update(is_enabled=True)
 
 
 
