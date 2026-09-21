@@ -331,23 +331,10 @@ function formatAgentName(agentName: string) {
 </script>
 
 <template>
-  <main class="shell">
-    <aside class="sidebar">
-      <div class="brand">Knowledge Agent</div>
-      <nav class="nav">
-        <RouterLink to="/">概览</RouterLink>
-        <RouterLink to="/blog">博客</RouterLink>
-        <RouterLink to="/knowledge">知识库</RouterLink>
-        <RouterLink class="active" to="/chat">对话</RouterLink>
-        <a>评估</a>
-      </nav>
-    </aside>
-
-    <section class="workspace chat-workspace">
+  <section class="chat-workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">LangGraph StateGraph Workflow</p>
-          <h1>Agent 聊天页面</h1>
+          <h1>智能对话</h1>
         </div>
         <RouterLink to="/">
           <el-button :icon="Back">返回概览</el-button>
@@ -397,5 +384,4 @@ function formatAgentName(agentName: string) {
         @review="reviewCurrentApproval"
       />
     </section>
-  </main>
 </template>

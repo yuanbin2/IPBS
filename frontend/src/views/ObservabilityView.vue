@@ -107,24 +107,10 @@ async function requestJson(url: string, options: RequestInit = {}) {
 </script>
 
 <template>
-  <main class="shell">
-    <aside class="sidebar">
-      <div class="brand">Knowledge Agent</div>
-      <nav class="nav">
-        <RouterLink to="/">概览</RouterLink>
-        <RouterLink to="/blog">博客</RouterLink>
-        <RouterLink to="/knowledge">知识库</RouterLink>
-        <RouterLink to="/chat">对话</RouterLink>
-        <RouterLink to="/mcp-tools">MCP 工具</RouterLink>
-        <RouterLink class="active" to="/observability">观测评估</RouterLink>
-      </nav>
-    </aside>
-
-    <section class="workspace observability-workspace">
+  <section class="observability-workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Day 11 Observability + Evaluation</p>
-          <h1>Agent 可观测性与评估集</h1>
+          <h1>观测与评估</h1>
         </div>
         <RouterLink to="/">
           <el-button :icon="Back">返回概览</el-button>
@@ -221,5 +207,4 @@ async function requestJson(url: string, options: RequestInit = {}) {
         </section>
       </section>
     </section>
-  </main>
 </template>

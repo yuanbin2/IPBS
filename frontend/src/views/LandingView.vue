@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChatDotRound, Connection, Cpu, DataAnalysis, Files, UploadFilled, Right } from "@element-plus/icons-vue";
+import { ChatDotRound, Connection, DataAnalysis, Files, UploadFilled, Right } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
@@ -18,32 +18,18 @@ const features = [
     color: "#67c23a"
   },
   {
-    title: "Agentic RAG",
-    detail: "检索、评分、改写问题、生成答案并给出引用来源。",
-    icon: DataAnalysis,
-    color: "#e6a23c"
-  },
-  {
-    title: "工具调用",
-    detail: "知识库检索、用户资料、计算器工具已接入。",
-    icon: Cpu,
-    color: "#f56c6c"
-  },
-  {
     title: "智能对话",
-    detail: "通过 LangGraph Agent 进行多轮对话交互。",
+    detail: "基于 LangGraph 的多智能体协作，自动路由到最合适的 Agent。",
     icon: ChatDotRound,
     color: "#909399"
   },
   {
-    title: "观测评估",
-    detail: "记录 Agent trace、耗时、工具成功率，并用评估集验证效果。",
+    title: "Agentic RAG",
+    detail: "检索、评分、改写问题、生成答案并给出引用来源。",
     icon: DataAnalysis,
-    color: "#00d4aa"
+    color: "#e6a23c"
   }
 ];
-
-const techStack = ["Vue 3", "Django", "LangChain", "Agentic RAG", "MCP", "PostgreSQL"];
 
 function goToLogin() {
   router.push("/login");
@@ -58,15 +44,12 @@ function goToLogin() {
         <div class="hero-badge">Enterprise AI Platform</div>
         <h1>企业知识智能体平台</h1>
         <p class="hero-subtitle">
-          基于 Agentic RAG 的智能知识管理系统，集成个人博客、企业知识库、智能对话和观测评估
+          基于 Agentic RAG 的智能知识管理，让博客、文档和对话汇聚为统一的知识源。
         </p>
         <div class="hero-actions">
           <el-button type="primary" size="large" @click="goToLogin">
             开始使用
             <el-icon class="el-icon--right"><Right /></el-icon>
-          </el-button>
-          <el-button size="large" plain>
-            了解更多
           </el-button>
         </div>
       </div>
@@ -95,16 +78,6 @@ function goToLogin() {
       </div>
     </section>
 
-    <!-- Tech Stack Section -->
-    <section class="tech-stack">
-      <h2>技术栈</h2>
-      <div class="stack-tags">
-        <span v-for="item in techStack" :key="item" class="stack-tag">
-          {{ item }}
-        </span>
-      </div>
-    </section>
-
     <!-- CTA Section -->
     <section class="cta">
       <h2>准备好开始了吗？</h2>
@@ -116,7 +89,7 @@ function goToLogin() {
 
     <!-- Footer -->
     <footer class="landing-footer">
-      <p>© 2024 企业知识智能体平台 - 基于 Agentic RAG 的智能知识管理系统</p>
+      <p>© 2025 企业知识智能体平台</p>
     </footer>
   </div>
 </template>
@@ -256,31 +229,6 @@ function goToLogin() {
   color: #666;
   margin: 0;
   line-height: 1.6;
-}
-
-/* Tech Stack */
-.tech-stack {
-  padding: 60px 40px;
-  background: #fff;
-  color: #333;
-}
-
-.stack-tags {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.stack-tag {
-  padding: 10px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
-  border-radius: 24px;
-  font-size: 14px;
-  font-weight: 500;
 }
 
 /* CTA Section */

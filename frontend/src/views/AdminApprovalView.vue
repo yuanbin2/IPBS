@@ -101,23 +101,10 @@ async function requestJson(url: string, options: RequestInit = {}) {
 </script>
 
 <template>
-  <main class="shell">
-    <aside class="sidebar">
-      <div class="brand">Knowledge Agent</div>
-      <nav class="nav">
-        <RouterLink to="/">概览</RouterLink>
-        <RouterLink to="/blog">博客</RouterLink>
-        <RouterLink to="/knowledge">知识库</RouterLink>
-        <RouterLink to="/chat">对话</RouterLink>
-        <RouterLink class="active" to="/admin-approvals">审批</RouterLink>
-      </nav>
-    </aside>
-
-    <section class="workspace approval-workspace">
+  <section class="approval-workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Day 9 Human-in-the-loop</p>
-          <h1>人工审批后台</h1>
+          <h1>人工审批</h1>
         </div>
         <RouterLink to="/">
           <el-button :icon="Back">返回概览</el-button>
@@ -195,5 +182,4 @@ async function requestJson(url: string, options: RequestInit = {}) {
         </section>
       </section>
     </section>
-  </main>
 </template>

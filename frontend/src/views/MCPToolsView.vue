@@ -140,24 +140,10 @@ async function requestJson(url: string, options: RequestInit = {}) {
 </script>
 
 <template>
-  <main class="shell">
-    <aside class="sidebar">
-      <div class="brand">Knowledge Agent</div>
-      <nav class="nav">
-        <RouterLink to="/">概览</RouterLink>
-        <RouterLink to="/blog">博客</RouterLink>
-        <RouterLink to="/knowledge">知识库</RouterLink>
-        <RouterLink to="/chat">对话</RouterLink>
-        <RouterLink v-if="auth.session.role === 'admin'" to="/admin-approvals">审批</RouterLink>
-        <RouterLink class="active" to="/mcp-tools">MCP 工具</RouterLink>
-      </nav>
-    </aside>
-
-    <section class="workspace mcp-workspace">
+  <section class="mcp-workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Day 10 MCP Tool Registry</p>
-          <h1>MCP 工具接入</h1>
+          <h1>MCP 工具</h1>
         </div>
         <RouterLink to="/">
           <el-button :icon="Back">返回概览</el-button>
@@ -235,5 +221,4 @@ async function requestJson(url: string, options: RequestInit = {}) {
         </template>
       </el-dialog>
     </section>
-  </main>
 </template>

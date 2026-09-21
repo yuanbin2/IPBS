@@ -1,80 +1,112 @@
 <script setup lang="ts">
-import { ChatDotRound, Connection, Cpu, DataAnalysis, Files, UploadFilled } from "@element-plus/icons-vue";
+import { onMounted, ref } from "vue";
+import { ChatDotRound, DataAnalysis, Files, UploadFilled } from "@element-plus/icons-vue";
 import { RouterLink } from "vue-router";
-import { usePlatformStore } from "../stores/platform";
+import { useAuthStore } from "../stores/auth";
 
-const platform = usePlatformStore();
+const auth = useAuthStore();
 
-const modules = [
-  { title: "个人博客", detail: "文章发布后自动进入知识库，成为 Agent 的个人经历来源。", icon: Files, path: "/blog" },
-  { title: "企业知识库", detail: "上传 Markdown、txt、PDF，自动切分并建立检索索引。", icon: UploadFilled, path: "/knowledge" },
-  { title: "Agentic RAG", detail: "检索、评分、改写问题、生成答案并给出引用来源。", icon: DataAnalysis },
-  { title: "工具调用", detail: "知识库检索、用户资料、计算器工具已接入。", icon: Cpu },
-  { title: "对话入口", detail: "通过 /api/agent/chat/ 与 LangGraph Agent 交互。", icon: ChatDotRound, path: "/chat" }
-  ,
-  { title: "观测评估", detail: "记录 Agent trace、耗时、工具成功率，并用评估集验证效果。", icon: DataAnalysis, path: "/observability" }
+const stats = ref({
+  articleCount: 0,
+  knowledgeBaseCount: 0,
+  totalAgentRuns: 0,
+  averageLatencyMs: 0
+});
+const statsLoading = ref(true);
+
+const quickLinks = [
+  { title: "博客", detail: "撰写和管理技术文章", icon: Files, path: "/blog" },
+  { title: "知识库", detail: "上传文档，构建检索索引", icon: UploadFilled, path: "/knowledge" },
+  { title: "智能对话", detail: "与多智能体助手交互", icon: ChatDotRound, path: "/chat" },
+  { title: "观测评估", detail: "查看 Agent 运行指标与评估", icon: DataAnalysis, path: "/observability" }
 ];
+
+onMounted(async () => {
+  try {
+    const [articles, knowledgeBases, observability] = await Promise.allSettled([
+      requestJson("/api/agent/blog/articles/"),
+      requestJson("/api/agent/knowledge-bases/"),
+      requestJson("/api/agent/observability/")
+    ]);
+
+    if (articles.status === "fulfilled") {
+      stats.value.articleCount = Array.isArray(articles.value) ? articles.value.length : 0;
+    }
+    if (knowledgeBases.status === "fulfilled") {
+      stats.value.knowledgeBaseCount = Array.isArray(knowledgeBases.value) ? knowledgeBases.value.length : 0;
+    }
+    if (observability.status === "fulfilled" && observability.value?.summary) {
+      stats.value.totalAgentRuns = observability.value.summary.total_runs ?? 0;
+      stats.value.averageLatencyMs = observability.value.summary.average_latency_ms ?? 0;
+    }
+  } finally {
+    statsLoading.value = false;
+  }
+});
+
+async function requestJson(url: string, options: RequestInit = {}) {
+  const response = await fetch(url, options);
+  const contentType = response.headers.get("content-type") ?? "";
+  const text = await response.text();
+  let payload: any = null;
+  if (contentType.includes("application/json") && text) {
+    payload = JSON.parse(text);
+  }
+  if (!response.ok) {
+    throw new Error(payload?.detail ?? `HTTP ${response.status}`);
+  }
+  return payload;
+}
 </script>
 
 <template>
-  <main class="shell">
-    <aside class="sidebar">
-      <div class="brand">Knowledge Agent</div>
-      <nav class="nav">
-        <RouterLink class="active" to="/">概览</RouterLink>
-        <RouterLink to="/blog">博客</RouterLink>
-        <RouterLink to="/knowledge">知识库</RouterLink>
-        <RouterLink to="/chat">对话</RouterLink>
-        <RouterLink to="/observability">评估</RouterLink>
-      </nav>
-    </aside>
+  <section class="dashboard">
+    <header class="dashboard-header">
+      <div>
+        <h1>欢迎回来，{{ auth.session.actor }}</h1>
+        <p class="dashboard-subtitle">企业知识智能体平台 · 运行概览</p>
+      </div>
+      <RouterLink to="/chat">
+        <el-button type="primary">新建对话</el-button>
+      </RouterLink>
+    </header>
 
-    <section class="workspace">
-      <header class="topbar">
+    <section class="dashboard-stats">
+      <article class="stat-card">
+        <span>博客文章</span>
+        <strong>{{ statsLoading ? "—" : stats.articleCount }}</strong>
+        <small>已发布文章总数</small>
+      </article>
+      <article class="stat-card">
+        <span>知识库</span>
+        <strong>{{ statsLoading ? "—" : stats.knowledgeBaseCount }}</strong>
+        <small>已创建知识库数</small>
+      </article>
+      <article class="stat-card">
+        <span>Agent 调用</span>
+        <strong>{{ statsLoading ? "—" : stats.totalAgentRuns }}</strong>
+        <small>累计运行次数</small>
+      </article>
+      <article class="stat-card">
+        <span>平均延迟</span>
+        <strong>{{ statsLoading ? "—" : Math.round(stats.averageLatencyMs) }}<small>ms</small></strong>
+        <small>最近 Agent 响应</small>
+      </article>
+    </section>
+
+    <section class="dashboard-links">
+      <RouterLink
+        v-for="item in quickLinks"
+        :key="item.path"
+        class="link-card"
+        :to="item.path"
+      >
+        <el-icon><component :is="item.icon" /></el-icon>
         <div>
-          <p class="eyebrow">Day 6 Personal Blog Agent</p>
-          <h1>{{ platform.projectName }}</h1>
-        </div>
-        <RouterLink to="/chat">
-          <el-button type="primary" :icon="Connection">新建对话</el-button>
-        </RouterLink>
-      </header>
-
-      <section class="status-grid">
-        <article>
-          <span>后端</span>
-          <strong>Django + DRF</strong>
-          <small>blog + knowledge + agent APIs ready</small>
-        </article>
-        <article>
-          <span>Agent</span>
-          <strong>Agentic RAG</strong>
-          <small>analyze -> retrieve -> grade -> rewrite -> cite</small>
-        </article>
-        <article>
-          <span>博客知识源</span>
-          <strong>Article to Knowledge</strong>
-          <small>publish article -> embedding -> retrieval</small>
-        </article>
-      </section>
-
-      <section class="module-grid">
-        <component
-          :is="item.path ? RouterLink : 'article'"
-          v-for="item in modules"
-          :key="item.title"
-          class="module-card"
-          :to="item.path"
-        >
-          <el-icon><component :is="item.icon" /></el-icon>
           <h2>{{ item.title }}</h2>
           <p>{{ item.detail }}</p>
-        </component>
-      </section>
-
-      <section class="stack">
-        <span v-for="item in platform.stack" :key="item">{{ item }}</span>
-      </section>
+        </div>
+      </RouterLink>
     </section>
-  </main>
+  </section>
 </template>

@@ -112,28 +112,17 @@ const editorStats = computed(() => {
 
 const activeSlug = computed(() => String(route.params.slug ?? ""));
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
-const storedLeftWidth = Number(localStorage.getItem("blogLayoutLeftWidth"));
 const storedRightWidth = Number(localStorage.getItem("blogLayoutRightWidth"));
-const leftSidebarVisible = ref(localStorage.getItem("blogLayoutLeftVisible") !== "false");
 const rightPanelVisible = ref(localStorage.getItem("blogLayoutRightVisible") !== "false");
-const leftSidebarWidth = ref(clamp(Number.isFinite(storedLeftWidth) && storedLeftWidth > 0 ? storedLeftWidth : 240, 180, 360));
 const rightPanelWidth = ref(clamp(Number.isFinite(storedRightWidth) && storedRightWidth > 0 ? storedRightWidth : 360, 260, 560));
-const resizingPanel = ref<"left" | "right" | null>(null);
+const resizingPanel = ref<"right" | null>(null);
 const clearingDraft = ref(false);
 const blogLayoutStyle = computed(() => ({
-  "--blog-sidebar-width": `${leftSidebarWidth.value}px`,
   "--blog-panel-width": `${rightPanelWidth.value}px`
 }));
 
 function resizePanels(event: PointerEvent) {
-  if (resizingPanel.value === "left") {
-    if (event.clientX <= 150) {
-      leftSidebarVisible.value = false;
-      stopPanelResize();
-      return;
-    }
-    leftSidebarWidth.value = clamp(event.clientX, 180, 360);
-  } else if (resizingPanel.value === "right") {
+  if (resizingPanel.value === "right") {
     const nextWidth = window.innerWidth - event.clientX;
     if (nextWidth <= 210) {
       rightPanelVisible.value = false;
@@ -152,7 +141,7 @@ function stopPanelResize() {
   window.removeEventListener("pointerup", stopPanelResize);
 }
 
-function startPanelResize(panel: "left" | "right", event: PointerEvent) {
+function startPanelResize(panel: "right", event: PointerEvent) {
   if (window.matchMedia("(max-width: 980px)").matches) return;
   resizingPanel.value = panel;
   document.body.classList.add("blog-panel-resizing");
@@ -183,17 +172,9 @@ watch(activeSlug, async (slug) => {
   }
 });
 
-watch([leftSidebarWidth, rightPanelWidth, leftSidebarVisible, rightPanelVisible], () => {
-  localStorage.setItem("blogLayoutLeftWidth", String(leftSidebarWidth.value));
+watch([rightPanelWidth, rightPanelVisible], () => {
   localStorage.setItem("blogLayoutRightWidth", String(rightPanelWidth.value));
-  localStorage.setItem("blogLayoutLeftVisible", String(leftSidebarVisible.value));
   localStorage.setItem("blogLayoutRightVisible", String(rightPanelVisible.value));
-  window.dispatchEvent(new CustomEvent("blog-layout-change", {
-    detail: {
-      leftVisible: leftSidebarVisible.value,
-      leftWidth: leftSidebarWidth.value
-    }
-  }));
 });
 
 onBeforeUnmount(stopPanelResize);
@@ -544,44 +525,14 @@ async function requestJson(url: string, options: RequestInit = {}) {
   <main
     class="shell blog-shell"
     :class="{
-      'left-sidebar-hidden': !leftSidebarVisible,
       'right-panel-hidden': !rightPanelVisible,
       'is-resizing': resizingPanel
     }"
     :style="blogLayoutStyle"
   >
-    <aside v-show="leftSidebarVisible" class="sidebar">
-      <div class="brand">Knowledge Agent</div>
-      <nav class="nav">
-        <RouterLink to="/">概览</RouterLink>
-        <RouterLink class="active" to="/blog">博客</RouterLink>
-        <RouterLink to="/knowledge">知识库</RouterLink>
-        <RouterLink to="/chat">对话</RouterLink>
-        <a>评估</a>
-      </nav>
-    </aside>
-    <button
-      class="panel-toggle left-panel-toggle"
-      type="button"
-      :aria-label="leftSidebarVisible ? '隐藏导航栏' : '显示导航栏'"
-      :title="leftSidebarVisible ? '隐藏导航栏' : '显示导航栏'"
-      @click="leftSidebarVisible = !leftSidebarVisible"
-    >
-      {{ leftSidebarVisible ? "‹" : "›" }}
-    </button>
-    <button
-      v-show="leftSidebarVisible"
-      class="panel-resizer left-panel-resizer"
-      type="button"
-      aria-label="拖动调整导航栏宽度"
-      title="拖动调整导航栏宽度"
-      @pointerdown="startPanelResize('left', $event)"
-    />
-
     <section class="workspace blog-workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Day 6 Personal Blog Agent</p>
           <h1>个人技术博客</h1>
         </div>
         <div class="blog-layout-controls">

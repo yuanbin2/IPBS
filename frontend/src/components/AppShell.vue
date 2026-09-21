@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   ChatDotRound,
@@ -15,8 +15,6 @@ import { useAuthStore } from "../stores/auth";
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
-const blogSidebarVisible = ref(localStorage.getItem("blogLayoutLeftVisible") !== "false");
-const blogSidebarWidth = ref(Number(localStorage.getItem("blogLayoutLeftWidth")) || 240);
 
 const navItems = computed(() => [
   { path: "/", label: "概览", icon: House },
@@ -39,31 +37,19 @@ function logout() {
   auth.logout();
   router.replace("/login");
 }
-
-function applyBlogLayout(event: Event) {
-  const detail = (event as CustomEvent<{ leftVisible: boolean; leftWidth: number }>).detail;
-  if (!detail) return;
-  blogSidebarVisible.value = detail.leftVisible;
-  blogSidebarWidth.value = detail.leftWidth;
-}
-
-onMounted(() => window.addEventListener("blog-layout-change", applyBlogLayout));
-onBeforeUnmount(() => window.removeEventListener("blog-layout-change", applyBlogLayout));
 </script>
 
 <template>
-  <main
-    class="shell"
-    :class="{
-      'app-blog-layout': activePath === '/blog',
-      'app-sidebar-hidden': activePath === '/blog' && !blogSidebarVisible
-    }"
-    :style="activePath === '/blog' ? { '--blog-sidebar-width': `${blogSidebarWidth}px` } : undefined"
-  >
+  <main class="shell">
     <aside class="sidebar">
       <RouterLink class="brand" to="/">Knowledge Agent</RouterLink>
       <nav class="nav">
-        <RouterLink v-for="item in navItems" :key="item.path" :class="{ active: activePath === item.path }" :to="item.path">
+        <RouterLink
+          v-for="item in navItems"
+          :key="item.path"
+          :class="{ active: activePath === item.path }"
+          :to="item.path"
+        >
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.label }}</span>
         </RouterLink>
