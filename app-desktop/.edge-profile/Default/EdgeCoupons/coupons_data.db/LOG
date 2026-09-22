@@ -1,0 +1,6 @@
+2026/09/22-22:18:36.527 7dcc Reusing MANIFEST E:\Desktop\MyProject\Blog-fixed-20260727\Blog\app-desktop\.edge-profile\Default\EdgeCoupons/coupons_data.db/MANIFEST-000001
+2026/09/22-22:18:36.530 7dcc Recovering log #7
+2026/09/22-22:18:36.534 7dcc Reusing old log E:\Desktop\MyProject\Blog-fixed-20260727\Blog\app-desktop\.edge-profile\Default\EdgeCoupons/coupons_data.db/000007.log 
+2026/09/22-22:18:36.663 a360 Level-0 table #11: started
+2026/09/22-22:18:36.668 a360 Level-0 table #11: 683444 bytes OK
+2026/09/22-22:18:36.672 a360 Delete type=0 #7

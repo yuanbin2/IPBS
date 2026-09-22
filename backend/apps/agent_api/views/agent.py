@@ -1,5 +1,9 @@
 """Agent REST API：会话分页、消息持久化、审批和可观测性入口。"""
 
+import json
+import time
+from django.http import StreamingHttpResponse
+
 from .common import *
 
 
@@ -283,6 +287,183 @@ class AgentChatView(APIView):
         )
 
 
+class AgentChatStreamView(APIView):
+    """SSE streaming endpoint that yields thinking steps and the final answer."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        message = str(request.data.get("message", "")).strip()
+        if not message:
+            return Response(
+                {"detail": "message is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        workspace_key = get_workspace_key(request)
+        sensitive_marker = detect_sensitive_input(message)
+        if sensitive_marker:
+            audit_security_event(
+                request,
+                SecurityAuditEvent.EventType.SENSITIVE_INPUT,
+                "chat input matched security filter",
+                {"pattern": sensitive_marker},
+            )
+
+        conversation = self._get_or_create_conversation(
+            request.data.get("conversation_id"),
+            message,
+            workspace_key,
+            get_conversation_owner(request),
+        )
+        history = [
+            {"role": item.role, "content": item.content}
+            for item in conversation.messages.order_by("-id")[:10][::-1]
+        ]
+        Message.objects.create(
+            conversation=conversation,
+            role=Message.Role.USER,
+            content=message,
+        )
+
+        # Check for approval
+        approval = maybe_create_blog_delete_approval(message, request) or maybe_create_mcp_approval(message, request)
+        if approval:
+            is_mcp_approval = approval.action == ApprovalRequest.Action.EXECUTE_MCP_TOOL
+            response_data = {
+                "answer": (
+                    f"工具调用已进入人工审批 #{approval.id}：{approval.payload.get('tool_name')}"
+                    if is_mcp_approval
+                    else f"已为文章删除创建审批单 #{approval.id}。管理员批准后才会删除：{approval.payload.get('title')}"
+                ),
+                "tool_calls": [
+                    {
+                        "name": "mcp_approval" if is_mcp_approval else "admin_approval",
+                        "input": message,
+                        "output": f"approval_id={approval.id}; action={approval.action}",
+                    }
+                ],
+                "sources": [],
+                "trace": [
+                    "supervisor -> received request",
+                    "supervisor -> admin_approval_agent (blog deletion requires approval)",
+                    "admin_approval_agent -> approval request created",
+                ],
+                "route": "admin_approval_agent",
+                "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                "supervisor": {
+                    "selected_agent": "admin_approval_agent",
+                    "display_name": "Admin Approval Agent",
+                    "reason": "blog deletion requires human approval",
+                    "confidence": 0.98,
+                    "handoff": "handoff -> Admin Approval Agent",
+                },
+            }
+
+            def approval_stream():
+                yield f"data: {json.dumps({'type': 'response', **response_data}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation.id}, ensure_ascii=False)}\n\n"
+
+            Message.objects.create(
+                conversation=conversation,
+                role=Message.Role.AGENT,
+                content=response_data["answer"],
+                tool_calls=response_data["tool_calls"],
+                sources=response_data["sources"],
+                trace=response_data["trace"],
+                token_usage=response_data["token_usage"],
+            )
+            conversation.save(update_fields=["updated_at"])
+
+            response = StreamingHttpResponse(approval_stream(), content_type="text/event-stream")
+            response["Cache-Control"] = "no-cache"
+            response["X-Accel-Buffering"] = "no"
+            return response
+
+        # SSE generator for normal chat
+        def event_stream():
+            project_root = Path(settings.BASE_DIR).parent
+            started_at = time.perf_counter()
+            agent = MultiAgentSupervisor(project_root, workspace_key=workspace_key)
+            collected_response = {}
+
+            try:
+                for event in agent.chat_stream(
+                    message,
+                    internet_enabled=bool(request.data.get("internet_enabled", False)),
+                    history=history,
+                ):
+                    if event["type"] == "response":
+                        collected_response = event
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            except Exception as exc:
+                yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)}, ensure_ascii=False)}\n\n"
+
+            # Persist after streaming completes
+            if collected_response:
+                Message.objects.create(
+                    conversation=conversation,
+                    role=Message.Role.AGENT,
+                    content=collected_response.get("answer", ""),
+                    tool_calls=collected_response.get("tool_calls", []),
+                    sources=collected_response.get("sources", []),
+                    trace=collected_response.get("trace", []),
+                    token_usage=collected_response.get("token_usage", {}),
+                )
+                agent_run = AgentRun.objects.create(
+                    conversation=conversation,
+                    workspace_key=workspace_key,
+                    input_message=message,
+                    route=collected_response.get("route", ""),
+                    tool_calls=collected_response.get("tool_calls", []),
+                    sources=collected_response.get("sources", []),
+                    trace=collected_response.get("trace", []),
+                    token_usage=collected_response.get("token_usage", {}),
+                )
+                create_agent_observation(
+                    conversation=conversation,
+                    agent_run=agent_run,
+                    input_message=message,
+                    workspace_key=workspace_key,
+                    response_data=collected_response,
+                    latency_ms=round((time.perf_counter() - started_at) * 1000),
+                )
+                conversation.save(update_fields=["updated_at"])
+
+                # Send done event with conversation_id
+                yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation.id}, ensure_ascii=False)}\n\n"
+
+        response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+    def _get_or_create_conversation(
+        self,
+        conversation_id,
+        message: str,
+        workspace_key: str,
+        owner_username: str,
+    ) -> Conversation:
+        if conversation_id:
+            return get_object_or_404(
+                Conversation,
+                pk=conversation_id,
+                workspace_key=workspace_key,
+                owner_username=owner_username,
+            )
+
+        title = message[:40]
+        if len(message) > 40:
+            title = f"{title}..."
+        return Conversation.objects.create(
+            title=title,
+            workspace_key=workspace_key,
+            owner_username=owner_username,
+        )
+
+
 class ObservabilityDashboardView(APIView):
     authentication_classes = []
     permission_classes = []
@@ -291,14 +472,19 @@ class ObservabilityDashboardView(APIView):
         denied = require_roles(request, [UserProfile.Role.OPERATOR])
         if denied:
             return denied
-        limit = min(int(request.query_params.get("limit", 30)), 100)
-        observations = AgentObservation.objects.select_related("conversation", "agent_run").filter(
+        limit = min(int(request.query_params.get("limit", 10)), 100)
+        offset = max(int(request.query_params.get("offset", 0)), 0)
+        queryset = AgentObservation.objects.select_related("conversation", "agent_run").filter(
             workspace_key=get_workspace_key(request)
-        )[:limit]
+        ).order_by("-id")
+        total = queryset.count()
+        observations = queryset[offset : offset + limit]
         return Response(
             {
                 "summary": observability_summary(get_workspace_key(request)),
                 "observations": [serialize_agent_observation(observation) for observation in observations],
+                "total": total,
+                "has_more": offset + limit < total,
             }
         )
 

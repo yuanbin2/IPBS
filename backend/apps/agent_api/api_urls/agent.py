@@ -2,6 +2,7 @@ from django.urls import path
 
 from ..views.agent import (
     AgentChatView,
+    AgentChatStreamView,
     ConversationDetailView,
     ConversationListView,
     EvaluationCaseListView,
@@ -11,6 +12,7 @@ from ..views.agent import (
 
 urlpatterns = [
     path("chat/", AgentChatView.as_view(), name="agent-chat"),
+    path("chat/stream/", AgentChatStreamView.as_view(), name="agent-chat-stream"),
     path("conversations/", ConversationListView.as_view(), name="conversation-list"),
     path("conversations/<int:pk>/", ConversationDetailView.as_view(), name="conversation-detail"),
     path("observability/", ObservabilityDashboardView.as_view(), name="observability-dashboard"),

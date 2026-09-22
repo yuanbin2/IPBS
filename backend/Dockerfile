@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS runtime
+FROM python:3.10-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -13,7 +13,7 @@ RUN apt-get update \
 COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install -r /app/backend/requirements.txt
 
-COPY agent /app/agent
+COPY backend/agent /app/agent
 COPY backend /app/backend
 COPY deploy/backend/entrypoint.sh /entrypoint.sh
 

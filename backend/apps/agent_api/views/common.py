@@ -56,18 +56,27 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 
-from agent.multi_agent import MultiAgentSupervisor
-
-
-from agent.security import (
-    context_from_request,
-    detect_sensitive_input,
-    issue_jwt_pair,
-    normalize_workspace_key,
-    redact_sensitive_output,
-    role_allowed,
-    security_enforced,
-)
+try:
+    from agent.multi_agent import MultiAgentSupervisor
+    from agent.security import (
+        context_from_request,
+        detect_sensitive_input,
+        issue_jwt_pair,
+        normalize_workspace_key,
+        redact_sensitive_output,
+        role_allowed,
+        security_enforced,
+    )
+except ImportError:
+    # Fallback for deployment without agent module
+    MultiAgentSupervisor = None
+    context_from_request = None
+    detect_sensitive_input = None
+    issue_jwt_pair = None
+    normalize_workspace_key = None
+    redact_sensitive_output = None
+    role_allowed = None
+    security_enforced = None
 
 
 from ..services.blog import (
@@ -490,7 +499,10 @@ def execute_approval_request(approval: ApprovalRequest) -> str:
         return f"博客文章已发布并同步知识库：{article.title}"
 
     if approval.action == ApprovalRequest.Action.EXECUTE_MCP_TOOL and payload.get("tool_name"):
-        from agent.mcp_tools import LocalMCPToolRunner
+        try:
+            from agent.mcp_tools import LocalMCPToolRunner
+        except ImportError:
+            LocalMCPToolRunner = None
 
         tool = get_object_or_404(MCPTool, pk=payload.get("tool_id"), workspace_key=approval.workspace_key)
         if not tool.is_enabled:

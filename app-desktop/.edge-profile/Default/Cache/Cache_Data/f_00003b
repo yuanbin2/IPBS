@@ -1,0 +1,442 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/views/MCPToolsView.vue");import { defineComponent as _defineComponent } from "/node_modules/.vite/deps/vue.js?v=bb3b95b6";
+import { onMounted, ref } from "/node_modules/.vite/deps/vue.js?v=bb3b95b6";
+import { Cpu, Refresh, SwitchButton, Tools } from "/node_modules/.vite/deps/@element-plus_icons-vue.js?v=bb3b95b6";
+import { ElMessage } from "/node_modules/.vite/deps/element-plus.js?v=bb3b95b6";
+import { useRouter } from "/node_modules/.vite/deps/vue-router.js?v=bb3b95b6";
+import { useAuthStore } from "/src/stores/auth.ts";
+const _sfc_main = /* @__PURE__ */ _defineComponent({
+  __name: "MCPToolsView",
+  setup(__props, { expose: __expose }) {
+    __expose();
+    const auth = useAuthStore();
+    const tools = ref([]);
+    const router = useRouter();
+    const loading = ref(false);
+    const executingId = ref(null);
+    const reviewingApproval = ref(false);
+    const query = ref("MCP 工具接入");
+    const executionOutput = ref("");
+    const pendingApproval = ref(null);
+    const approvalDialogOpen = ref(false);
+    const reviewer = ref("admin");
+    const reviewNote = ref("");
+    onMounted(loadTools);
+    async function loadTools() {
+      loading.value = true;
+      try {
+        tools.value = await requestJson("/api/agent/mcp-tools/");
+      } finally {
+        loading.value = false;
+      }
+    }
+    async function toggleTool(tool) {
+      const payload = await requestJson(`/api/agent/mcp-tools/${tool.id}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_enabled: tool.is_enabled })
+      });
+      Object.assign(tool, payload);
+      ElMessage.success(tool.is_enabled ? "工具已启用" : "工具已禁用");
+    }
+    async function toggleApproval(tool) {
+      const payload = await requestJson(`/api/agent/mcp-tools/${tool.id}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requires_approval: tool.requires_approval })
+      });
+      Object.assign(tool, payload);
+      ElMessage.success(tool.requires_approval ? "已要求审批，测试调用时会弹出审批窗口" : "已取消审批要求，测试调用将直接执行");
+    }
+    async function executeTool(tool) {
+      executingId.value = tool.id;
+      executionOutput.value = "";
+      pendingApproval.value = null;
+      try {
+        const payload = await requestJson(`/api/agent/mcp-tools/${tool.id}/execute/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: query.value })
+        });
+        if (payload.approval_required) {
+          ElMessage.warning(`工具执行审批 #${payload.approval.id} 已创建`);
+          if (auth.session.role === "admin") {
+            pendingApproval.value = payload.approval;
+            approvalDialogOpen.value = true;
+          }
+          executionOutput.value = payload.detail;
+        } else {
+          executionOutput.value = payload.output;
+          Object.assign(tool, payload.tool);
+        }
+      } catch (error) {
+        ElMessage.error(error instanceof Error ? error.message : "工具执行失败");
+      } finally {
+        executingId.value = null;
+      }
+    }
+    async function reviewCurrentApproval(decision) {
+      if (!pendingApproval.value) return;
+      reviewingApproval.value = true;
+      try {
+        const payload = await requestJson(`/api/agent/approvals/${pendingApproval.value.id}/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            decision,
+            reviewer: reviewer.value,
+            note: reviewNote.value
+          })
+        });
+        pendingApproval.value = payload;
+        executionOutput.value = payload.result || (decision === "approve" ? "审批已通过" : "审批已拒绝");
+        approvalDialogOpen.value = false;
+        ElMessage.success(decision === "approve" ? "审批已通过并执行" : "审批已拒绝");
+        await loadTools();
+      } catch (error) {
+        ElMessage.error(error instanceof Error ? error.message : "审批处理失败");
+      } finally {
+        reviewingApproval.value = false;
+      }
+    }
+    function goApproval() {
+      router.push({ path: "/admin-approvals", query: { status: "pending" } });
+    }
+    async function requestJson(url, options = {}) {
+      const response = await fetch(url, options);
+      const text = await response.text();
+      const payload = text ? JSON.parse(text) : null;
+      if (!response.ok) {
+        throw new Error(payload?.detail ?? `HTTP ${response.status}`);
+      }
+      return payload;
+    }
+    const __returned__ = { auth, tools, router, loading, executingId, reviewingApproval, query, executionOutput, pendingApproval, approvalDialogOpen, reviewer, reviewNote, loadTools, toggleTool, toggleApproval, executeTool, reviewCurrentApproval, goApproval, requestJson, get Cpu() {
+      return Cpu;
+    }, get Refresh() {
+      return Refresh;
+    }, get SwitchButton() {
+      return SwitchButton;
+    }, get Tools() {
+      return Tools;
+    } };
+    Object.defineProperty(__returned__, "__isScriptSetup", { enumerable: false, value: true });
+    return __returned__;
+  }
+});
+import { resolveComponent as _resolveComponent, createVNode as _createVNode, createTextVNode as _createTextVNode, withCtx as _withCtx, createElementVNode as _createElementVNode, renderList as _renderList, Fragment as _Fragment, openBlock as _openBlock, createElementBlock as _createElementBlock, toDisplayString as _toDisplayString, createCommentVNode as _createCommentVNode } from "/node_modules/.vite/deps/vue.js?v=bb3b95b6";
+const _hoisted_1 = { class: "mcp-workspace" };
+const _hoisted_2 = { class: "mcp-toolbar" };
+const _hoisted_3 = { class: "mcp-grid" };
+const _hoisted_4 = { class: "mcp-scope" };
+const _hoisted_5 = { class: "mcp-switches" };
+const _hoisted_6 = {
+  key: 0,
+  class: "mcp-output"
+};
+const _hoisted_7 = {
+  key: 0,
+  class: "mcp-approval-alert"
+};
+const _hoisted_8 = {
+  key: 0,
+  class: "approval-dialog-body"
+};
+function _sfc_render(_ctx, _cache, $props, $setup, $data, $options) {
+  const _component_el_input = _resolveComponent("el-input");
+  const _component_el_button = _resolveComponent("el-button");
+  const _component_el_icon = _resolveComponent("el-icon");
+  const _component_el_switch = _resolveComponent("el-switch");
+  const _component_el_dialog = _resolveComponent("el-dialog");
+  return _openBlock(), _createElementBlock("section", _hoisted_1, [
+    _createElementVNode("section", _hoisted_2, [
+      _createVNode(_component_el_input, {
+        modelValue: $setup.query,
+        "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => $setup.query = $event),
+        placeholder: "工具测试输入"
+      }, null, 8, ["modelValue"]),
+      _createVNode(_component_el_button, {
+        icon: $setup.Refresh,
+        loading: $setup.loading,
+        onClick: $setup.loadTools
+      }, {
+        default: _withCtx(() => [..._cache[6] || (_cache[6] = [
+          _createTextVNode(
+            "刷新",
+            -1
+            /* CACHED */
+          )
+        ])]),
+        _: 1
+        /* STABLE */
+      }, 8, ["icon", "loading"])
+    ]),
+    _createElementVNode("section", _hoisted_3, [
+      (_openBlock(true), _createElementBlock(
+        _Fragment,
+        null,
+        _renderList($setup.tools, (tool) => {
+          return _openBlock(), _createElementBlock("article", {
+            key: tool.id,
+            class: "mcp-card"
+          }, [
+            _createElementVNode("header", null, [
+              _createVNode(_component_el_icon, null, {
+                default: _withCtx(() => [
+                  _createVNode($setup["Tools"])
+                ]),
+                _: 1
+                /* STABLE */
+              }),
+              _createElementVNode("div", null, [
+                _createElementVNode(
+                  "h2",
+                  null,
+                  _toDisplayString(tool.display_name),
+                  1
+                  /* TEXT */
+                ),
+                _createElementVNode(
+                  "span",
+                  null,
+                  _toDisplayString(tool.name) + " / " + _toDisplayString(tool.category),
+                  1
+                  /* TEXT */
+                )
+              ])
+            ]),
+            _createElementVNode(
+              "p",
+              null,
+              _toDisplayString(tool.description),
+              1
+              /* TEXT */
+            ),
+            _createElementVNode(
+              "div",
+              _hoisted_4,
+              _toDisplayString(tool.permission_scope),
+              1
+              /* TEXT */
+            ),
+            _createElementVNode("div", _hoisted_5, [
+              _createVNode(_component_el_switch, {
+                modelValue: tool.is_enabled,
+                "onUpdate:modelValue": ($event) => tool.is_enabled = $event,
+                "active-text": "启用",
+                "inactive-text": "禁用",
+                onChange: ($event) => $setup.toggleTool(tool)
+              }, null, 8, ["modelValue", "onUpdate:modelValue", "onChange"]),
+              _createVNode(_component_el_switch, {
+                modelValue: tool.requires_approval,
+                "onUpdate:modelValue": ($event) => tool.requires_approval = $event,
+                "active-text": "需审批",
+                "inactive-text": "直接执行",
+                onChange: ($event) => $setup.toggleApproval(tool)
+              }, null, 8, ["modelValue", "onUpdate:modelValue", "onChange"])
+            ]),
+            _createElementVNode("footer", null, [
+              _createElementVNode(
+                "small",
+                null,
+                _toDisplayString(tool.last_used_at ? new Date(tool.last_used_at).toLocaleString() : "尚未调用"),
+                1
+                /* TEXT */
+              ),
+              _createVNode(_component_el_button, {
+                type: "primary",
+                icon: $setup.SwitchButton,
+                loading: $setup.executingId === tool.id,
+                disabled: !tool.is_enabled,
+                onClick: ($event) => $setup.executeTool(tool)
+              }, {
+                default: _withCtx(() => [
+                  _createTextVNode(
+                    _toDisplayString(tool.requires_approval ? "申请审批调用" : "测试调用"),
+                    1
+                    /* TEXT */
+                  )
+                ]),
+                _: 2
+                /* DYNAMIC */
+              }, 1032, ["icon", "loading", "disabled", "onClick"])
+            ])
+          ]);
+        }),
+        128
+        /* KEYED_FRAGMENT */
+      ))
+    ]),
+    $setup.executionOutput ? (_openBlock(), _createElementBlock("section", _hoisted_6, [
+      _createElementVNode("h2", null, [
+        _createVNode(_component_el_icon, null, {
+          default: _withCtx(() => [
+            _createVNode($setup["Cpu"])
+          ]),
+          _: 1
+          /* STABLE */
+        }),
+        _cache[7] || (_cache[7] = _createTextVNode(
+          " 调用结果",
+          -1
+          /* CACHED */
+        ))
+      ]),
+      $setup.pendingApproval && $setup.auth.session.role === "admin" ? (_openBlock(), _createElementBlock("div", _hoisted_7, [
+        _createElementVNode(
+          "strong",
+          null,
+          "审批单 #" + _toDisplayString($setup.pendingApproval.id) + " 已创建",
+          1
+          /* TEXT */
+        ),
+        _createElementVNode(
+          "span",
+          null,
+          _toDisplayString($setup.pendingApproval.title),
+          1
+          /* TEXT */
+        ),
+        _createVNode(_component_el_button, {
+          type: "primary",
+          onClick: $setup.goApproval
+        }, {
+          default: _withCtx(() => [..._cache[8] || (_cache[8] = [
+            _createTextVNode(
+              "去审批页处理",
+              -1
+              /* CACHED */
+            )
+          ])]),
+          _: 1
+          /* STABLE */
+        })
+      ])) : _createCommentVNode("v-if", true),
+      _createElementVNode(
+        "pre",
+        null,
+        _toDisplayString($setup.executionOutput),
+        1
+        /* TEXT */
+      )
+    ])) : _createCommentVNode("v-if", true),
+    _createVNode(_component_el_dialog, {
+      modelValue: $setup.approvalDialogOpen,
+      "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => $setup.approvalDialogOpen = $event),
+      title: "审批 MCP 工具调用",
+      width: "560px",
+      "align-center": ""
+    }, {
+      footer: _withCtx(() => [
+        _createVNode(_component_el_button, { onClick: $setup.goApproval }, {
+          default: _withCtx(() => [..._cache[9] || (_cache[9] = [
+            _createTextVNode(
+              "打开审批后台",
+              -1
+              /* CACHED */
+            )
+          ])]),
+          _: 1
+          /* STABLE */
+        }),
+        _createVNode(_component_el_button, {
+          loading: $setup.reviewingApproval,
+          onClick: _cache[3] || (_cache[3] = ($event) => $setup.reviewCurrentApproval("reject"))
+        }, {
+          default: _withCtx(() => [..._cache[10] || (_cache[10] = [
+            _createTextVNode(
+              "拒绝",
+              -1
+              /* CACHED */
+            )
+          ])]),
+          _: 1
+          /* STABLE */
+        }, 8, ["loading"]),
+        _createVNode(_component_el_button, {
+          type: "primary",
+          loading: $setup.reviewingApproval,
+          onClick: _cache[4] || (_cache[4] = ($event) => $setup.reviewCurrentApproval("approve"))
+        }, {
+          default: _withCtx(() => [..._cache[11] || (_cache[11] = [
+            _createTextVNode(
+              " 批准并执行 ",
+              -1
+              /* CACHED */
+            )
+          ])]),
+          _: 1
+          /* STABLE */
+        }, 8, ["loading"])
+      ]),
+      default: _withCtx(() => [
+        $setup.pendingApproval ? (_openBlock(), _createElementBlock("section", _hoisted_8, [
+          _createElementVNode(
+            "p",
+            null,
+            _toDisplayString($setup.pendingApproval.description),
+            1
+            /* TEXT */
+          ),
+          _createElementVNode("dl", null, [
+            (_openBlock(true), _createElementBlock(
+              _Fragment,
+              null,
+              _renderList($setup.pendingApproval.payload, (value, key) => {
+                return _openBlock(), _createElementBlock("div", { key }, [
+                  _createElementVNode(
+                    "dt",
+                    null,
+                    _toDisplayString(key),
+                    1
+                    /* TEXT */
+                  ),
+                  _createElementVNode(
+                    "dd",
+                    null,
+                    _toDisplayString(value),
+                    1
+                    /* TEXT */
+                  )
+                ]);
+              }),
+              128
+              /* KEYED_FRAGMENT */
+            ))
+          ]),
+          _createVNode(_component_el_input, {
+            modelValue: $setup.reviewer,
+            "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => $setup.reviewer = $event),
+            placeholder: "审批人"
+          }, null, 8, ["modelValue"]),
+          _createVNode(_component_el_input, {
+            modelValue: $setup.reviewNote,
+            "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => $setup.reviewNote = $event),
+            placeholder: "审批备注",
+            type: "textarea",
+            rows: 3
+          }, null, 8, ["modelValue"])
+        ])) : _createCommentVNode("v-if", true)
+      ]),
+      _: 1
+      /* STABLE */
+    }, 8, ["modelValue"])
+  ]);
+}
+_sfc_main.__hmrId = "dc120517";
+typeof __VUE_HMR_RUNTIME__ !== "undefined" && __VUE_HMR_RUNTIME__.createRecord(_sfc_main.__hmrId, _sfc_main);
+import.meta.hot.on("file-changed", ({ file }) => {
+  __VUE_HMR_RUNTIME__.CHANGED_FILE = file;
+});
+import.meta.hot.accept((mod) => {
+  if (!mod) return;
+  const { default: updated, _rerender_only } = mod;
+  if (_rerender_only) {
+    __VUE_HMR_RUNTIME__.rerender(updated.__hmrId, updated.render);
+  } else {
+    __VUE_HMR_RUNTIME__.reload(updated.__hmrId, updated);
+  }
+});
+import _export_sfc from "/@id/__x00__plugin-vue:export-helper";
+export default /* @__PURE__ */ _export_sfc(_sfc_main, [["render", _sfc_render], ["__file", "E:/Desktop/MyProject/Blog-fixed-20260727/Blog/frontend/src/views/MCPToolsView.vue"]]);
+
+//# sourceMappingURL=data:application/json;base64,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LHdCQUE5QjtBQUFBLDJGQUFRO0FBQUEsWUFBRSxhQUFZO0FBQUE7VUFDekMsYUFBOEU7QUFBQSx3QkFBM0Q7QUFBQSw2RkFBVTtBQUFBLFlBQUUsYUFBWTtBQUFBLFlBQU8sTUFBSztBQUFBLFlBQVksTUFBTTtBQUFBIiwibmFtZXMiOltdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlcyI6WyJNQ1BUb29sc1ZpZXcudnVlIl0sInNvdXJjZXNDb250ZW50IjpbIjxzY3JpcHQgc2V0dXAgbGFuZz1cInRzXCI+XG5pbXBvcnQgeyBvbk1vdW50ZWQsIHJlZiB9IGZyb20gXCJ2dWVcIjtcbmltcG9ydCB7IENwdSwgUmVmcmVzaCwgU3dpdGNoQnV0dG9uLCBUb29scyB9IGZyb20gXCJAZWxlbWVudC1wbHVzL2ljb25zLXZ1ZVwiO1xuaW1wb3J0IHsgRWxNZXNzYWdlIH0gZnJvbSBcImVsZW1lbnQtcGx1c1wiO1xuaW1wb3J0IHsgdXNlUm91dGVyIH0gZnJvbSBcInZ1ZS1yb3V0ZXJcIjtcbmltcG9ydCB7IHVzZUF1dGhTdG9yZSB9IGZyb20gXCIuLi9zdG9yZXMvYXV0aFwiO1xuXG5jb25zdCBhdXRoID0gdXNlQXV0aFN0b3JlKCk7XG5cbmludGVyZmFjZSBNQ1BUb29sIHtcbiAgaWQ6IG51bWJlcjtcbiAgbmFtZTogc3RyaW5nO1xuICBkaXNwbGF5X25hbWU6IHN0cmluZztcbiAgZGVzY3JpcHRpb246IHN0cmluZztcbiAgY2F0ZWdvcnk6IHN0cmluZztcbiAgcGVybWlzc2lvbl9zY29wZTogc3RyaW5nO1xuICBpc19lbmFibGVkOiBib29sZWFuO1xuICByZXF1aXJlc19hcHByb3ZhbDogYm9vbGVhbjtcbiAgbGFzdF91c2VkX2F0OiBzdHJpbmcgfCBudWxsO1xufVxuXG5pbnRlcmZhY2UgQXBwcm92YWxSZXF1ZXN0IHtcbiAgaWQ6IG51bWJlcjtcbiAgdGl0bGU6IHN0cmluZztcbiAgZGVzY3JpcHRpb246IHN0cmluZztcbiAgcGF5bG9hZDogUmVjb3JkPHN0cmluZywgdW5rbm93bj47XG4gIHN0YXR1czogXCJwZW5kaW5nXCIgfCBcImV4ZWN1dGVkXCIgfCBcInJlamVjdGVkXCIgfCBcImZhaWxlZFwiO1xuICByZXN1bHQ6IHN0cmluZztcbn1cblxuY29uc3QgdG9vbHMgPSByZWY8TUNQVG9vbFtdPihbXSk7XG5jb25zdCByb3V0ZXIgPSB1c2VSb3V0ZXIoKTtcbmNvbnN0IGxvYWRpbmcgPSByZWYoZmFsc2UpO1xuY29uc3QgZXhlY3V0aW5nSWQgPSByZWY8bnVtYmVyIHwgbnVsbD4obnVsbCk7XG5jb25zdCByZXZpZXdpbmdBcHByb3ZhbCA9IHJlZihmYWxzZSk7XG5jb25zdCBxdWVyeSA9IHJlZihcIk1DUCDlt6XlhbfmjqXlhaVcIik7XG5jb25zdCBleGVjdXRpb25PdXRwdXQgPSByZWYoXCJcIik7XG5jb25zdCBwZW5kaW5nQXBwcm92YWwgPSByZWY8QXBwcm92YWxSZXF1ZXN0IHwgbnVsbD4obnVsbCk7XG5jb25zdCBhcHByb3ZhbERpYWxvZ09wZW4gPSByZWYoZmFsc2UpO1xuY29uc3QgcmV2aWV3ZXIgPSByZWYoXCJhZG1pblwiKTtcbmNvbnN0IHJldmlld05vdGUgPSByZWYoXCJcIik7XG5cbm9uTW91bnRlZChsb2FkVG9vbHMpO1xuXG5hc3luYyBmdW5jdGlvbiBsb2FkVG9vbHMoKSB7XG4gIGxvYWRpbmcudmFsdWUgPSB0cnVlO1xuICB0cnkge1xuICAgIHRvb2xzLnZhbHVlID0gYXdhaXQgcmVxdWVzdEpzb24oXCIvYXBpL2FnZW50L21jcC10b29scy9cIik7XG4gIH0gZmluYWxseSB7XG4gICAgbG9hZGluZy52YWx1ZSA9IGZhbHNlO1xuICB9XG59XG5cbmFzeW5jIGZ1bmN0aW9uIHRvZ2dsZVRvb2wodG9vbDogTUNQVG9vbCkge1xuICBjb25zdCBwYXlsb2FkID0gYXdhaXQgcmVxdWVzdEpzb24oYC9hcGkvYWdlbnQvbWNwLXRvb2xzLyR7dG9vbC5pZH0vYCwge1xuICAgIG1ldGhvZDogXCJQQVRDSFwiLFxuICAgIGhlYWRlcnM6IHsgXCJDb250ZW50LVR5cGVcIjogXCJhcHBsaWNhdGlvbi9qc29uXCIgfSxcbiAgICBib2R5OiBKU09OLnN0cmluZ2lmeSh7IGlzX2VuYWJsZWQ6IHRvb2wuaXNfZW5hYmxlZCB9KVxuICB9KTtcbiAgT2JqZWN0LmFzc2lnbih0b29sLCBwYXlsb2FkKTtcbiAgRWxNZXNzYWdlLnN1Y2Nlc3ModG9vbC5pc19lbmFibGVkID8gXCLlt6Xlhbflt7LlkK/nlKhcIiA6IFwi5bel5YW35bey56aB55SoXCIpO1xufVxuXG5hc3luYyBmdW5jdGlvbiB0b2dnbGVBcHByb3ZhbCh0b29sOiBNQ1BUb29sKSB7XG4gIGNvbnN0IHBheWxvYWQgPSBhd2FpdCByZXF1ZXN0SnNvbihgL2FwaS9hZ2VudC9tY3AtdG9vbHMvJHt0b29sLmlkfS9gLCB7XG4gICAgbWV0aG9kOiBcIlBBVENIXCIsXG4gICAgaGVhZGVyczogeyBcIkNvbnRlbnQtVHlwZVwiOiBcImFwcGxpY2F0aW9uL2pzb25cIiB9LFxuICAgIGJvZHk6IEpTT04uc3RyaW5naWZ5KHsgcmVxdWlyZXNfYXBwcm92YWw6IHRvb2wucmVxdWlyZXNfYXBwcm92YWwgfSlcbiAgfSk7XG4gIE9iamVjdC5hc3NpZ24odG9vbCwgcGF5bG9hZCk7XG4gIEVsTWVzc2FnZS5zdWNjZXNzKHRvb2wucmVxdWlyZXNfYXBwcm92YWwgPyBcIuW3suimgeaxguWuoeaJue+8jOa1i+ivleiwg+eUqOaXtuS8muW8ueWHuuWuoeaJueeql+WPo1wiIDogXCLlt7Llj5bmtojlrqHmibnopoHmsYLvvIzmtYvor5XosIPnlKjlsIbnm7TmjqXmiafooYxcIik7XG59XG5cbmFzeW5jIGZ1bmN0aW9uIGV4ZWN1dGVUb29sKHRvb2w6IE1DUFRvb2wpIHtcbiAgZXhlY3V0aW5nSWQudmFsdWUgPSB0b29sLmlkO1xuICBleGVjdXRpb25PdXRwdXQudmFsdWUgPSBcIlwiO1xuICBwZW5kaW5nQXBwcm92YWwudmFsdWUgPSBudWxsO1xuICB0cnkge1xuICAgIGNvbnN0IHBheWxvYWQgPSBhd2FpdCByZXF1ZXN0SnNvbihgL2FwaS9hZ2VudC9tY3AtdG9vbHMvJHt0b29sLmlkfS9leGVjdXRlL2AsIHtcbiAgICAgIG1ldGhvZDogXCJQT1NUXCIsXG4gICAgICBoZWFkZXJzOiB7IFwiQ29udGVudC1UeXBlXCI6IFwiYXBwbGljYXRpb24vanNvblwiIH0sXG4gICAgICBib2R5OiBKU09OLnN0cmluZ2lmeSh7IHF1ZXJ5OiBxdWVyeS52YWx1ZSB9KVxuICAgIH0pO1xuICAgIGlmIChwYXlsb2FkLmFwcHJvdmFsX3JlcXVpcmVkKSB7XG4gICAgICBFbE1lc3NhZ2Uud2FybmluZyhg5bel5YW35omn6KGM5a6h5om5ICMke3BheWxvYWQuYXBwcm92YWwuaWR9IOW3suWIm+W7umApO1xuICAgICAgaWYgKGF1dGguc2Vzc2lvbi5yb2xlID09PSBcImFkbWluXCIpIHtcbiAgICAgICAgcGVuZGluZ0FwcHJvdmFsLnZhbHVlID0gcGF5bG9hZC5hcHByb3ZhbDtcbiAgICAgICAgYXBwcm92YWxEaWFsb2dPcGVuLnZhbHVlID0gdHJ1ZTtcbiAgICAgIH1cbiAgICAgIGV4ZWN1dGlvbk91dHB1dC52YWx1ZSA9IHBheWxvYWQuZGV0YWlsO1xuICAgIH0gZWxzZSB7XG4gICAgICBleGVjdXRpb25PdXRwdXQudmFsdWUgPSBwYXlsb2FkLm91dHB1dDtcbiAgICAgIE9iamVjdC5hc3NpZ24odG9vbCwgcGF5bG9hZC50b29sKTtcbiAgICB9XG4gIH0gY2F0Y2ggKGVycm9yKSB7XG4gICAgRWxNZXNzYWdlLmVycm9yKGVycm9yIGluc3RhbmNlb2YgRXJyb3IgPyBlcnJvci5tZXNzYWdlIDogXCLlt6XlhbfmiafooYzlpLHotKVcIik7XG4gIH0gZmluYWxseSB7XG4gICAgZXhlY3V0aW5nSWQudmFsdWUgPSBudWxsO1xuICB9XG59XG5cbmFzeW5jIGZ1bmN0aW9uIHJldmlld0N1cnJlbnRBcHByb3ZhbChkZWNpc2lvbjogXCJhcHByb3ZlXCIgfCBcInJlamVjdFwiKSB7XG4gIGlmICghcGVuZGluZ0FwcHJvdmFsLnZhbHVlKSByZXR1cm47XG4gIHJldmlld2luZ0FwcHJvdmFsLnZhbHVlID0gdHJ1ZTtcbiAgdHJ5IHtcbiAgICBjb25zdCBwYXlsb2FkID0gYXdhaXQgcmVxdWVzdEpzb24oYC9hcGkvYWdlbnQvYXBwcm92YWxzLyR7cGVuZGluZ0FwcHJvdmFsLnZhbHVlLmlkfS9gLCB7XG4gICAgICBtZXRob2Q6IFwiUE9TVFwiLFxuICAgICAgaGVhZGVyczogeyBcIkNvbnRlbnQtVHlwZVwiOiBcImFwcGxpY2F0aW9uL2pzb25cIiB9LFxuICAgICAgYm9keTogSlNPTi5zdHJpbmdpZnkoe1xuICAgICAgICBkZWNpc2lvbixcbiAgICAgICAgcmV2aWV3ZXI6IHJldmlld2VyLnZhbHVlLFxuICAgICAgICBub3RlOiByZXZpZXdOb3RlLnZhbHVlXG4gICAgICB9KVxuICAgIH0pO1xuICAgIHBlbmRpbmdBcHByb3ZhbC52YWx1ZSA9IHBheWxvYWQ7XG4gICAgZXhlY3V0aW9uT3V0cHV0LnZhbHVlID0gcGF5bG9hZC5yZXN1bHQgfHwgKGRlY2lzaW9uID09PSBcImFwcHJvdmVcIiA/IFwi5a6h5om55bey6YCa6L+HXCIgOiBcIuWuoeaJueW3suaLkue7nVwiKTtcbiAgICBhcHByb3ZhbERpYWxvZ09wZW4udmFsdWUgPSBmYWxzZTtcbiAgICBFbE1lc3NhZ2Uuc3VjY2VzcyhkZWNpc2lvbiA9PT0gXCJhcHByb3ZlXCIgPyBcIuWuoeaJueW3sumAmui/h+W5tuaJp+ihjFwiIDogXCLlrqHmibnlt7Lmi5Lnu51cIik7XG4gICAgYXdhaXQgbG9hZFRvb2xzKCk7XG4gIH0gY2F0Y2ggKGVycm9yKSB7XG4gICAgRWxNZXNzYWdlLmVycm9yKGVycm9yIGluc3RhbmNlb2YgRXJyb3IgPyBlcnJvci5tZXNzYWdlIDogXCLlrqHmibnlpITnkIblpLHotKVcIik7XG4gIH0gZmluYWxseSB7XG4gICAgcmV2aWV3aW5nQXBwcm92YWwudmFsdWUgPSBmYWxzZTtcbiAgfVxufVxuXG5mdW5jdGlvbiBnb0FwcHJvdmFsKCkge1xuICByb3V0ZXIucHVzaCh7IHBhdGg6IFwiL2FkbWluLWFwcHJvdmFsc1wiLCBxdWVyeTogeyBzdGF0dXM6IFwicGVuZGluZ1wiIH0gfSk7XG59XG5cbmFzeW5jIGZ1bmN0aW9uIHJlcXVlc3RKc29uKHVybDogc3RyaW5nLCBvcHRpb25zOiBSZXF1ZXN0SW5pdCA9IHt9KSB7XG4gIGNvbnN0IHJlc3BvbnNlID0gYXdhaXQgZmV0Y2godXJsLCBvcHRpb25zKTtcbiAgY29uc3QgdGV4dCA9IGF3YWl0IHJlc3BvbnNlLnRleHQoKTtcbiAgY29uc3QgcGF5bG9hZCA9IHRleHQgPyBKU09OLnBhcnNlKHRleHQpIDogbnVsbDtcbiAgaWYgKCFyZXNwb25zZS5vaykge1xuICAgIHRocm93IG5ldyBFcnJvcihwYXlsb2FkPy5kZXRhaWwgPz8gYEhUVFAgJHtyZXNwb25zZS5zdGF0dXN9YCk7XG4gIH1cbiAgcmV0dXJuIHBheWxvYWQ7XG59XG48L3NjcmlwdD5cblxuPHRlbXBsYXRlPlxuICA8c2VjdGlvbiBjbGFzcz1cIm1jcC13b3Jrc3BhY2VcIj5cbiAgICAgIDxzZWN0aW9uIGNsYXNzPVwibWNwLXRvb2xiYXJcIj5cbiAgICAgICAgPGVsLWlucHV0IHYtbW9kZWw9XCJxdWVyeVwiIHBsYWNlaG9sZGVyPVwi5bel5YW35rWL6K+V6L6T5YWlXCIgLz5cbiAgICAgICAgPGVsLWJ1dHRvbiA6aWNvbj1cIlJlZnJlc2hcIiA6bG9hZGluZz1cImxvYWRpbmdcIiBAY2xpY2s9XCJsb2FkVG9vbHNcIj7liLfmlrA8L2VsLWJ1dHRvbj5cbiAgICAgIDwvc2VjdGlvbj5cblxuICAgICAgPHNlY3Rpb24gY2xhc3M9XCJtY3AtZ3JpZFwiPlxuICAgICAgICA8YXJ0aWNsZSB2LWZvcj1cInRvb2wgaW4gdG9vbHNcIiA6a2V5PVwidG9vbC5pZFwiIGNsYXNzPVwibWNwLWNhcmRcIj5cbiAgICAgICAgICA8aGVhZGVyPlxuICAgICAgICAgICAgPGVsLWljb24+PFRvb2xzIC8+PC9lbC1pY29uPlxuICAgICAgICAgICAgPGRpdj5cbiAgICAgICAgICAgICAgPGgyPnt7IHRvb2wuZGlzcGxheV9uYW1lIH19PC9oMj5cbiAgICAgICAgICAgICAgPHNwYW4+e3sgdG9vbC5uYW1lIH19IC8ge3sgdG9vbC5jYXRlZ29yeSB9fTwvc3Bhbj5cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDwvaGVhZGVyPlxuICAgICAgICAgIDxwPnt7IHRvb2wuZGVzY3JpcHRpb24gfX08L3A+XG4gICAgICAgICAgPGRpdiBjbGFzcz1cIm1jcC1zY29wZVwiPnt7IHRvb2wucGVybWlzc2lvbl9zY29wZSB9fTwvZGl2PlxuICAgICAgICAgIDxkaXYgY2xhc3M9XCJtY3Atc3dpdGNoZXNcIj5cbiAgICAgICAgICAgIDxlbC1zd2l0Y2ggdi1tb2RlbD1cInRvb2wuaXNfZW5hYmxlZFwiIGFjdGl2ZS10ZXh0PVwi5ZCv55SoXCIgaW5hY3RpdmUtdGV4dD1cIuemgeeUqFwiIEBjaGFuZ2U9XCJ0b2dnbGVUb29sKHRvb2wpXCIgLz5cbiAgICAgICAgICAgIDxlbC1zd2l0Y2hcbiAgICAgICAgICAgICAgdi1tb2RlbD1cInRvb2wucmVxdWlyZXNfYXBwcm92YWxcIlxuICAgICAgICAgICAgICBhY3RpdmUtdGV4dD1cIumcgOWuoeaJuVwiXG4gICAgICAgICAgICAgIGluYWN0aXZlLXRleHQ9XCLnm7TmjqXmiafooYxcIlxuICAgICAgICAgICAgICBAY2hhbmdlPVwidG9nZ2xlQXBwcm92YWwodG9vbClcIlxuICAgICAgICAgICAgLz5cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICA8Zm9vdGVyPlxuICAgICAgICAgICAgPHNtYWxsPnt7IHRvb2wubGFzdF91c2VkX2F0ID8gbmV3IERhdGUodG9vbC5sYXN0X3VzZWRfYXQpLnRvTG9jYWxlU3RyaW5nKCkgOiBcIuWwmuacquiwg+eUqFwiIH19PC9zbWFsbD5cbiAgICAgICAgICAgIDxlbC1idXR0b25cbiAgICAgICAgICAgICAgdHlwZT1cInByaW1hcnlcIlxuICAgICAgICAgICAgICA6aWNvbj1cIlN3aXRjaEJ1dHRvblwiXG4gICAgICAgICAgICAgIDpsb2FkaW5nPVwiZXhlY3V0aW5nSWQgPT09IHRvb2wuaWRcIlxuICAgICAgICAgICAgICA6ZGlzYWJsZWQ9XCIhdG9vbC5pc19lbmFibGVkXCJcbiAgICAgICAgICAgICAgQGNsaWNrPVwiZXhlY3V0ZVRvb2wodG9vbClcIlxuICAgICAgICAgICAgPlxuICAgICAgICAgICAgICB7eyB0b29sLnJlcXVpcmVzX2FwcHJvdmFsID8gXCLnlLPor7flrqHmibnosIPnlKhcIiA6IFwi5rWL6K+V6LCD55SoXCIgfX1cbiAgICAgICAgICAgIDwvZWwtYnV0dG9uPlxuICAgICAgICAgIDwvZm9vdGVyPlxuICAgICAgICA8L2FydGljbGU+XG4gICAgICA8L3NlY3Rpb24+XG5cbiAgICAgIDxzZWN0aW9uIHYtaWY9XCJleGVjdXRpb25PdXRwdXRcIiBjbGFzcz1cIm1jcC1vdXRwdXRcIj5cbiAgICAgICAgPGgyPjxlbC1pY29uPjxDcHUgLz48L2VsLWljb24+IOiwg+eUqOe7k+aenDwvaDI+XG4gICAgICAgIDxkaXYgdi1pZj1cInBlbmRpbmdBcHByb3ZhbCAmJiBhdXRoLnNlc3Npb24ucm9sZSA9PT0gJ2FkbWluJ1wiIGNsYXNzPVwibWNwLWFwcHJvdmFsLWFsZXJ0XCI+XG4gICAgICAgICAgPHN0cm9uZz7lrqHmibnljZUgI3t7IHBlbmRpbmdBcHByb3ZhbC5pZCB9fSDlt7LliJvlu7o8L3N0cm9uZz5cbiAgICAgICAgICA8c3Bhbj57eyBwZW5kaW5nQXBwcm92YWwudGl0bGUgfX08L3NwYW4+XG4gICAgICAgICAgPGVsLWJ1dHRvbiB0eXBlPVwicHJpbWFyeVwiIEBjbGljaz1cImdvQXBwcm92YWxcIj7ljrvlrqHmibnpobXlpITnkIY8L2VsLWJ1dHRvbj5cbiAgICAgICAgPC9kaXY+XG4gICAgICAgIDxwcmU+e3sgZXhlY3V0aW9uT3V0cHV0IH19PC9wcmU+XG4gICAgICA8L3NlY3Rpb24+XG5cbiAgICAgIDxlbC1kaWFsb2cgdi1tb2RlbD1cImFwcHJvdmFsRGlhbG9nT3BlblwiIHRpdGxlPVwi5a6h5om5IE1DUCDlt6XlhbfosIPnlKhcIiB3aWR0aD1cIjU2MHB4XCIgYWxpZ24tY2VudGVyPlxuICAgICAgICA8c2VjdGlvbiB2LWlmPVwicGVuZGluZ0FwcHJvdmFsXCIgY2xhc3M9XCJhcHByb3ZhbC1kaWFsb2ctYm9keVwiPlxuICAgICAgICAgIDxwPnt7IHBlbmRpbmdBcHByb3ZhbC5kZXNjcmlwdGlvbiB9fTwvcD5cbiAgICAgICAgICA8ZGw+XG4gICAgICAgICAgICA8ZGl2IHYtZm9yPVwiKHZhbHVlLCBrZXkpIGluIHBlbmRpbmdBcHByb3ZhbC5wYXlsb2FkXCIgOmtleT1cImtleVwiPlxuICAgICAgICAgICAgICA8ZHQ+e3sga2V5IH19PC9kdD5cbiAgICAgICAgICAgICAgPGRkPnt7IHZhbHVlIH19PC9kZD5cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDwvZGw+XG4gICAgICAgICAgPGVsLWlucHV0IHYtbW9kZWw9XCJyZXZpZXdlclwiIHBsYWNlaG9sZGVyPVwi5a6h5om55Lq6XCIgLz5cbiAgICAgICAgICA8ZWwtaW5wdXQgdi1tb2RlbD1cInJldmlld05vdGVcIiBwbGFjZWhvbGRlcj1cIuWuoeaJueWkh+azqFwiIHR5cGU9XCJ0ZXh0YXJlYVwiIDpyb3dzPVwiM1wiIC8+XG4gICAgICAgIDwvc2VjdGlvbj5cbiAgICAgICAgPHRlbXBsYXRlICNmb290ZXI+XG4gICAgICAgICAgPGVsLWJ1dHRvbiBAY2xpY2s9XCJnb0FwcHJvdmFsXCI+5omT5byA5a6h5om55ZCO5Y+wPC9lbC1idXR0b24+XG4gICAgICAgICAgPGVsLWJ1dHRvbiA6bG9hZGluZz1cInJldmlld2luZ0FwcHJvdmFsXCIgQGNsaWNrPVwicmV2aWV3Q3VycmVudEFwcHJvdmFsKCdyZWplY3QnKVwiPuaLkue7nTwvZWwtYnV0dG9uPlxuICAgICAgICAgIDxlbC1idXR0b24gdHlwZT1cInByaW1hcnlcIiA6bG9hZGluZz1cInJldmlld2luZ0FwcHJvdmFsXCIgQGNsaWNrPVwicmV2aWV3Q3VycmVudEFwcHJvdmFsKCdhcHByb3ZlJylcIj5cbiAgICAgICAgICAgIOaJueWHhuW5tuaJp+ihjFxuICAgICAgICAgIDwvZWwtYnV0dG9uPlxuICAgICAgICA8L3RlbXBsYXRlPlxuICAgICAgPC9lbC1kaWFsb2c+XG4gICAgPC9zZWN0aW9uPlxuPC90ZW1wbGF0ZT5cbiJdLCJmaWxlIjoiRTovRGVza3RvcC9NeVByb2plY3QvQmxvZy1maXhlZC0yMDI2MDcyNy9CbG9nL2Zyb250ZW5kL3NyYy92aWV3cy9NQ1BUb29sc1ZpZXcudnVlIn0=

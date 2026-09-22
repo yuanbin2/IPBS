@@ -21,6 +21,7 @@ import type {
   BlogCategory,
   BlogTag
 } from "../features/blog/types";
+import type { ParsedMarkdown } from "../features/blog/utils/parseMarkdownFile";
 
 const auth = useAuthStore();
 
@@ -59,6 +60,12 @@ const commentDraft = ref({
   author_name: "访客",
   content: ""
 });
+const myPendingArticles = ref<BlogArticle[]>([]);
+const myPublishedArticles = ref<BlogArticle[]>([]);
+const authorName = ref(localStorage.getItem("blogAuthorName") || "");
+const myArticlesLoading = ref(false);
+const editingArticle = ref<BlogArticle | null>(null);
+const updatingArticle = ref(false);
 
 const draft = ref({
   title: "我的 LangGraph 项目复盘",
@@ -100,13 +107,26 @@ const editorStats = computed(() => {
   const compact = plain.replace(/\s+/g, "");
   const englishWords = plain.match(/[A-Za-z0-9]+/g)?.length ?? 0;
   const count = compact.length + englishWords;
+
+  const headingLines = draft.value.content
+    .split("\n")
+    .filter((line) => /^#{1,3}\s+/.test(line));
+
+  const headings = headingLines.map((line) => line.replace(/^#{1,3}\s+/, "").trim());
+
+  const headingItems = headingLines.map((line) => {
+    const match = line.match(/^(#{1,3})\s+(.*)/);
+    return {
+      level: match ? match[1].length : 1,
+      text: match ? match[2].trim() : line.trim()
+    };
+  });
+
   return {
     words: count,
     readingMinutes: Math.max(1, Math.ceil(count / 450)),
-    headings: draft.value.content
-      .split("\n")
-      .filter((line) => /^#{1,3}\s+/.test(line))
-      .map((line) => line.replace(/^#{1,3}\s+/, "").trim())
+    headings,
+    headingItems
   };
 });
 
@@ -157,6 +177,9 @@ onMounted(async () => {
     await loadArticle(activeSlug.value);
   }
   await loadBlogAgentHistory();
+  if (authorName.value) {
+    await loadMyArticles();
+  }
 });
 
 watch(draft, () => {
@@ -209,6 +232,43 @@ async function loadAbout() {
   about.value = await requestJson("/api/agent/blog/about/");
 }
 
+async function loadMyArticles() {
+  // 只有登录用户才能加载笔记
+  if (!auth.isAuthenticated) {
+    myPendingArticles.value = [];
+    myPublishedArticles.value = [];
+    return;
+  }
+
+  myArticlesLoading.value = true;
+  try {
+    const isAdmin = auth.session.role === "admin" || auth.session.role === "operator";
+
+    // 管理员/操作员可以看到所有草稿，普通用户只能看到自己的
+    const draftQuery = isAdmin
+      ? '/api/agent/blog/articles/?status=draft'
+      : '/api/agent/blog/articles/?status=draft';
+
+    // 查询被拒绝的文章
+    const rejectedQuery = isAdmin
+      ? '/api/agent/blog/articles/?status=rejected'
+      : '/api/agent/blog/articles/?status=rejected';
+
+    // 查询自己发布的文章
+    const publishedQuery = `/api/agent/blog/articles/?status=published&author_name=${encodeURIComponent(auth.session.actor)}`;
+
+    const [drafts, rejected, published] = await Promise.all([
+      requestJson(draftQuery),
+      requestJson(rejectedQuery),
+      requestJson(publishedQuery)
+    ]);
+    myPendingArticles.value = [...drafts, ...rejected];
+    myPublishedArticles.value = published;
+  } finally {
+    myArticlesLoading.value = false;
+  }
+}
+
 async function openArticle(article: BlogArticle) {
   await router.push({ name: "blog", params: { slug: article.slug } });
 }
@@ -226,6 +286,13 @@ async function publishDraft() {
     return;
   }
 
+  // 已登录用户使用用户名，未登录用户使用昵称
+  const articleAuthor = auth.isAuthenticated ? auth.session.actor : authorName.value;
+  if (!articleAuthor) {
+    editorError.value = auth.isAuthenticated ? "请先登录" : "请先填写你的昵称。";
+    return;
+  }
+
   publishing.value = true;
   try {
     const payload = await requestJson("/api/agent/blog/articles/", {
@@ -233,15 +300,16 @@ async function publishDraft() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...draft.value,
+        author_name: articleAuthor,
         tags: draft.value.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
         publish: true
       })
     });
     await loadArticles();
     await loadArchive();
+    await loadMyArticles();
     if (payload.approval_required) {
-      openApprovalDialog(payload.approval);
-      ElMessage.warning(`文章已保存为草稿，发布审批 #${payload.approval.id} 已创建`);
+      ElMessage.success("笔记已提交，等待管理员审核后会公开发布。");
       return;
     }
     await openArticle(payload);
@@ -354,10 +422,101 @@ async function clearDraftCache() {
   ElMessage.success("本地草稿和编辑器内容已清空");
 }
 
+async function importMarkdownFile(data: ParsedMarkdown) {
+  // If draft has meaningful content, confirm overwrite
+  if (draft.value.title.trim() || draft.value.content.trim()) {
+    try {
+      await ElMessageBox.confirm(
+        "导入会覆盖当前草稿内容，是否继续？",
+        "导入 Markdown",
+        { confirmButtonText: "继续导入", cancelButtonText: "取消", type: "warning" }
+      );
+    } catch {
+      return;
+    }
+  }
+
+  draft.value.title = data.title;
+  draft.value.summary = data.summary;
+  draft.value.category = data.category;
+  draft.value.tags = data.tags;
+  draft.value.content = data.content;
+  ElMessage.success("Markdown 文件已导入，请检查并编辑后发布。");
+}
+
 function openApprovalDialog(approval: ApprovalRequest) {
   if (auth.session.role !== "admin") return;
   pendingApproval.value = approval;
   approvalDialogOpen.value = true;
+}
+
+async function editPendingArticle(article: BlogArticle) {
+  editingArticle.value = article;
+  // Load full article content if not already loaded
+  let content = article.content;
+  if (!content) {
+    try {
+      const fullArticle = await requestJson(`/api/agent/blog/articles/${encodeURIComponent(article.slug)}/`);
+      content = fullArticle.content || "";
+    } catch {
+      content = "";
+    }
+  }
+  draft.value = {
+    title: article.title,
+    summary: article.summary || "",
+    category: article.category?.name || "",
+    tags: article.tags?.map((t) => t.name).join(",") || "",
+    content: content || ""
+  };
+  // Scroll to editor
+  nextTick(() => {
+    document.querySelector(".write-box")?.scrollIntoView({ behavior: "smooth" });
+  });
+}
+
+function cancelEditArticle() {
+  editingArticle.value = null;
+  restoreDraft();
+}
+
+async function updatePendingArticle() {
+  if (!editingArticle.value) return;
+
+  editorError.value = "";
+  if (!draft.value.title.trim() || !draft.value.content.trim()) {
+    editorError.value = "标题和正文不能为空。";
+    return;
+  }
+
+  // 已登录用户使用用户名，未登录用户使用昵称
+  const articleAuthor = auth.isAuthenticated ? auth.session.actor : authorName.value;
+  if (!articleAuthor) {
+    editorError.value = auth.isAuthenticated ? "请先登录" : "请先填写你的昵称。";
+    return;
+  }
+
+  updatingArticle.value = true;
+  try {
+    const payload = await requestJson(`/api/agent/blog/articles/${encodeURIComponent(editingArticle.value.slug)}/`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...draft.value,
+        author_name: articleAuthor,
+        tags: draft.value.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
+      })
+    });
+    await loadArticles();
+    await loadMyArticles();
+    editingArticle.value = null;
+    ElMessage.success("文章已更新，等待管理员审核。");
+    restoreDraft();
+  } catch (error) {
+    editorError.value = error instanceof Error ? error.message : "更新失败，请稍后重试。";
+  } finally {
+    updatingArticle.value = false;
+  }
 }
 
 async function reviewCurrentApproval(decision: "approve" | "reject") {
@@ -522,24 +681,15 @@ async function requestJson(url: string, options: RequestInit = {}) {
 </script>
 
 <template>
-  <main
-    class="shell blog-shell"
+  <div
+    class="blog-shell"
     :class="{
       'right-panel-hidden': !rightPanelVisible,
       'is-resizing': resizingPanel
     }"
     :style="blogLayoutStyle"
   >
-    <section class="workspace blog-workspace">
-      <header class="topbar">
-        <div>
-          <h1>个人技术博客</h1>
-        </div>
-        <div class="blog-layout-controls">
-          <el-button :icon="Refresh" :loading="loading" @click="loadArticles()">刷新文章</el-button>
-        </div>
-      </header>
-
+    <section class="blog-workspace">
       <section class="blog-layout">
         <button
           class="panel-toggle right-panel-toggle"
@@ -551,6 +701,15 @@ async function requestJson(url: string, options: RequestInit = {}) {
           {{ rightPanelVisible ? "›" : "‹" }}
         </button>
         <main class="blog-main">
+          <section class="write-box author-name-box">
+            <el-input
+              v-model="authorName"
+              placeholder="你的昵称（提交笔记时显示）"
+              size="large"
+              @change="localStorage.setItem('blogAuthorName', authorName); loadMyArticles()"
+            />
+          </section>
+
           <BlogWriter
             :draft="draft"
             :templates="noteTemplates"
@@ -559,11 +718,96 @@ async function requestJson(url: string, options: RequestInit = {}) {
             :uploading-image="uploadingImage"
             :error="editorError"
             :upload-handler="handleEditorUpload"
+            :editing-article="editingArticle"
+            :updating="updatingArticle"
             @publish="publishDraft"
+            @update="updatePendingArticle"
+            @cancel-edit="cancelEditArticle"
             @apply-template="applyTemplate"
             @insert-snippet="insertSnippet"
             @clear-draft="clearDraftCache"
+            @import-markdown="importMarkdownFile"
           />
+
+          <section v-if="!auth.isAuthenticated" class="write-box login-hint">
+            <p>登录后可以提交笔记、查看审核状态和管理已发布的文章。</p>
+            <RouterLink to="/login">
+              <el-button type="primary">登录 / 注册</el-button>
+            </RouterLink>
+          </section>
+
+          <section v-if="auth.isAuthenticated && (myPendingArticles.length || myPublishedArticles.length)" class="write-box my-pending-articles">
+            <h2>我的笔记</h2>
+
+            <template v-if="myPendingArticles.length">
+              <h3>待审核笔记</h3>
+              <p class="my-pending-hint">
+                {{ auth.session.role === 'admin' || auth.session.role === 'operator'
+                  ? '以下是待审核的笔记，审核通过后会公开发布。'
+                  : '以下笔记已提交，等待管理员审核后会公开发布。'
+                }}
+                被拒绝的笔记可以修改后重新提交。
+              </p>
+              <article
+                v-for="item in myPendingArticles"
+                :key="item.id"
+                class="article-card"
+                :class="{ 'rejected': item.status === 'rejected' }"
+              >
+                <header>
+                  <span :class="['status-pill', item.status === 'rejected' ? 'rejected' : 'pending']">
+                    {{ item.status === 'rejected' ? '已拒绝' : '待审核' }}
+                  </span>
+                  <small>{{ item.created_at }}</small>
+                </header>
+                <h2>{{ item.title }}</h2>
+                <p>{{ item.summary }}</p>
+                <footer>
+                  <el-button
+                    size="small"
+                    type="primary"
+                    plain
+                    @click="editPendingArticle(item)"
+                  >
+                    编辑
+                  </el-button>
+                </footer>
+              </article>
+            </template>
+
+            <template v-if="myPublishedArticles.length">
+              <h3>已发布笔记</h3>
+              <p class="my-pending-hint">以下笔记已发布。点击标题查看，点击编辑按钮可修改内容，修改后需要重新审核。</p>
+              <article
+                v-for="item in myPublishedArticles"
+                :key="item.id"
+                class="article-card"
+              >
+                <header>
+                  <span class="status-pill published">已发布</span>
+                  <small>{{ item.published_at || item.created_at }}</small>
+                </header>
+                <h2 class="clickable-title" @click="openArticle(item)">{{ item.title }}</h2>
+                <p>{{ item.summary }}</p>
+                <footer>
+                  <el-button
+                    size="small"
+                    @click="openArticle(item)"
+                  >
+                    查看
+                  </el-button>
+                  <el-button
+                    size="small"
+                    type="primary"
+                    plain
+                    @click="editPendingArticle(item)"
+                  >
+                    编辑
+                  </el-button>
+                </footer>
+              </article>
+            </template>
+          </section>
 
           <ArticleDetail
             v-if="currentArticle"
@@ -588,7 +832,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
         </main>
 
         <button
-          v-show="rightPanelVisible"
+          v-show="rightPanelVisible && !currentArticle"
           class="panel-resizer right-panel-resizer"
           type="button"
           aria-label="拖动调整辅助栏宽度"
@@ -597,7 +841,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
         />
 
         <BlogSidebar
-          v-show="rightPanelVisible"
+          v-show="rightPanelVisible && !currentArticle"
           :tags="tags"
           :categories="categories"
           :archive="archive"
@@ -637,5 +881,5 @@ async function requestJson(url: string, options: RequestInit = {}) {
       @send="sendBlogAgentMessage"
       @keydown="handleBlogAgentKeydown"
     />
-  </main>
+  </div>
 </template>

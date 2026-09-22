@@ -45,6 +45,17 @@ class ApprovalRequestDetailView(APIView):
             approval.status = ApprovalRequest.Status.REJECTED
             approval.result = "人工审批已拒绝，敏感操作未执行。"
             approval.save(update_fields=["reviewer", "review_note", "reviewed_at", "status", "result"])
+
+            # 如果是博客发布审批被拒绝，更新文章状态
+            if approval.action == ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE:
+                article_slug = approval.payload.get("article_slug")
+                if article_slug:
+                    from ..models import BlogArticle
+                    BlogArticle.objects.filter(
+                        slug=article_slug,
+                        workspace_key=get_workspace_key(request)
+                    ).update(status=BlogArticle.Status.REJECTED)
+
             return Response(serialize_approval_request(approval))
 
         try:

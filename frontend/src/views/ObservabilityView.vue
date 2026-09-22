@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { Back, DataAnalysis, Monitor, Refresh, VideoPlay } from "@element-plus/icons-vue";
+import { ArrowDown, ArrowRight, DataAnalysis, Monitor, Refresh, VideoPlay } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
-import { RouterLink } from "vue-router";
 
 interface AgentObservation {
   id: number;
@@ -38,6 +37,8 @@ interface EvaluationRun {
   created_at: string;
 }
 
+const PAGE_SIZE = 10;
+
 const summary = ref({
   total_runs: 0,
   success_rate: 1,
@@ -53,6 +54,9 @@ const latestRuns = ref<EvaluationRun[]>([]);
 const category = ref("all");
 const loading = ref(false);
 const running = ref(false);
+const loadingMore = ref(false);
+const hasMore = ref(true);
+const expandedObservations = ref<Set<number>>(new Set());
 
 onMounted(async () => {
   await Promise.all([loadObservability(), loadCases()]);
@@ -61,11 +65,31 @@ onMounted(async () => {
 async function loadObservability() {
   loading.value = true;
   try {
-    const payload = await requestJson("/api/agent/observability/");
+    const payload = await requestJson(`/api/agent/observability/?limit=${PAGE_SIZE}&offset=0`);
     summary.value = payload.summary;
     observations.value = payload.observations;
+    hasMore.value = payload.has_more;
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadMoreObservations() {
+  if (loadingMore.value || !hasMore.value) return;
+  loadingMore.value = true;
+  try {
+    const payload = await requestJson(`/api/agent/observability/?limit=${PAGE_SIZE}&offset=${observations.value.length}`);
+    observations.value.push(...payload.observations);
+    hasMore.value = payload.has_more;
+  } finally {
+    loadingMore.value = false;
+  }
+}
+
+function handleObservationScroll(event: Event) {
+  const el = event.target as HTMLElement;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50) {
+    loadMoreObservations();
   }
 }
 
@@ -95,6 +119,18 @@ function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function toggleObservation(id: number) {
+  if (expandedObservations.value.has(id)) {
+    expandedObservations.value.delete(id);
+  } else {
+    expandedObservations.value.add(id);
+  }
+}
+
+function isObservationExpanded(id: number) {
+  return expandedObservations.value.has(id);
+}
+
 async function requestJson(url: string, options: RequestInit = {}) {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -108,15 +144,6 @@ async function requestJson(url: string, options: RequestInit = {}) {
 
 <template>
   <section class="observability-workspace">
-      <header class="topbar">
-        <div>
-          <h1>观测与评估</h1>
-        </div>
-        <RouterLink to="/">
-          <el-button :icon="Back">返回概览</el-button>
-        </RouterLink>
-      </header>
-
       <section class="observability-metrics">
         <article>
           <span>运行次数</span>
@@ -142,31 +169,47 @@ async function requestJson(url: string, options: RequestInit = {}) {
             <h2><el-icon><Monitor /></el-icon> 运行记录</h2>
             <el-button :icon="Refresh" :loading="loading" @click="loadObservability">刷新</el-button>
           </header>
+          <div class="observation-scroll" @scroll="handleObservationScroll">
           <article v-for="item in observations" :key="item.id" class="observation-card">
-            <header>
-              <strong>{{ item.selected_agent || item.route || "unknown" }}</strong>
-              <span class="status-pill" :class="item.status">{{ item.status }}</span>
+            <header class="observation-header" @click="toggleObservation(item.id)">
+              <div class="observation-header-left">
+                <el-icon class="observation-toggle">
+                  <ArrowDown v-if="isObservationExpanded(item.id)" />
+                  <ArrowRight v-else />
+                </el-icon>
+                <strong>{{ item.selected_agent || item.route || "unknown" }}</strong>
+                <span class="status-pill" :class="item.status">{{ item.status }}</span>
+              </div>
+              <div class="observation-header-right">
+                <span class="observation-latency">{{ item.latency_ms }}ms</span>
+                <small class="observation-time">{{ item.created_at }}</small>
+              </div>
             </header>
-            <p>{{ item.input_message }}</p>
-            <dl>
-              <div>
-                <dt>耗时</dt>
-                <dd>{{ item.latency_ms }}ms</dd>
+            <div v-if="isObservationExpanded(item.id)" class="observation-body">
+              <p>{{ item.input_message }}</p>
+              <dl>
+                <div>
+                  <dt>耗时</dt>
+                  <dd>{{ item.latency_ms }}ms</dd>
+                </div>
+                <div>
+                  <dt>工具</dt>
+                  <dd>{{ item.tool_calls.length }}</dd>
+                </div>
+                <div>
+                  <dt>来源</dt>
+                  <dd>{{ item.sources.length }}</dd>
+                </div>
+              </dl>
+              <div v-if="item.failure_reason" class="failure-text">{{ item.failure_reason }}</div>
+              <div class="trace-list">
+                <span v-for="trace in item.trace" :key="trace">{{ trace }}</span>
               </div>
-              <div>
-                <dt>工具</dt>
-                <dd>{{ item.tool_calls.length }}</dd>
-              </div>
-              <div>
-                <dt>来源</dt>
-                <dd>{{ item.sources.length }}</dd>
-              </div>
-            </dl>
-            <div v-if="item.failure_reason" class="failure-text">{{ item.failure_reason }}</div>
-            <div class="trace-list">
-              <span v-for="trace in item.trace" :key="trace">{{ trace }}</span>
             </div>
           </article>
+          <div v-if="loadingMore" class="observation-loading-more">加载中...</div>
+          <div v-else-if="!hasMore && observations.length > 0" class="observation-loading-more">没有更多记录了</div>
+          </div>
         </section>
 
         <section class="evaluation-panel">

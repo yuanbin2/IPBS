@@ -605,6 +605,12 @@ class MultiAgentSupervisor:
                 "网上搜索",
                 "联网搜索",
                 "web search",
+                "在网络中查找",
+                "在网络中搜索",
+                "在网上查找",
+                "在网上搜索",
+                "用网络查找",
+                "用网络搜索",
                 "本地文件",
                 "项目文件",
                 "文件搜索",
@@ -642,7 +648,11 @@ class MultiAgentSupervisor:
             return "current_time"
         if cls._contains_any(lowered, ["git", "仓库", "提交", "分支"]):
             return "git_repo_info"
-        if cls._contains_any(lowered, ["网页", "联网", "网络搜索", "网上搜索", "互联网", "web"]):
+        if cls._contains_any(lowered, [
+            "网页", "联网", "网络搜索", "网上搜索", "互联网", "web",
+            "在网络中查找", "在网络中搜索", "在网上查找", "在网上搜索",
+            "用网络查找", "用网络搜索", "网页搜索",
+        ]):
             return "web_search"
         if cls._contains_any(lowered, ["数据库统计", "数据统计", "系统统计", "业务统计", "统计", "数量"]):
             return "safe_database_stats"

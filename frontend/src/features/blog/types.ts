@@ -24,6 +24,7 @@ export interface BlogArticle {
   id: number;
   title: string;
   slug: string;
+  author_name: string;
   summary: string;
   content?: string;
   status: string;
@@ -74,8 +75,14 @@ export interface BlogDraft {
   content: string;
 }
 
+export interface HeadingItem {
+  level: number;
+  text: string;
+}
+
 export interface EditorStats {
   words: number;
   readingMinutes: number;
   headings: string[];
+  headingItems: HeadingItem[];
 }

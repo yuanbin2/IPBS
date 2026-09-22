@@ -1,0 +1,275 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/features/knowledge/components/DocumentManager.vue");import { defineComponent as _defineComponent } from "/node_modules/.vite/deps/vue.js?v=bb3b95b6";
+import { Delete, Refresh, UploadFilled } from "/node_modules/.vite/deps/@element-plus_icons-vue.js?v=bb3b95b6";
+const _sfc_main = /* @__PURE__ */ _defineComponent({
+  __name: "DocumentManager",
+  props: {
+    documents: { type: Array, required: true },
+    uploadTitle: { type: String, required: true },
+    hasFile: { type: Boolean, required: true },
+    uploading: { type: Boolean, required: true },
+    uploadProgress: { type: Number, required: true },
+    uploadStage: { type: String, required: true },
+    reindexingId: { type: [Number, null], required: true },
+    deletingId: { type: [Number, null], required: true }
+  },
+  emits: ["update:uploadTitle", "fileChange", "upload", "refresh", "reindex", "remove"],
+  setup(__props, { expose: __expose }) {
+    __expose();
+    const __returned__ = { get Delete() {
+      return Delete;
+    }, get Refresh() {
+      return Refresh;
+    }, get UploadFilled() {
+      return UploadFilled;
+    } };
+    Object.defineProperty(__returned__, "__isScriptSetup", { enumerable: false, value: true });
+    return __returned__;
+  }
+});
+import { createVNode as _createVNode, resolveComponent as _resolveComponent, withCtx as _withCtx, createTextVNode as _createTextVNode, createElementVNode as _createElementVNode, toDisplayString as _toDisplayString, openBlock as _openBlock, createElementBlock as _createElementBlock, createCommentVNode as _createCommentVNode, renderList as _renderList, Fragment as _Fragment, normalizeClass as _normalizeClass } from "/node_modules/.vite/deps/vue.js?v=bb3b95b6";
+const _hoisted_1 = { class: "upload-zone" };
+const _hoisted_2 = { class: "upload-controls" };
+const _hoisted_3 = {
+  key: 0,
+  class: "upload-progress"
+};
+const _hoisted_4 = { class: "document-table" };
+const _hoisted_5 = { class: "section-heading" };
+const _hoisted_6 = { key: 0 };
+function _sfc_render(_ctx, _cache, $props, $setup, $data, $options) {
+  const _component_el_icon = _resolveComponent("el-icon");
+  const _component_el_input = _resolveComponent("el-input");
+  const _component_el_button = _resolveComponent("el-button");
+  const _component_el_progress = _resolveComponent("el-progress");
+  return _openBlock(), _createElementBlock(
+    _Fragment,
+    null,
+    [
+      _createElementVNode("section", _hoisted_1, [
+        _createElementVNode("div", null, [
+          _createElementVNode("h2", null, [
+            _createVNode(_component_el_icon, null, {
+              default: _withCtx(() => [
+                _createVNode($setup["UploadFilled"])
+              ]),
+              _: 1
+              /* STABLE */
+            }),
+            _cache[4] || (_cache[4] = _createTextVNode(
+              " 上传文档",
+              -1
+              /* CACHED */
+            ))
+          ]),
+          _cache[5] || (_cache[5] = _createElementVNode(
+            "p",
+            null,
+            "支持 Markdown、txt、PDF。上传后会自动抽取文本、切分片段并写入 embedding 记录。",
+            -1
+            /* CACHED */
+          ))
+        ]),
+        _createElementVNode("div", _hoisted_2, [
+          _createElementVNode(
+            "input",
+            {
+              type: "file",
+              accept: ".md,.markdown,.txt,.pdf",
+              onChange: _cache[0] || (_cache[0] = ($event) => _ctx.$emit("fileChange", $event))
+            },
+            null,
+            32
+            /* NEED_HYDRATION */
+          ),
+          _createVNode(_component_el_input, {
+            "model-value": $props.uploadTitle,
+            placeholder: "文档标题",
+            "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => _ctx.$emit("update:uploadTitle", String($event)))
+          }, null, 8, ["model-value"]),
+          _createVNode(_component_el_button, {
+            type: "primary",
+            loading: $props.uploading,
+            disabled: !$props.hasFile,
+            onClick: _cache[2] || (_cache[2] = ($event) => _ctx.$emit("upload"))
+          }, {
+            default: _withCtx(() => [..._cache[6] || (_cache[6] = [
+              _createTextVNode(
+                " 上传并处理 ",
+                -1
+                /* CACHED */
+              )
+            ])]),
+            _: 1
+            /* STABLE */
+          }, 8, ["loading", "disabled"]),
+          $props.uploading || $props.uploadProgress > 0 ? (_openBlock(), _createElementBlock("div", _hoisted_3, [
+            _createVNode(_component_el_progress, {
+              percentage: $props.uploadProgress,
+              status: $props.uploadProgress >= 100 ? "success" : void 0,
+              "stroke-width": 8
+            }, null, 8, ["percentage", "status"]),
+            _createElementVNode(
+              "span",
+              null,
+              _toDisplayString($props.uploadStage === "processing" ? "文件已上传，正在写入知识库" : "正在上传文件"),
+              1
+              /* TEXT */
+            )
+          ])) : _createCommentVNode("v-if", true)
+        ])
+      ]),
+      _createElementVNode("section", _hoisted_4, [
+        _createElementVNode("div", _hoisted_5, [
+          _cache[8] || (_cache[8] = _createElementVNode(
+            "h2",
+            null,
+            "文档处理状态",
+            -1
+            /* CACHED */
+          )),
+          _createVNode(_component_el_button, {
+            icon: $setup.Refresh,
+            onClick: _cache[3] || (_cache[3] = ($event) => _ctx.$emit("refresh"))
+          }, {
+            default: _withCtx(() => [..._cache[7] || (_cache[7] = [
+              _createTextVNode(
+                "刷新",
+                -1
+                /* CACHED */
+              )
+            ])]),
+            _: 1
+            /* STABLE */
+          }, 8, ["icon"])
+        ]),
+        _createElementVNode("table", null, [
+          _cache[12] || (_cache[12] = _createElementVNode(
+            "thead",
+            null,
+            [
+              _createElementVNode("tr", null, [
+                _createElementVNode("th", null, "标题"),
+                _createElementVNode("th", null, "状态"),
+                _createElementVNode("th", null, "片段"),
+                _createElementVNode("th", null, "类型"),
+                _createElementVNode("th", null, "操作")
+              ])
+            ],
+            -1
+            /* CACHED */
+          )),
+          _createElementVNode("tbody", null, [
+            (_openBlock(true), _createElementBlock(
+              _Fragment,
+              null,
+              _renderList($props.documents, (document) => {
+                return _openBlock(), _createElementBlock("tr", {
+                  key: document.id
+                }, [
+                  _createElementVNode(
+                    "td",
+                    null,
+                    _toDisplayString(document.title),
+                    1
+                    /* TEXT */
+                  ),
+                  _createElementVNode("td", null, [
+                    _createElementVNode(
+                      "span",
+                      {
+                        class: _normalizeClass(["status-pill", document.status])
+                      },
+                      _toDisplayString(document.status),
+                      3
+                      /* TEXT, CLASS */
+                    )
+                  ]),
+                  _createElementVNode(
+                    "td",
+                    null,
+                    _toDisplayString(document.chunk_count),
+                    1
+                    /* TEXT */
+                  ),
+                  _createElementVNode(
+                    "td",
+                    null,
+                    _toDisplayString(document.content_type || "-"),
+                    1
+                    /* TEXT */
+                  ),
+                  _createElementVNode("td", null, [
+                    _createVNode(_component_el_button, {
+                      size: "small",
+                      loading: $props.reindexingId === document.id,
+                      onClick: ($event) => _ctx.$emit("reindex", document)
+                    }, {
+                      default: _withCtx(() => [..._cache[9] || (_cache[9] = [
+                        _createTextVNode(
+                          " 重新处理 ",
+                          -1
+                          /* CACHED */
+                        )
+                      ])]),
+                      _: 1
+                      /* STABLE */
+                    }, 8, ["loading", "onClick"]),
+                    _createVNode(_component_el_button, {
+                      size: "small",
+                      type: "danger",
+                      plain: "",
+                      icon: $setup.Delete,
+                      loading: $props.deletingId === document.id,
+                      onClick: ($event) => _ctx.$emit("remove", document)
+                    }, {
+                      default: _withCtx(() => [..._cache[10] || (_cache[10] = [
+                        _createTextVNode(
+                          " 删除 ",
+                          -1
+                          /* CACHED */
+                        )
+                      ])]),
+                      _: 1
+                      /* STABLE */
+                    }, 8, ["icon", "loading", "onClick"])
+                  ])
+                ]);
+              }),
+              128
+              /* KEYED_FRAGMENT */
+            )),
+            $props.documents.length === 0 ? (_openBlock(), _createElementBlock("tr", _hoisted_6, [..._cache[11] || (_cache[11] = [
+              _createElementVNode(
+                "td",
+                { colspan: "5" },
+                "还没有上传文档",
+                -1
+                /* CACHED */
+              )
+            ])])) : _createCommentVNode("v-if", true)
+          ])
+        ])
+      ])
+    ],
+    64
+    /* STABLE_FRAGMENT */
+  );
+}
+_sfc_main.__hmrId = "a113345e";
+typeof __VUE_HMR_RUNTIME__ !== "undefined" && __VUE_HMR_RUNTIME__.createRecord(_sfc_main.__hmrId, _sfc_main);
+import.meta.hot.on("file-changed", ({ file }) => {
+  __VUE_HMR_RUNTIME__.CHANGED_FILE = file;
+});
+import.meta.hot.accept((mod) => {
+  if (!mod) return;
+  const { default: updated, _rerender_only } = mod;
+  if (_rerender_only) {
+    __VUE_HMR_RUNTIME__.rerender(updated.__hmrId, updated.render);
+  } else {
+    __VUE_HMR_RUNTIME__.reload(updated.__hmrId, updated);
+  }
+});
+import _export_sfc from "/@id/__x00__plugin-vue:export-helper";
+export default /* @__PURE__ */ _export_sfc(_sfc_main, [["render", _sfc_render], ["__file", "E:/Desktop/MyProject/Blog-fixed-20260727/Blog/frontend/src/features/knowledge/components/DocumentManager.vue"]]);
+
+//# sourceMappingURL=data:application/json;base64,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QUFBLGtCQUM1QixvQkFrQks7QUFBQSxvQkFqQkgsYUFNWTtBQUFBLHNCQUxWLE1BQUs7QUFBQSxzQkFDSixTQUFTLHdCQUFpQixTQUFTO0FBQUEsc0JBQ25DLFNBQUssWUFBRSxXQUFLLFdBQVksUUFBUTtBQUFBO3dDQUNsQyxNQUVEO0FBQUE7MEJBRkM7QUFBQSwwQkFFRDtBQUFBO0FBQUE7QUFBQTs7OztvQkFDQSxhQVNZO0FBQUEsc0JBUlYsTUFBSztBQUFBLHNCQUNMLE1BQUs7QUFBQSxzQkFDTDtBQUFBLHNCQUNDLE1BQU07QUFBQSxzQkFDTixTQUFTLHNCQUFlLFNBQVM7QUFBQSxzQkFDakMsU0FBSyxZQUFFLFdBQUssVUFBVyxRQUFRO0FBQUE7d0NBQ2pDLE1BRUQ7QUFBQTswQkFGQztBQUFBLDBCQUVEO0FBQUE7QUFBQTtBQUFBOzs7Ozs7Ozs7O1lBR00saUJBQVUsV0FBTSxtQkFBMUIsb0JBQW1FO0FBQUEsY0FBakM7QUFBQSxnQkFBNEI7QUFBQSxrQkFBeEIsU0FBUSxJQUFHO0FBQUEsZ0JBQUM7QUFBQSxnQkFBTztBQUFBO0FBQUE7QUFBQSIsIm5hbWVzIjpbXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiRG9jdW1lbnRNYW5hZ2VyLnZ1ZSJdLCJzb3VyY2VzQ29udGVudCI6WyI8c2NyaXB0IHNldHVwIGxhbmc9XCJ0c1wiPlxuaW1wb3J0IHsgRGVsZXRlLCBSZWZyZXNoLCBVcGxvYWRGaWxsZWQgfSBmcm9tIFwiQGVsZW1lbnQtcGx1cy9pY29ucy12dWVcIjtcbmltcG9ydCB0eXBlIHsgS25vd2xlZGdlRG9jdW1lbnQgfSBmcm9tIFwiLi4vdHlwZXNcIjtcblxuZGVmaW5lUHJvcHM8e1xuICBkb2N1bWVudHM6IEtub3dsZWRnZURvY3VtZW50W107XG4gIHVwbG9hZFRpdGxlOiBzdHJpbmc7XG4gIGhhc0ZpbGU6IGJvb2xlYW47XG4gIHVwbG9hZGluZzogYm9vbGVhbjtcbiAgdXBsb2FkUHJvZ3Jlc3M6IG51bWJlcjtcbiAgdXBsb2FkU3RhZ2U6IFwiaWRsZVwiIHwgXCJ1cGxvYWRpbmdcIiB8IFwicHJvY2Vzc2luZ1wiO1xuICByZWluZGV4aW5nSWQ6IG51bWJlciB8IG51bGw7XG4gIGRlbGV0aW5nSWQ6IG51bWJlciB8IG51bGw7XG59PigpO1xuXG5kZWZpbmVFbWl0czx7XG4gIFwidXBkYXRlOnVwbG9hZFRpdGxlXCI6IFt2YWx1ZTogc3RyaW5nXTtcbiAgZmlsZUNoYW5nZTogW2V2ZW50OiBFdmVudF07XG4gIHVwbG9hZDogW107XG4gIHJlZnJlc2g6IFtdO1xuICByZWluZGV4OiBbZG9jdW1lbnQ6IEtub3dsZWRnZURvY3VtZW50XTtcbiAgcmVtb3ZlOiBbZG9jdW1lbnQ6IEtub3dsZWRnZURvY3VtZW50XTtcbn0+KCk7XG48L3NjcmlwdD5cblxuPHRlbXBsYXRlPlxuICA8c2VjdGlvbiBjbGFzcz1cInVwbG9hZC16b25lXCI+XG4gICAgPGRpdj5cbiAgICAgIDxoMj48ZWwtaWNvbj48VXBsb2FkRmlsbGVkIC8+PC9lbC1pY29uPiDkuIrkvKDmlofmoaM8L2gyPlxuICAgICAgPHA+5pSv5oyBIE1hcmtkb3du44CBdHh044CBUERG44CC5LiK5Lyg5ZCO5Lya6Ieq5Yqo5oq95Y+W5paH5pys44CB5YiH5YiG54mH5q615bm25YaZ5YWlIGVtYmVkZGluZyDorrDlvZXjgII8L3A+XG4gICAgPC9kaXY+XG4gICAgPGRpdiBjbGFzcz1cInVwbG9hZC1jb250cm9sc1wiPlxuICAgICAgPGlucHV0IHR5cGU9XCJmaWxlXCIgYWNjZXB0PVwiLm1kLC5tYXJrZG93biwudHh0LC5wZGZcIiBAY2hhbmdlPVwiJGVtaXQoJ2ZpbGVDaGFuZ2UnLCAkZXZlbnQpXCIgLz5cbiAgICAgIDxlbC1pbnB1dFxuICAgICAgICA6bW9kZWwtdmFsdWU9XCJ1cGxvYWRUaXRsZVwiXG4gICAgICAgIHBsYWNlaG9sZGVyPVwi5paH5qGj5qCH6aKYXCJcbiAgICAgICAgQHVwZGF0ZTptb2RlbC12YWx1ZT1cIiRlbWl0KCd1cGRhdGU6dXBsb2FkVGl0bGUnLCBTdHJpbmcoJGV2ZW50KSlcIlxuICAgICAgLz5cbiAgICAgIDxlbC1idXR0b24gdHlwZT1cInByaW1hcnlcIiA6bG9hZGluZz1cInVwbG9hZGluZ1wiIDpkaXNhYmxlZD1cIiFoYXNGaWxlXCIgQGNsaWNrPVwiJGVtaXQoJ3VwbG9hZCcpXCI+XG4gICAgICAgIOS4iuS8oOW5tuWkhOeQhlxuICAgICAgPC9lbC1idXR0b24+XG4gICAgICA8ZGl2IHYtaWY9XCJ1cGxvYWRpbmcgfHwgdXBsb2FkUHJvZ3Jlc3MgPiAwXCIgY2xhc3M9XCJ1cGxvYWQtcHJvZ3Jlc3NcIj5cbiAgICAgICAgPGVsLXByb2dyZXNzXG4gICAgICAgICAgOnBlcmNlbnRhZ2U9XCJ1cGxvYWRQcm9ncmVzc1wiXG4gICAgICAgICAgOnN0YXR1cz1cInVwbG9hZFByb2dyZXNzID49IDEwMCA/ICdzdWNjZXNzJyA6IHVuZGVmaW5lZFwiXG4gICAgICAgICAgOnN0cm9rZS13aWR0aD1cIjhcIlxuICAgICAgICAvPlxuICAgICAgICA8c3Bhbj57eyB1cGxvYWRTdGFnZSA9PT0gXCJwcm9jZXNzaW5nXCIgPyBcIuaWh+S7tuW3suS4iuS8oO+8jOato+WcqOWGmeWFpeefpeivhuW6k1wiIDogXCLmraPlnKjkuIrkvKDmlofku7ZcIiB9fTwvc3Bhbj5cbiAgICAgIDwvZGl2PlxuICAgIDwvZGl2PlxuICA8L3NlY3Rpb24+XG5cbiAgPHNlY3Rpb24gY2xhc3M9XCJkb2N1bWVudC10YWJsZVwiPlxuICAgIDxkaXYgY2xhc3M9XCJzZWN0aW9uLWhlYWRpbmdcIj5cbiAgICAgIDxoMj7mlofmoaPlpITnkIbnirbmgIE8L2gyPlxuICAgICAgPGVsLWJ1dHRvbiA6aWNvbj1cIlJlZnJlc2hcIiBAY2xpY2s9XCIkZW1pdCgncmVmcmVzaCcpXCI+5Yi35pawPC9lbC1idXR0b24+XG4gICAgPC9kaXY+XG4gICAgPHRhYmxlPlxuICAgICAgPHRoZWFkPlxuICAgICAgICA8dHI+PHRoPuagh+mimDwvdGg+PHRoPueKtuaAgTwvdGg+PHRoPueJh+autTwvdGg+PHRoPuexu+WeizwvdGg+PHRoPuaTjeS9nDwvdGg+PC90cj5cbiAgICAgIDwvdGhlYWQ+XG4gICAgICA8dGJvZHk+XG4gICAgICAgIDx0ciB2LWZvcj1cImRvY3VtZW50IGluIGRvY3VtZW50c1wiIDprZXk9XCJkb2N1bWVudC5pZFwiPlxuICAgICAgICAgIDx0ZD57eyBkb2N1bWVudC50aXRsZSB9fTwvdGQ+XG4gICAgICAgICAgPHRkPjxzcGFuIGNsYXNzPVwic3RhdHVzLXBpbGxcIiA6Y2xhc3M9XCJkb2N1bWVudC5zdGF0dXNcIj57eyBkb2N1bWVudC5zdGF0dXMgfX08L3NwYW4+PC90ZD5cbiAgICAgICAgICA8dGQ+e3sgZG9jdW1lbnQuY2h1bmtfY291bnQgfX08L3RkPlxuICAgICAgICAgIDx0ZD57eyBkb2N1bWVudC5jb250ZW50X3R5cGUgfHwgXCItXCIgfX08L3RkPlxuICAgICAgICAgIDx0ZD5cbiAgICAgICAgICAgIDxlbC1idXR0b25cbiAgICAgICAgICAgICAgc2l6ZT1cInNtYWxsXCJcbiAgICAgICAgICAgICAgOmxvYWRpbmc9XCJyZWluZGV4aW5nSWQgPT09IGRvY3VtZW50LmlkXCJcbiAgICAgICAgICAgICAgQGNsaWNrPVwiJGVtaXQoJ3JlaW5kZXgnLCBkb2N1bWVudClcIlxuICAgICAgICAgICAgPlxuICAgICAgICAgICAgICDph43mlrDlpITnkIZcbiAgICAgICAgICAgIDwvZWwtYnV0dG9uPlxuICAgICAgICAgICAgPGVsLWJ1dHRvblxuICAgICAgICAgICAgICBzaXplPVwic21hbGxcIlxuICAgICAgICAgICAgICB0eXBlPVwiZGFuZ2VyXCJcbiAgICAgICAgICAgICAgcGxhaW5cbiAgICAgICAgICAgICAgOmljb249XCJEZWxldGVcIlxuICAgICAgICAgICAgICA6bG9hZGluZz1cImRlbGV0aW5nSWQgPT09IGRvY3VtZW50LmlkXCJcbiAgICAgICAgICAgICAgQGNsaWNrPVwiJGVtaXQoJ3JlbW92ZScsIGRvY3VtZW50KVwiXG4gICAgICAgICAgICA+XG4gICAgICAgICAgICAgIOWIoOmZpFxuICAgICAgICAgICAgPC9lbC1idXR0b24+XG4gICAgICAgICAgPC90ZD5cbiAgICAgICAgPC90cj5cbiAgICAgICAgPHRyIHYtaWY9XCJkb2N1bWVudHMubGVuZ3RoID09PSAwXCI+PHRkIGNvbHNwYW49XCI1XCI+6L+Y5rKh5pyJ5LiK5Lyg5paH5qGjPC90ZD48L3RyPlxuICAgICAgPC90Ym9keT5cbiAgICA8L3RhYmxlPlxuICA8L3NlY3Rpb24+XG48L3RlbXBsYXRlPlxuIl0sImZpbGUiOiJFOi9EZXNrdG9wL015UHJvamVjdC9CbG9nLWZpeGVkLTIwMjYwNzI3L0Jsb2cvZnJvbnRlbmQvc3JjL2ZlYXR1cmVzL2tub3dsZWRnZS9jb21wb25lbnRzL0RvY3VtZW50TWFuYWdlci52dWUifQ==

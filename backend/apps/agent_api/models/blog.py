@@ -34,10 +34,12 @@ class BlogArticle(models.Model):
         DRAFT = "draft", "Draft"
         PUBLISHED = "published", "Published"
         ARCHIVED = "archived", "Archived"
+        REJECTED = "rejected", "Rejected"
 
     title = models.CharField(max_length=180)
     workspace_key = models.CharField(max_length=80, default=DEFAULT_WORKSPACE_KEY, db_index=True)
     slug = models.SlugField(max_length=220, unique=True, allow_unicode=True)
+    author_name = models.CharField(max_length=80, blank=True, default="")
     summary = models.TextField(blank=True)
     content = models.TextField()
     category = models.ForeignKey(

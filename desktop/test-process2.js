@@ -1,0 +1,1 @@
+console.log("process.type:", process.type); console.log("process.versions:", process.versions); const electron = require("electron"); console.log("electron type:", typeof electron); console.log("electron keys:", Object.keys(electron).slice(0, 10));

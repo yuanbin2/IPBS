@@ -16,6 +16,24 @@ class BlogArticleListCreateView(APIView):
         category = request.query_params.get("category")
         tag = request.query_params.get("tag")
         query = str(request.query_params.get("q", "")).strip()
+
+        # 权限检查
+        context = context_from_request(request)
+        is_admin = context.authenticated and context.role in {UserProfile.Role.ADMIN, UserProfile.Role.OPERATOR}
+
+        # 对于草稿和拒绝状态的文章，必须登录且只能看到自己的
+        if status_filter in {BlogArticle.Status.DRAFT, BlogArticle.Status.REJECTED}:
+            if not context.authenticated:
+                return Response({"detail": "请先登录"}, status=status.HTTP_401_UNAUTHORIZED)
+            if not is_admin:
+                # 普通用户只能看到自己提交的（忽略大小写）
+                articles = articles.filter(author_name__iexact=context.actor)
+        else:
+            # 已发布文章，支持按 author_name 过滤（忽略大小写）
+            author_name = str(request.query_params.get("author_name", "")).strip()
+            if author_name:
+                articles = articles.filter(author_name__iexact=author_name)
+
         if category:
             articles = articles.filter(category__slug=category)
         if tag:
@@ -26,45 +44,51 @@ class BlogArticleListCreateView(APIView):
         return Response([serialize_article(article) for article in articles.distinct()[:50]])
 
     def post(self, request):
-        denied = require_roles(request, [UserProfile.Role.OPERATOR])
-        if denied:
-            return denied
         title = str(request.data.get("title", "")).strip()
         content = str(request.data.get("content", "")).strip()
         if not title or not content:
             return Response({"detail": "title and content are required"}, status=status.HTTP_400_BAD_REQUEST)
 
+        context = context_from_request(request)
+
+        # 已登录用户使用用户名，未登录用户使用提交的 author_name
+        if context.authenticated:
+            author_name = context.actor
+        else:
+            author_name = str(request.data.get("author_name", "")).strip()
+            if not author_name:
+                return Response({"detail": "请先登录或填写昵称"}, status=status.HTTP_400_BAD_REQUEST)
+
         article = BlogArticle.objects.create(
             title=title,
             workspace_key=get_workspace_key(request),
             slug=unique_slug(BlogArticle, request.data.get("slug") or title, max_length=200),
+            author_name=author_name,
             summary=str(request.data.get("summary", "")).strip(),
             content=content,
             category=get_or_create_category(request.data.get("category")),
-            status=str(request.data.get("status", BlogArticle.Status.DRAFT)),
+            status=BlogArticle.Status.DRAFT,
         )
         set_article_tags(article, request.data.get("tags", []))
-        if article.status == BlogArticle.Status.PUBLISHED or request.data.get("publish"):
-            article.status = BlogArticle.Status.DRAFT
-            article.save(update_fields=["status", "updated_at"])
-            approval = ApprovalRequest.objects.create(
-                action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
-                workspace_key=get_workspace_key(request),
-                title=f"发布博客：{article.title}",
-                description="发布博客会公开文章，并将文章内容写入知识库供 Agent 检索。",
-                payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
-                requester=str(request.data.get("requester", "blog-editor")).strip(),
-            )
-            return Response(
-                {
-                    "approval_required": True,
-                    "article": serialize_article(article, include_content=True),
-                    "approval": serialize_approval_request(approval),
-                    "detail": "文章已保存为草稿，发布请求已进入人工审批。",
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
-        return Response(serialize_article(article, include_content=True), status=status.HTTP_201_CREATED)
+
+        # All submissions go through approval
+        approval = ApprovalRequest.objects.create(
+            action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
+            workspace_key=get_workspace_key(request),
+            title=f"发布博客：{article.title}",
+            description=f"{'用户 ' + author_name + ' 提交的' if context.authenticated else '访客 ' + author_name + ' 提交的'}博客文章，发布后会公开并写入知识库。",
+            payload={"article_slug": article.slug, "article_id": article.id, "title": article.title, "author_name": author_name},
+            requester=author_name,
+        )
+        return Response(
+            {
+                "approval_required": True,
+                "article": serialize_article(article, include_content=True),
+                "approval": serialize_approval_request(approval),
+                "detail": "文章已保存为草稿，发布请求已进入人工审批。",
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 class BlogImageUploadView(APIView):
@@ -117,6 +141,82 @@ class BlogArticleDetailView(APIView):
         article.view_count += 1
         article.save(update_fields=["view_count", "updated_at"])
         return Response(serialize_article(article, include_content=True))
+
+    def put(self, request, slug: str):
+        """Allow visitors to update their own articles (draft or published)."""
+        article = get_object_or_404(BlogArticle, slug=slug, workspace_key=get_workspace_key(request))
+
+        # Check if user is admin/operator
+        context = context_from_request(request)
+        is_admin = context.authenticated and context.role in {UserProfile.Role.ADMIN, UserProfile.Role.OPERATOR}
+
+        # 必须登录才能编辑
+        if not context.authenticated:
+            return Response(
+                {"detail": "请先登录"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # 普通用户只能编辑自己的文章（忽略大小写）
+        if not is_admin and article.author_name.lower() != context.actor.lower():
+            return Response(
+                {"detail": "只能编辑自己提交的文章"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Update article fields
+        if "title" in request.data:
+            article.title = str(request.data["title"]).strip()
+        if "summary" in request.data:
+            article.summary = str(request.data["summary"]).strip()
+        if "content" in request.data:
+            article.content = str(request.data["content"]).strip()
+        if "category" in request.data:
+            article.category = get_or_create_category(request.data.get("category"))
+
+        # If article was published, set it back to draft for re-approval
+        if article.status == BlogArticle.Status.PUBLISHED:
+            article.status = BlogArticle.Status.DRAFT
+            article.published_at = None
+
+        article.save()
+
+        if "tags" in request.data:
+            set_article_tags(article, request.data.get("tags", []))
+
+        # Cancel any existing pending approval for this article
+        ApprovalRequest.objects.filter(
+            action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
+            payload__article_slug=article.slug,
+            status=ApprovalRequest.Status.PENDING,
+            workspace_key=get_workspace_key(request),
+        ).update(status=ApprovalRequest.Status.REJECTED, result="访客更新了文章内容，此审批已被替代。")
+
+        # Create a new approval request
+        context = context_from_request(request)
+        approval = ApprovalRequest.objects.create(
+            action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
+            workspace_key=get_workspace_key(request),
+            title=f"发布博客：{article.title}",
+            description=f"访客 {author_name} {'更新了' if article.created_at else '提交了'}博客文章，发布后会公开并写入知识库。",
+            payload={
+                "article_slug": article.slug,
+                "article_id": article.id,
+                "title": article.title,
+                "author_name": author_name,
+            },
+            requester=author_name or str(context.actor or "anonymous"),
+        )
+
+        return Response(
+            {
+                "approval_required": True,
+                "article": serialize_article(article, include_content=True),
+                "approval": serialize_approval_request(approval),
+                "detail": "文章已更新，等待管理员审核后会公开发布。",
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
     def patch(self, request, slug: str):
         denied = require_roles(request, [UserProfile.Role.OPERATOR])

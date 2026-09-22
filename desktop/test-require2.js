@@ -1,0 +1,1 @@
+const electron = require("electron"); console.log("Type:", typeof electron); console.log("Is string:", typeof electron === "string"); if (typeof electron === "string") { console.log("Value:", electron); }

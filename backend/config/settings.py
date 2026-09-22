@@ -10,6 +10,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = BASE_DIR.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -182,3 +184,4 @@ LOGGING = {
         "level": "INFO",
     },
 }
+# Force redeploy Tue Sep 22 02:12:12     2026

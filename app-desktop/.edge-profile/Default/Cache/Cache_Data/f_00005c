@@ -1,0 +1,513 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/features/blog/components/BlogWriter.vue");import { defineComponent as _defineComponent } from "/node_modules/.vite/deps/vue.js?v=bb3b95b6";
+import { ref } from "/node_modules/.vite/deps/vue.js?v=bb3b95b6";
+import { EditPen, UploadFilled } from "/node_modules/.vite/deps/@element-plus_icons-vue.js?v=bb3b95b6";
+import { ElMessage } from "/node_modules/.vite/deps/element-plus.js?v=bb3b95b6";
+import { MdEditor } from "/node_modules/.vite/deps/md-editor-v3.js?v=bb3b95b6";
+import { parseMarkdownFile } from "/src/features/blog/utils/parseMarkdownFile.ts";
+const MAX_FILE_SIZE = 1024 * 1024;
+const _sfc_main = /* @__PURE__ */ _defineComponent({
+  __name: "BlogWriter",
+  props: {
+    draft: { type: Object, required: true },
+    templates: { type: Array, required: true },
+    stats: { type: Object, required: true },
+    publishing: { type: Boolean, required: true },
+    uploadingImage: { type: Boolean, required: true },
+    error: { type: String, required: true },
+    uploadHandler: { type: Function, required: true },
+    editingArticle: { type: [Object, null], required: false },
+    updating: { type: Boolean, required: false }
+  },
+  emits: ["publish", "update", "cancelEdit", "applyTemplate", "insertSnippet", "clearDraft", "importMarkdown"],
+  setup(__props, { expose: __expose, emit: __emit }) {
+    __expose();
+    const emit = __emit;
+    const fileInputRef = ref(null);
+    const ALLOWED_EXTENSIONS = [".md", ".markdown", ".txt"];
+    function triggerFileInput() {
+      fileInputRef.value?.click();
+    }
+    function handleFileSelect(event) {
+      const input = event.target;
+      const file = input.files?.[0];
+      input.value = "";
+      if (!file) return;
+      const ext = "." + file.name.split(".").pop()?.toLowerCase();
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        ElMessage.error("仅支持 .md、.markdown、.txt 文件");
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        ElMessage.error("文件大小不能超过 1MB");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const raw = reader.result;
+          if (!raw.trim()) {
+            ElMessage.error("文件内容为空");
+            return;
+          }
+          const parsed = parseMarkdownFile(raw, file.name);
+          emit("importMarkdown", parsed);
+        } catch {
+          ElMessage.error("解析 Markdown 文件失败");
+        }
+      };
+      reader.onerror = () => {
+        ElMessage.error("读取文件失败");
+      };
+      reader.readAsText(file, "UTF-8");
+    }
+    const __returned__ = { emit, fileInputRef, ALLOWED_EXTENSIONS, MAX_FILE_SIZE, triggerFileInput, handleFileSelect, get EditPen() {
+      return EditPen;
+    }, get UploadFilled() {
+      return UploadFilled;
+    }, get MdEditor() {
+      return MdEditor;
+    } };
+    Object.defineProperty(__returned__, "__isScriptSetup", { enumerable: false, value: true });
+    return __returned__;
+  }
+});
+import { createVNode as _createVNode, resolveComponent as _resolveComponent, withCtx as _withCtx, toDisplayString as _toDisplayString, createTextVNode as _createTextVNode, createElementVNode as _createElementVNode, openBlock as _openBlock, createBlock as _createBlock, createCommentVNode as _createCommentVNode, renderList as _renderList, Fragment as _Fragment, createElementBlock as _createElementBlock, normalizeClass as _normalizeClass } from "/node_modules/.vite/deps/vue.js?v=bb3b95b6";
+const _hoisted_1 = { class: "write-box markdown-writer" };
+const _hoisted_2 = { class: "writer-heading" };
+const _hoisted_3 = { class: "writer-heading-actions" };
+const _hoisted_4 = ["accept"];
+const _hoisted_5 = { class: "writer-fields" };
+const _hoisted_6 = { class: "writer-meta" };
+const _hoisted_7 = { class: "editor-workspace" };
+const _hoisted_8 = { class: "note-workbench" };
+const _hoisted_9 = { class: "note-tool-group" };
+const _hoisted_10 = { class: "note-actions" };
+const _hoisted_11 = { class: "note-tool-group" };
+const _hoisted_12 = { class: "note-actions" };
+const _hoisted_13 = { class: "note-tool-group" };
+const _hoisted_14 = { class: "note-actions" };
+const _hoisted_15 = { class: "note-context" };
+const _hoisted_16 = { class: "note-draft-actions" };
+const _hoisted_17 = { class: "note-stats" };
+const _hoisted_18 = {
+  key: 0,
+  class: "note-outline"
+};
+const _hoisted_19 = { class: "outline-list" };
+const _hoisted_20 = {
+  key: 0,
+  class: "editor-error"
+};
+const _hoisted_21 = { class: "writer-footer" };
+function _sfc_render(_ctx, _cache, $props, $setup, $data, $options) {
+  const _component_el_icon = _resolveComponent("el-icon");
+  const _component_el_button = _resolveComponent("el-button");
+  const _component_el_input = _resolveComponent("el-input");
+  return _openBlock(), _createElementBlock("section", _hoisted_1, [
+    _createElementVNode("header", _hoisted_2, [
+      _createElementVNode("h2", null, [
+        _createVNode(_component_el_icon, null, {
+          default: _withCtx(() => [
+            _createVNode($setup["EditPen"])
+          ]),
+          _: 1
+          /* STABLE */
+        }),
+        _createTextVNode(
+          " " + _toDisplayString($props.editingArticle ? `编辑笔记: ${$props.editingArticle.title}` : "Markdown 写作台"),
+          1
+          /* TEXT */
+        )
+      ]),
+      _createElementVNode("div", _hoisted_3, [
+        _createElementVNode("input", {
+          ref: "fileInputRef",
+          type: "file",
+          accept: $setup.ALLOWED_EXTENSIONS.join(","),
+          style: { "display": "none" },
+          onChange: $setup.handleFileSelect
+        }, null, 40, _hoisted_4),
+        !$props.editingArticle ? (_openBlock(), _createBlock(_component_el_button, {
+          key: 0,
+          icon: $setup.UploadFilled,
+          onClick: $setup.triggerFileInput
+        }, {
+          default: _withCtx(() => [..._cache[16] || (_cache[16] = [
+            _createTextVNode(
+              "导入 Markdown",
+              -1
+              /* CACHED */
+            )
+          ])]),
+          _: 1
+          /* STABLE */
+        }, 8, ["icon"])) : _createCommentVNode("v-if", true),
+        $props.editingArticle ? (_openBlock(), _createBlock(_component_el_button, {
+          key: 1,
+          onClick: _cache[0] || (_cache[0] = ($event) => $setup.emit("cancelEdit"))
+        }, {
+          default: _withCtx(() => [..._cache[17] || (_cache[17] = [
+            _createTextVNode(
+              "取消编辑",
+              -1
+              /* CACHED */
+            )
+          ])]),
+          _: 1
+          /* STABLE */
+        })) : _createCommentVNode("v-if", true),
+        $props.editingArticle ? (_openBlock(), _createBlock(_component_el_button, {
+          key: 2,
+          type: "primary",
+          loading: $props.updating,
+          onClick: _cache[1] || (_cache[1] = ($event) => $setup.emit("update"))
+        }, {
+          default: _withCtx(() => [..._cache[18] || (_cache[18] = [
+            _createTextVNode(
+              " 更新并重新提交 ",
+              -1
+              /* CACHED */
+            )
+          ])]),
+          _: 1
+          /* STABLE */
+        }, 8, ["loading"])) : (_openBlock(), _createBlock(_component_el_button, {
+          key: 3,
+          type: "primary",
+          loading: $props.publishing,
+          onClick: _cache[2] || (_cache[2] = ($event) => $setup.emit("publish"))
+        }, {
+          default: _withCtx(() => [..._cache[19] || (_cache[19] = [
+            _createTextVNode(
+              " 发布并加入知识库 ",
+              -1
+              /* CACHED */
+            )
+          ])]),
+          _: 1
+          /* STABLE */
+        }, 8, ["loading"]))
+      ])
+    ]),
+    _createElementVNode("div", _hoisted_5, [
+      _createVNode(_component_el_input, {
+        modelValue: $props.draft.title,
+        "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => $props.draft.title = $event),
+        size: "large",
+        placeholder: "文章标题"
+      }, null, 8, ["modelValue"]),
+      _createVNode(_component_el_input, {
+        modelValue: $props.draft.summary,
+        "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => $props.draft.summary = $event),
+        placeholder: "摘要，会显示在文章卡片里"
+      }, null, 8, ["modelValue"]),
+      _createElementVNode("div", _hoisted_6, [
+        _createVNode(_component_el_input, {
+          modelValue: $props.draft.category,
+          "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => $props.draft.category = $event),
+          placeholder: "分类"
+        }, null, 8, ["modelValue"]),
+        _createVNode(_component_el_input, {
+          modelValue: $props.draft.tags,
+          "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => $props.draft.tags = $event),
+          placeholder: "标签，逗号分隔"
+        }, null, 8, ["modelValue"])
+      ])
+    ]),
+    _createElementVNode("section", _hoisted_7, [
+      _createElementVNode("section", _hoisted_8, [
+        _createElementVNode("div", _hoisted_9, [
+          _cache[20] || (_cache[20] = _createElementVNode(
+            "strong",
+            { class: "note-tool-label" },
+            "写作模板",
+            -1
+            /* CACHED */
+          )),
+          _createElementVNode("div", _hoisted_10, [
+            (_openBlock(true), _createElementBlock(
+              _Fragment,
+              null,
+              _renderList($props.templates, (item) => {
+                return _openBlock(), _createBlock(_component_el_button, {
+                  key: item.name,
+                  onClick: ($event) => $setup.emit("applyTemplate", item.content)
+                }, {
+                  default: _withCtx(() => [
+                    _createTextVNode(
+                      _toDisplayString(item.name),
+                      1
+                      /* TEXT */
+                    )
+                  ]),
+                  _: 2
+                  /* DYNAMIC */
+                }, 1032, ["onClick"]);
+              }),
+              128
+              /* KEYED_FRAGMENT */
+            ))
+          ])
+        ]),
+        _createElementVNode("div", _hoisted_11, [
+          _cache[22] || (_cache[22] = _createElementVNode(
+            "strong",
+            { class: "note-tool-label" },
+            "导入文件",
+            -1
+            /* CACHED */
+          )),
+          _createElementVNode("div", _hoisted_12, [
+            _createVNode(_component_el_button, {
+              icon: $setup.UploadFilled,
+              onClick: $setup.triggerFileInput
+            }, {
+              default: _withCtx(() => [..._cache[21] || (_cache[21] = [
+                _createTextVNode(
+                  "导入 .md 文件",
+                  -1
+                  /* CACHED */
+                )
+              ])]),
+              _: 1
+              /* STABLE */
+            }, 8, ["icon"])
+          ])
+        ]),
+        _createElementVNode("div", _hoisted_13, [
+          _cache[28] || (_cache[28] = _createElementVNode(
+            "strong",
+            { class: "note-tool-label" },
+            "快捷格式",
+            -1
+            /* CACHED */
+          )),
+          _createElementVNode("div", _hoisted_14, [
+            _createVNode(_component_el_button, {
+              onClick: _cache[7] || (_cache[7] = ($event) => $setup.emit("insertSnippet", "## 新标题"))
+            }, {
+              default: _withCtx(() => [..._cache[23] || (_cache[23] = [
+                _createTextVNode(
+                  "二级标题",
+                  -1
+                  /* CACHED */
+                )
+              ])]),
+              _: 1
+              /* STABLE */
+            }),
+            _createVNode(_component_el_button, {
+              onClick: _cache[8] || (_cache[8] = ($event) => $setup.emit("insertSnippet", "> 这里记录一个关键观察。"))
+            }, {
+              default: _withCtx(() => [..._cache[24] || (_cache[24] = [
+                _createTextVNode(
+                  "引用",
+                  -1
+                  /* CACHED */
+                )
+              ])]),
+              _: 1
+              /* STABLE */
+            }),
+            _createVNode(_component_el_button, {
+              onClick: _cache[9] || (_cache[9] = ($event) => $setup.emit("insertSnippet", "- 列表项一\n- 列表项二"))
+            }, {
+              default: _withCtx(() => [..._cache[25] || (_cache[25] = [
+                _createTextVNode(
+                  "列表",
+                  -1
+                  /* CACHED */
+                )
+              ])]),
+              _: 1
+              /* STABLE */
+            }),
+            _createVNode(_component_el_button, {
+              onClick: _cache[10] || (_cache[10] = ($event) => $setup.emit("insertSnippet", "```python\n# code here\n```"))
+            }, {
+              default: _withCtx(() => [..._cache[26] || (_cache[26] = [
+                _createTextVNode(
+                  "代码块",
+                  -1
+                  /* CACHED */
+                )
+              ])]),
+              _: 1
+              /* STABLE */
+            }),
+            _createVNode(_component_el_button, {
+              onClick: _cache[11] || (_cache[11] = ($event) => $setup.emit("insertSnippet", "[链接文字](https://example.com)"))
+            }, {
+              default: _withCtx(() => [..._cache[27] || (_cache[27] = [
+                _createTextVNode(
+                  "链接",
+                  -1
+                  /* CACHED */
+                )
+              ])]),
+              _: 1
+              /* STABLE */
+            })
+          ])
+        ])
+      ]),
+      _createElementVNode("section", _hoisted_15, [
+        _createElementVNode("div", _hoisted_16, [
+          _cache[30] || (_cache[30] = _createElementVNode(
+            "span",
+            null,
+            "草稿会自动保存在当前浏览器",
+            -1
+            /* CACHED */
+          )),
+          _createVNode(_component_el_button, {
+            plain: "",
+            type: "danger",
+            onClick: _cache[12] || (_cache[12] = ($event) => $setup.emit("clearDraft"))
+          }, {
+            default: _withCtx(() => [..._cache[29] || (_cache[29] = [
+              _createTextVNode(
+                "清理本地草稿",
+                -1
+                /* CACHED */
+              )
+            ])]),
+            _: 1
+            /* STABLE */
+          })
+        ]),
+        _createElementVNode("div", _hoisted_17, [
+          _createElementVNode(
+            "span",
+            null,
+            _toDisplayString($props.stats.words) + " 字",
+            1
+            /* TEXT */
+          ),
+          _createElementVNode(
+            "span",
+            null,
+            "约 " + _toDisplayString($props.stats.readingMinutes) + " 分钟阅读",
+            1
+            /* TEXT */
+          ),
+          _cache[31] || (_cache[31] = _createElementVNode(
+            "span",
+            null,
+            "自动保存",
+            -1
+            /* CACHED */
+          ))
+        ]),
+        $props.stats.headingItems.length ? (_openBlock(), _createElementBlock("div", _hoisted_18, [
+          _cache[32] || (_cache[32] = _createElementVNode(
+            "strong",
+            null,
+            "大纲",
+            -1
+            /* CACHED */
+          )),
+          _createElementVNode("ul", _hoisted_19, [
+            (_openBlock(true), _createElementBlock(
+              _Fragment,
+              null,
+              _renderList($props.stats.headingItems, (item, index) => {
+                return _openBlock(), _createElementBlock(
+                  "li",
+                  {
+                    key: index,
+                    class: _normalizeClass(`outline-level-${item.level}`)
+                  },
+                  _toDisplayString(item.text),
+                  3
+                  /* TEXT, CLASS */
+                );
+              }),
+              128
+              /* KEYED_FRAGMENT */
+            ))
+          ])
+        ])) : _createCommentVNode("v-if", true)
+      ]),
+      _createVNode($setup["MdEditor"], {
+        modelValue: $props.draft.content,
+        "onUpdate:modelValue": _cache[13] || (_cache[13] = ($event) => $props.draft.content = $event),
+        language: "zh-CN",
+        "preview-theme": "github",
+        "code-theme": "github",
+        "toolbars-exclude": ["github"],
+        "show-code-row-number": true,
+        footers: ["markdownTotal", "scrollSwitch"],
+        "on-upload-img": $props.uploadHandler,
+        placeholder: "用 Markdown 写正文，可插入标题、列表、代码块、表格、链接、图片、流程图和公式。",
+        class: "blog-md-editor"
+      }, null, 8, ["modelValue", "on-upload-img"])
+    ]),
+    $props.error ? (_openBlock(), _createElementBlock(
+      "p",
+      _hoisted_20,
+      _toDisplayString($props.error),
+      1
+      /* TEXT */
+    )) : _createCommentVNode("v-if", true),
+    _createElementVNode("div", _hoisted_21, [
+      _createElementVNode(
+        "span",
+        null,
+        _toDisplayString($props.uploadingImage ? "图片上传中..." : "支持工具栏、预览、全屏、代码块、表格、链接和图片上传"),
+        1
+        /* TEXT */
+      ),
+      $props.editingArticle ? (_openBlock(), _createBlock(_component_el_button, {
+        key: 0,
+        type: "primary",
+        loading: $props.updating,
+        onClick: _cache[14] || (_cache[14] = ($event) => $setup.emit("update"))
+      }, {
+        default: _withCtx(() => [..._cache[33] || (_cache[33] = [
+          _createTextVNode(
+            " 更新并重新提交 ",
+            -1
+            /* CACHED */
+          )
+        ])]),
+        _: 1
+        /* STABLE */
+      }, 8, ["loading"])) : (_openBlock(), _createBlock(_component_el_button, {
+        key: 1,
+        type: "primary",
+        loading: $props.publishing,
+        onClick: _cache[15] || (_cache[15] = ($event) => $setup.emit("publish"))
+      }, {
+        default: _withCtx(() => [..._cache[34] || (_cache[34] = [
+          _createTextVNode(
+            " 发布文章 ",
+            -1
+            /* CACHED */
+          )
+        ])]),
+        _: 1
+        /* STABLE */
+      }, 8, ["loading"]))
+    ])
+  ]);
+}
+_sfc_main.__hmrId = "0850a793";
+typeof __VUE_HMR_RUNTIME__ !== "undefined" && __VUE_HMR_RUNTIME__.createRecord(_sfc_main.__hmrId, _sfc_main);
+import.meta.hot.on("file-changed", ({ file }) => {
+  __VUE_HMR_RUNTIME__.CHANGED_FILE = file;
+});
+export const _rerender_only = __VUE_HMR_RUNTIME__.CHANGED_FILE === "E:/Desktop/MyProject/Blog-fixed-20260727/Blog/frontend/src/features/blog/components/BlogWriter.vue";
+import.meta.hot.accept((mod) => {
+  if (!mod) return;
+  const { default: updated, _rerender_only: _rerender_only2 } = mod;
+  if (_rerender_only2) {
+    __VUE_HMR_RUNTIME__.rerender(updated.__hmrId, updated.render);
+  } else {
+    __VUE_HMR_RUNTIME__.reload(updated.__hmrId, updated);
+  }
+});
+import _export_sfc from "/@id/__x00__plugin-vue:export-helper";
+export default /* @__PURE__ */ _export_sfc(_sfc_main, [["render", _sfc_render], ["__file", "E:/Desktop/MyProject/Blog-fixed-20260727/Blog/frontend/src/features/blog/components/BlogWriter.vue"]]);
+
+//# sourceMappingURL=data:application/json;base64,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TztBQUFBLFFBQ3RCLFVBQVM7QUFBQSxRQUNULGlCQUFjO0FBQUEsUUFDZCxjQUFXO0FBQUEsUUFDVixvQkFBa0I7QUFBQSxRQUNsQix3QkFBc0I7QUFBQSxRQUN0QixTQUFTO0FBQUEsUUFDVCxpQkFBZTtBQUFBLFFBQ2hCLGFBQVk7QUFBQSxRQUNaLE9BQU07QUFBQTs7SUFJRCw4QkFBVDtBQUFBLE1BQW9EO0FBQUEsTUFBcEQ7QUFBQSxNQUFvRCxpQkFBWixZQUFLO0FBQUE7QUFBQTtBQUFBO0lBQzdDLG9CQWtCTSxPQWxCTixhQWtCTTtBQUFBLE1BakJKO0FBQUEsUUFBNkU7QUFBQTtBQUFBLHlCQUFwRSx3QkFBYztBQUFBO0FBQUE7QUFBQTtBQUFBLE1BRWYsdUNBRFIsYUFPWTtBQUFBO1FBTFYsTUFBSztBQUFBLFFBQ0osU0FBUztBQUFBLFFBQ1QsU0FBSyx3Q0FBRSxZQUFJO0FBQUE7MEJBQ2IsTUFFRDtBQUFBO1lBRkM7QUFBQSxZQUVEO0FBQUE7QUFBQTtBQUFBOzs7MkNBQ0EsYUFPWTtBQUFBO1FBTFYsTUFBSztBQUFBLFFBQ0osU0FBUztBQUFBLFFBQ1QsU0FBSyx3Q0FBRSxZQUFJO0FBQUE7MEJBQ2IsTUFFRDtBQUFBO1lBRkM7QUFBQSxZQUVEO0FBQUE7QUFBQTtBQUFBIiwibmFtZXMiOltdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlcyI6WyJCbG9nV3JpdGVyLnZ1ZSJdLCJzb3VyY2VzQ29udGVudCI6WyI8c2NyaXB0IHNldHVwIGxhbmc9XCJ0c1wiPlxuaW1wb3J0IHsgcmVmIH0gZnJvbSBcInZ1ZVwiO1xuaW1wb3J0IHsgRWRpdFBlbiwgVXBsb2FkRmlsbGVkIH0gZnJvbSBcIkBlbGVtZW50LXBsdXMvaWNvbnMtdnVlXCI7XG5pbXBvcnQgeyBFbE1lc3NhZ2UgfSBmcm9tIFwiZWxlbWVudC1wbHVzXCI7XG5pbXBvcnQgeyBNZEVkaXRvciwgdHlwZSBVcGxvYWRJbWdFdmVudCB9IGZyb20gXCJtZC1lZGl0b3ItdjNcIjtcbmltcG9ydCB0eXBlIHsgQmxvZ0RyYWZ0LCBFZGl0b3JTdGF0cyB9IGZyb20gXCIuLi90eXBlc1wiO1xuaW1wb3J0IHsgcGFyc2VNYXJrZG93bkZpbGUsIHR5cGUgUGFyc2VkTWFya2Rvd24gfSBmcm9tIFwiLi4vdXRpbHMvcGFyc2VNYXJrZG93bkZpbGVcIjtcblxuaW1wb3J0IHR5cGUgeyBIZWFkaW5nSXRlbSB9IGZyb20gXCIuLi90eXBlc1wiO1xuXG5kZWZpbmVQcm9wczx7XG4gIGRyYWZ0OiBCbG9nRHJhZnQ7XG4gIHRlbXBsYXRlczogQXJyYXk8eyBuYW1lOiBzdHJpbmc7IGNvbnRlbnQ6IHN0cmluZyB9PjtcbiAgc3RhdHM6IEVkaXRvclN0YXRzO1xuICBwdWJsaXNoaW5nOiBib29sZWFuO1xuICB1cGxvYWRpbmdJbWFnZTogYm9vbGVhbjtcbiAgZXJyb3I6IHN0cmluZztcbiAgdXBsb2FkSGFuZGxlcjogVXBsb2FkSW1nRXZlbnQ7XG4gIGVkaXRpbmdBcnRpY2xlPzogeyB0aXRsZTogc3RyaW5nIH0gfCBudWxsO1xuICB1cGRhdGluZz86IGJvb2xlYW47XG59PigpO1xuXG5jb25zdCBlbWl0ID0gZGVmaW5lRW1pdHM8e1xuICBwdWJsaXNoOiBbXTtcbiAgdXBkYXRlOiBbXTtcbiAgY2FuY2VsRWRpdDogW107XG4gIGFwcGx5VGVtcGxhdGU6IFtjb250ZW50OiBzdHJpbmddO1xuICBpbnNlcnRTbmlwcGV0OiBbY29udGVudDogc3RyaW5nXTtcbiAgY2xlYXJEcmFmdDogW107XG4gIGltcG9ydE1hcmtkb3duOiBbZGF0YTogUGFyc2VkTWFya2Rvd25dO1xufT4oKTtcblxuY29uc3QgZmlsZUlucHV0UmVmID0gcmVmPEhUTUxJbnB1dEVsZW1lbnQgfCBudWxsPihudWxsKTtcblxuY29uc3QgQUxMT1dFRF9FWFRFTlNJT05TID0gW1wiLm1kXCIsIFwiLm1hcmtkb3duXCIsIFwiLnR4dFwiXTtcbmNvbnN0IE1BWF9GSUxFX1NJWkUgPSAxMDI0ICogMTAyNDsgLy8gMU1CXG5cbmZ1bmN0aW9uIHRyaWdnZXJGaWxlSW5wdXQoKSB7XG4gIGZpbGVJbnB1dFJlZi52YWx1ZT8uY2xpY2soKTtcbn1cblxuZnVuY3Rpb24gaGFuZGxlRmlsZVNlbGVjdChldmVudDogRXZlbnQpIHtcbiAgY29uc3QgaW5wdXQgPSBldmVudC50YXJnZXQgYXMgSFRNTElucHV0RWxlbWVudDtcbiAgY29uc3QgZmlsZSA9IGlucHV0LmZpbGVzPy5bMF07XG4gIC8vIFJlc2V0IGlucHV0IHNvIHRoZSBzYW1lIGZpbGUgY2FuIGJlIHNlbGVjdGVkIGFnYWluXG4gIGlucHV0LnZhbHVlID0gXCJcIjtcblxuICBpZiAoIWZpbGUpIHJldHVybjtcblxuICBjb25zdCBleHQgPSBcIi5cIiArIGZpbGUubmFtZS5zcGxpdChcIi5cIikucG9wKCk/LnRvTG93ZXJDYXNlKCk7XG4gIGlmICghQUxMT1dFRF9FWFRFTlNJT05TLmluY2x1ZGVzKGV4dCkpIHtcbiAgICBFbE1lc3NhZ2UuZXJyb3IoXCLku4XmlK/mjIEgLm1k44CBLm1hcmtkb3du44CBLnR4dCDmlofku7ZcIik7XG4gICAgcmV0dXJuO1xuICB9XG5cbiAgaWYgKGZpbGUuc2l6ZSA+IE1BWF9GSUxFX1NJWkUpIHtcbiAgICBFbE1lc3NhZ2UuZXJyb3IoXCLmlofku7blpKflsI/kuI3og73otoXov4cgMU1CXCIpO1xuICAgIHJldHVybjtcbiAgfVxuXG4gIGNvbnN0IHJlYWRlciA9IG5ldyBGaWxlUmVhZGVyKCk7XG4gIHJlYWRlci5vbmxvYWQgPSAoKSA9PiB7XG4gICAgdHJ5IHtcbiAgICAgIGNvbnN0IHJhdyA9IHJlYWRlci5yZXN1bHQgYXMgc3RyaW5nO1xuICAgICAgaWYgKCFyYXcudHJpbSgpKSB7XG4gICAgICAgIEVsTWVzc2FnZS5lcnJvcihcIuaWh+S7tuWGheWuueS4uuepulwiKTtcbiAgICAgICAgcmV0dXJuO1xuICAgICAgfVxuICAgICAgY29uc3QgcGFyc2VkID0gcGFyc2VNYXJrZG93bkZpbGUocmF3LCBmaWxlLm5hbWUpO1xuICAgICAgZW1pdChcImltcG9ydE1hcmtkb3duXCIsIHBhcnNlZCk7XG4gICAgfSBjYXRjaCB7XG4gICAgICBFbE1lc3NhZ2UuZXJyb3IoXCLop6PmnpAgTWFya2Rvd24g5paH5Lu25aSx6LSlXCIpO1xuICAgIH1cbiAgfTtcbiAgcmVhZGVyLm9uZXJyb3IgPSAoKSA9PiB7XG4gICAgRWxNZXNzYWdlLmVycm9yKFwi6K+75Y+W5paH5Lu25aSx6LSlXCIpO1xuICB9O1xuICByZWFkZXIucmVhZEFzVGV4dChmaWxlLCBcIlVURi04XCIpO1xufVxuPC9zY3JpcHQ+XG5cbjx0ZW1wbGF0ZT5cbiAgPHNlY3Rpb24gY2xhc3M9XCJ3cml0ZS1ib3ggbWFya2Rvd24td3JpdGVyXCI+XG4gICAgPGhlYWRlciBjbGFzcz1cIndyaXRlci1oZWFkaW5nXCI+XG4gICAgICA8aDI+XG4gICAgICAgIDxlbC1pY29uPjxFZGl0UGVuIC8+PC9lbC1pY29uPlxuICAgICAgICB7eyBlZGl0aW5nQXJ0aWNsZSA/IGDnvJbovpHnrJTorrA6ICR7ZWRpdGluZ0FydGljbGUudGl0bGV9YCA6ICdNYXJrZG93biDlhpnkvZzlj7AnIH19XG4gICAgICA8L2gyPlxuICAgICAgPGRpdiBjbGFzcz1cIndyaXRlci1oZWFkaW5nLWFjdGlvbnNcIj5cbiAgICAgICAgPGlucHV0XG4gICAgICAgICAgcmVmPVwiZmlsZUlucHV0UmVmXCJcbiAgICAgICAgICB0eXBlPVwiZmlsZVwiXG4gICAgICAgICAgOmFjY2VwdD1cIkFMTE9XRURfRVhURU5TSU9OUy5qb2luKCcsJylcIlxuICAgICAgICAgIHN0eWxlPVwiZGlzcGxheTogbm9uZVwiXG4gICAgICAgICAgQGNoYW5nZT1cImhhbmRsZUZpbGVTZWxlY3RcIlxuICAgICAgICAvPlxuICAgICAgICA8ZWwtYnV0dG9uIHYtaWY9XCIhZWRpdGluZ0FydGljbGVcIiA6aWNvbj1cIlVwbG9hZEZpbGxlZFwiIEBjbGljaz1cInRyaWdnZXJGaWxlSW5wdXRcIj7lr7zlhaUgTWFya2Rvd248L2VsLWJ1dHRvbj5cbiAgICAgICAgPGVsLWJ1dHRvbiB2LWlmPVwiZWRpdGluZ0FydGljbGVcIiBAY2xpY2s9XCJlbWl0KCdjYW5jZWxFZGl0JylcIj7lj5bmtojnvJbovpE8L2VsLWJ1dHRvbj5cbiAgICAgICAgPGVsLWJ1dHRvblxuICAgICAgICAgIHYtaWY9XCJlZGl0aW5nQXJ0aWNsZVwiXG4gICAgICAgICAgdHlwZT1cInByaW1hcnlcIlxuICAgICAgICAgIDpsb2FkaW5nPVwidXBkYXRpbmdcIlxuICAgICAgICAgIEBjbGljaz1cImVtaXQoJ3VwZGF0ZScpXCJcbiAgICAgICAgPlxuICAgICAgICAgIOabtOaWsOW5tumHjeaWsOaPkOS6pFxuICAgICAgICA8L2VsLWJ1dHRvbj5cbiAgICAgICAgPGVsLWJ1dHRvblxuICAgICAgICAgIHYtZWxzZVxuICAgICAgICAgIHR5cGU9XCJwcmltYXJ5XCJcbiAgICAgICAgICA6bG9hZGluZz1cInB1Ymxpc2hpbmdcIlxuICAgICAgICAgIEBjbGljaz1cImVtaXQoJ3B1Ymxpc2gnKVwiXG4gICAgICAgID5cbiAgICAgICAgICDlj5HluIPlubbliqDlhaXnn6Xor4blupNcbiAgICAgICAgPC9lbC1idXR0b24+XG4gICAgICA8L2Rpdj5cbiAgICA8L2hlYWRlcj5cblxuICAgIDxkaXYgY2xhc3M9XCJ3cml0ZXItZmllbGRzXCI+XG4gICAgICA8ZWwtaW5wdXQgdi1tb2RlbD1cImRyYWZ0LnRpdGxlXCIgc2l6ZT1cImxhcmdlXCIgcGxhY2Vob2xkZXI9XCLmlofnq6DmoIfpophcIiAvPlxuICAgICAgPGVsLWlucHV0IHYtbW9kZWw9XCJkcmFmdC5zdW1tYXJ5XCIgcGxhY2Vob2xkZXI9XCLmkZjopoHvvIzkvJrmmL7npLrlnKjmlofnq6DljaHniYfph4xcIiAvPlxuICAgICAgPGRpdiBjbGFzcz1cIndyaXRlci1tZXRhXCI+XG4gICAgICAgIDxlbC1pbnB1dCB2LW1vZGVsPVwiZHJhZnQuY2F0ZWdvcnlcIiBwbGFjZWhvbGRlcj1cIuWIhuexu1wiIC8+XG4gICAgICAgIDxlbC1pbnB1dCB2LW1vZGVsPVwiZHJhZnQudGFnc1wiIHBsYWNlaG9sZGVyPVwi5qCH562+77yM6YCX5Y+35YiG6ZqUXCIgLz5cbiAgICAgIDwvZGl2PlxuICAgIDwvZGl2PlxuXG4gICAgPHNlY3Rpb24gY2xhc3M9XCJlZGl0b3Itd29ya3NwYWNlXCI+XG4gICAgICA8c2VjdGlvbiBjbGFzcz1cIm5vdGUtd29ya2JlbmNoXCI+XG4gICAgICAgIDxkaXYgY2xhc3M9XCJub3RlLXRvb2wtZ3JvdXBcIj5cbiAgICAgICAgICA8c3Ryb25nIGNsYXNzPVwibm90ZS10b29sLWxhYmVsXCI+5YaZ5L2c5qih5p2/PC9zdHJvbmc+XG4gICAgICAgICAgPGRpdiBjbGFzcz1cIm5vdGUtYWN0aW9uc1wiPlxuICAgICAgICAgICAgPGVsLWJ1dHRvbiB2LWZvcj1cIml0ZW0gaW4gdGVtcGxhdGVzXCIgOmtleT1cIml0ZW0ubmFtZVwiIEBjbGljaz1cImVtaXQoJ2FwcGx5VGVtcGxhdGUnLCBpdGVtLmNvbnRlbnQpXCI+XG4gICAgICAgICAgICAgIHt7IGl0ZW0ubmFtZSB9fVxuICAgICAgICAgICAgPC9lbC1idXR0b24+XG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgIDwvZGl2PlxuICAgICAgICA8ZGl2IGNsYXNzPVwibm90ZS10b29sLWdyb3VwXCI+XG4gICAgICAgICAgPHN0cm9uZyBjbGFzcz1cIm5vdGUtdG9vbC1sYWJlbFwiPuWvvOWFpeaWh+S7tjwvc3Ryb25nPlxuICAgICAgICAgIDxkaXYgY2xhc3M9XCJub3RlLWFjdGlvbnNcIj5cbiAgICAgICAgICAgIDxlbC1idXR0b24gOmljb249XCJVcGxvYWRGaWxsZWRcIiBAY2xpY2s9XCJ0cmlnZ2VyRmlsZUlucHV0XCI+5a+85YWlIC5tZCDmlofku7Y8L2VsLWJ1dHRvbj5cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgPC9kaXY+XG4gICAgICAgIDxkaXYgY2xhc3M9XCJub3RlLXRvb2wtZ3JvdXBcIj5cbiAgICAgICAgICA8c3Ryb25nIGNsYXNzPVwibm90ZS10b29sLWxhYmVsXCI+5b+r5o235qC85byPPC9zdHJvbmc+XG4gICAgICAgICAgPGRpdiBjbGFzcz1cIm5vdGUtYWN0aW9uc1wiPlxuICAgICAgICAgICAgPGVsLWJ1dHRvbiBAY2xpY2s9XCJlbWl0KCdpbnNlcnRTbmlwcGV0JywgJyMjIOaWsOagh+mimCcpXCI+5LqM57qn5qCH6aKYPC9lbC1idXR0b24+XG4gICAgICAgICAgICA8ZWwtYnV0dG9uIEBjbGljaz1cImVtaXQoJ2luc2VydFNuaXBwZXQnLCAnPiDov5nph4zorrDlvZXkuIDkuKrlhbPplK7op4Llr5/jgIInKVwiPuW8leeUqDwvZWwtYnV0dG9uPlxuICAgICAgICAgICAgPGVsLWJ1dHRvbiBAY2xpY2s9XCJlbWl0KCdpbnNlcnRTbmlwcGV0JywgJy0g5YiX6KGo6aG55LiAXFxuLSDliJfooajpobnkuownKVwiPuWIl+ihqDwvZWwtYnV0dG9uPlxuICAgICAgICAgICAgPGVsLWJ1dHRvbiBAY2xpY2s9XCJlbWl0KCdpbnNlcnRTbmlwcGV0JywgJ2BgYHB5dGhvblxcbiMgY29kZSBoZXJlXFxuYGBgJylcIj7ku6PnoIHlnZc8L2VsLWJ1dHRvbj5cbiAgICAgICAgICAgIDxlbC1idXR0b24gQGNsaWNrPVwiZW1pdCgnaW5zZXJ0U25pcHBldCcsICdb6ZO+5o6l5paH5a2XXShodHRwczovL2V4YW1wbGUuY29tKScpXCI+6ZO+5o6lPC9lbC1idXR0b24+XG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgIDwvZGl2PlxuICAgICAgPC9zZWN0aW9uPlxuXG4gICAgICA8c2VjdGlvbiBjbGFzcz1cIm5vdGUtY29udGV4dFwiPlxuICAgICAgICA8ZGl2IGNsYXNzPVwibm90ZS1kcmFmdC1hY3Rpb25zXCI+XG4gICAgICAgICAgPHNwYW4+6I2J56i/5Lya6Ieq5Yqo5L+d5a2Y5Zyo5b2T5YmN5rWP6KeI5ZmoPC9zcGFuPlxuICAgICAgICAgIDxlbC1idXR0b24gcGxhaW4gdHlwZT1cImRhbmdlclwiIEBjbGljaz1cImVtaXQoJ2NsZWFyRHJhZnQnKVwiPua4heeQhuacrOWcsOiNieeovzwvZWwtYnV0dG9uPlxuICAgICAgICA8L2Rpdj5cbiAgICAgICAgPGRpdiBjbGFzcz1cIm5vdGUtc3RhdHNcIj5cbiAgICAgICAgICA8c3Bhbj57eyBzdGF0cy53b3JkcyB9fSDlrZc8L3NwYW4+PHNwYW4+57qmIHt7IHN0YXRzLnJlYWRpbmdNaW51dGVzIH19IOWIhumSn+mYheivuzwvc3Bhbj48c3Bhbj7oh6rliqjkv53lrZg8L3NwYW4+XG4gICAgICAgIDwvZGl2PlxuICAgICAgICA8ZGl2IHYtaWY9XCJzdGF0cy5oZWFkaW5nSXRlbXMubGVuZ3RoXCIgY2xhc3M9XCJub3RlLW91dGxpbmVcIj5cbiAgICAgICAgICA8c3Ryb25nPuWkp+e6sjwvc3Ryb25nPlxuICAgICAgICAgIDx1bCBjbGFzcz1cIm91dGxpbmUtbGlzdFwiPlxuICAgICAgICAgICAgPGxpXG4gICAgICAgICAgICAgIHYtZm9yPVwiKGl0ZW0sIGluZGV4KSBpbiBzdGF0cy5oZWFkaW5nSXRlbXNcIlxuICAgICAgICAgICAgICA6a2V5PVwiaW5kZXhcIlxuICAgICAgICAgICAgICA6Y2xhc3M9XCJgb3V0bGluZS1sZXZlbC0ke2l0ZW0ubGV2ZWx9YFwiXG4gICAgICAgICAgICA+XG4gICAgICAgICAgICAgIHt7IGl0ZW0udGV4dCB9fVxuICAgICAgICAgICAgPC9saT5cbiAgICAgICAgICA8L3VsPlxuICAgICAgICA8L2Rpdj5cbiAgICAgIDwvc2VjdGlvbj5cblxuICAgICAgPE1kRWRpdG9yXG4gICAgICAgIHYtbW9kZWw9XCJkcmFmdC5jb250ZW50XCJcbiAgICAgICAgbGFuZ3VhZ2U9XCJ6aC1DTlwiXG4gICAgICAgIHByZXZpZXctdGhlbWU9XCJnaXRodWJcIlxuICAgICAgICBjb2RlLXRoZW1lPVwiZ2l0aHViXCJcbiAgICAgICAgOnRvb2xiYXJzLWV4Y2x1ZGU9XCJbJ2dpdGh1YiddXCJcbiAgICAgICAgOnNob3ctY29kZS1yb3ctbnVtYmVyPVwidHJ1ZVwiXG4gICAgICAgIDpmb290ZXJzPVwiWydtYXJrZG93blRvdGFsJywgJ3Njcm9sbFN3aXRjaCddXCJcbiAgICAgICAgOm9uLXVwbG9hZC1pbWc9XCJ1cGxvYWRIYW5kbGVyXCJcbiAgICAgICAgcGxhY2Vob2xkZXI9XCLnlKggTWFya2Rvd24g5YaZ5q2j5paH77yM5Y+v5o+S5YWl5qCH6aKY44CB5YiX6KGo44CB5Luj56CB5Z2X44CB6KGo5qC844CB6ZO+5o6l44CB5Zu+54mH44CB5rWB56iL5Zu+5ZKM5YWs5byP44CCXCJcbiAgICAgICAgY2xhc3M9XCJibG9nLW1kLWVkaXRvclwiXG4gICAgICAvPlxuICAgIDwvc2VjdGlvbj5cblxuICAgIDxwIHYtaWY9XCJlcnJvclwiIGNsYXNzPVwiZWRpdG9yLWVycm9yXCI+e3sgZXJyb3IgfX08L3A+XG4gICAgPGRpdiBjbGFzcz1cIndyaXRlci1mb290ZXJcIj5cbiAgICAgIDxzcGFuPnt7IHVwbG9hZGluZ0ltYWdlID8gXCLlm77niYfkuIrkvKDkuK0uLi5cIiA6IFwi5pSv5oyB5bel5YW35qCP44CB6aKE6KeI44CB5YWo5bGP44CB5Luj56CB5Z2X44CB6KGo5qC844CB6ZO+5o6l5ZKM5Zu+54mH5LiK5LygXCIgfX08L3NwYW4+XG4gICAgICA8ZWwtYnV0dG9uXG4gICAgICAgIHYtaWY9XCJlZGl0aW5nQXJ0aWNsZVwiXG4gICAgICAgIHR5cGU9XCJwcmltYXJ5XCJcbiAgICAgICAgOmxvYWRpbmc9XCJ1cGRhdGluZ1wiXG4gICAgICAgIEBjbGljaz1cImVtaXQoJ3VwZGF0ZScpXCJcbiAgICAgID5cbiAgICAgICAg5pu05paw5bm26YeN5paw5o+Q5LqkXG4gICAgICA8L2VsLWJ1dHRvbj5cbiAgICAgIDxlbC1idXR0b25cbiAgICAgICAgdi1lbHNlXG4gICAgICAgIHR5cGU9XCJwcmltYXJ5XCJcbiAgICAgICAgOmxvYWRpbmc9XCJwdWJsaXNoaW5nXCJcbiAgICAgICAgQGNsaWNrPVwiZW1pdCgncHVibGlzaCcpXCJcbiAgICAgID5cbiAgICAgICAg5Y+R5biD5paH56ugXG4gICAgICA8L2VsLWJ1dHRvbj5cbiAgICA8L2Rpdj5cbiAgPC9zZWN0aW9uPlxuPC90ZW1wbGF0ZT5cbiJdLCJmaWxlIjoiRTovRGVza3RvcC9NeVByb2plY3QvQmxvZy1maXhlZC0yMDI2MDcyNy9CbG9nL2Zyb250ZW5kL3NyYy9mZWF0dXJlcy9ibG9nL2NvbXBvbmVudHMvQmxvZ1dyaXRlci52dWUifQ==
