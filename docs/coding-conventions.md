@@ -361,7 +361,7 @@ class BlogArticlePublishView(APIView):
 | `services/rag.py`（682）拆为 `rag/` 包：`text`（纯工具）/ `ingest`（入库）/ `search`（检索），`__init__` 全量再导出保持导入路径不变；顺带把旧的循环依赖变为 `text ← ingest ← search` 单向 | 最大 426 行 |
 | `services/blog_agent.py`（661）提取 `llm_support`（token 管道）/ `blog_article_summary`（全文 map-reduce）/ `blog_public_retrieval`（公开来源检索），本类只留编排 | 661 → 424 行 |
 
-**剩余超 500 行的文件**（下一批候选，未在本次范围）：`backend/agent/simple_agent.py`（996）、`backend/agent/multi_agent.py`（837）、`backend/agent/mcp_tools.py`（686），以及测试文件 `tests/test_agent.py`（607）、`tests/test_knowledge_rag.py`（543）。
+**剩余超 500 行的文件**：无。2026-09-24 第二轮轻量化后，全后端最大文件为 `agent/simple_agent.py`（503 行，图编排与节点），其余均在 460 行以下；`agent/` 包三个原超标文件（`simple_agent.py` 996、`multi_agent.py` 837、`mcp_tools.py` 686）与两个大测试文件均已按域拆分，见分支 `refactor/code-conventions-migration` 的提交历史。
 
 ### C9 决策：响应 envelope（2026-09-23）
 
