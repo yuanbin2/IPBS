@@ -1,13 +1,11 @@
-"""Agent REST API：会话分页、消息持久化、审批和可观测性入口。"""
+"""聊天执行：非流式与 SSE 流式对话（路由/工具/RAG 由 MultiAgentSupervisor 编排）。"""
 
 import json
 import time
 from pathlib import Path
 
 from django.conf import settings
-from django.db.models import Q
 from django.http import StreamingHttpResponse
-from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -16,112 +14,18 @@ from agent.multi_agent import MultiAgentSupervisor
 from agent.security import detect_sensitive_input
 
 from ..exceptions import ErrorCode
-from ..models import (
-    AgentObservation,
-    AgentRun,
-    ApprovalRequest,
-    Conversation,
-    EvaluationCase,
-    EvaluationRun,
-    Message,
-    SecurityAuditEvent,
-    UserProfile,
-)
-from ..serializers import (
-    serialize_agent_observation,
-    serialize_approval_request,
-    serialize_conversation,
-    serialize_evaluation_case,
-    serialize_evaluation_run,
-)
+from ..models import AgentRun, ApprovalRequest, Message, SecurityAuditEvent
+from ..serializers import serialize_agent_observation, serialize_approval_request, serialize_conversation
 from .common import (
     audit_security_event,
     create_agent_observation,
     error_response,
-    evaluate_answer,
     get_conversation_owner,
-    get_message_limit,
+    get_or_create_conversation,
     get_workspace_key,
     maybe_create_blog_delete_approval,
     maybe_create_mcp_approval,
-    observability_summary,
-    require_roles,
 )
-
-
-class ConversationListView(APIView):
-    authentication_classes = []
-    permission_classes = []
-
-    def get(self, request):
-        query = str(request.query_params.get("q", "")).strip()
-        conversations = Conversation.objects.filter(
-            workspace_key=get_workspace_key(request),
-            owner_username=get_conversation_owner(request),
-        )
-        if query:
-            conversations = conversations.filter(
-                Q(title__icontains=query) | Q(messages__content__icontains=query)
-            ).distinct()
-
-        results = []
-        for conversation in conversations[:30]:
-            matched_message_id = None
-            if query:
-                match = conversation.messages.filter(content__icontains=query).first()
-                matched_message_id = match.id if match else None
-            results.append(
-                serialize_conversation(
-                    conversation,
-                    matched_message_id=matched_message_id,
-                )
-            )
-        return Response(results)
-
-
-class ConversationDetailView(APIView):
-    authentication_classes = []
-    permission_classes = []
-
-    def get(self, request, pk: int):
-        conversation = get_object_or_404(
-            Conversation,
-            pk=pk,
-            workspace_key=get_workspace_key(request),
-            owner_username=get_conversation_owner(request),
-        )
-        limit = get_message_limit(request)
-        before = request.query_params.get("before")
-        anchor = request.query_params.get("anchor")
-
-        messages_queryset = conversation.messages.all()
-        has_more_after = False
-
-        if anchor:
-            anchor_message = get_object_or_404(messages_queryset, pk=anchor)
-            before_count = max(1, limit // 2)
-            after_count = max(0, limit - before_count)
-            before_messages = list(messages_queryset.filter(id__lte=anchor_message.id).order_by("-id")[:before_count])
-            after_messages = list(messages_queryset.filter(id__gt=anchor_message.id).order_by("id")[:after_count])
-            messages = [*reversed(before_messages), *after_messages]
-            has_more_after = messages_queryset.filter(id__gt=messages[-1].id).exists() if messages else False
-        elif before:
-            messages = list(messages_queryset.filter(id__lt=before).order_by("-id")[:limit])
-            messages = list(reversed(messages))
-        else:
-            messages = list(messages_queryset.order_by("-id")[:limit])
-            messages = list(reversed(messages))
-
-        has_more_before = messages_queryset.filter(id__lt=messages[0].id).exists() if messages else False
-        return Response(
-            serialize_conversation(
-                conversation,
-                include_messages=True,
-                messages=messages,
-                has_more_before=has_more_before,
-                has_more_after=has_more_after,
-            )
-        )
 
 
 class AgentChatView(APIView):
@@ -143,7 +47,7 @@ class AgentChatView(APIView):
             )
 
         # 会话同时按 workspace 和 owner 隔离，conversation_id 不能跨用户复用。
-        conversation = self._get_or_create_conversation(
+        conversation = get_or_create_conversation(
             request.data.get("conversation_id"),
             message,
             workspace_key,
@@ -296,30 +200,6 @@ class AgentChatView(APIView):
             }
         )
 
-    def _get_or_create_conversation(
-        self,
-        conversation_id,
-        message: str,
-        workspace_key: str,
-        owner_username: str,
-    ) -> Conversation:
-        if conversation_id:
-            return get_object_or_404(
-                Conversation,
-                pk=conversation_id,
-                workspace_key=workspace_key,
-                owner_username=owner_username,
-            )
-
-        title = message[:40]
-        if len(message) > 40:
-            title = f"{title}..."
-        return Conversation.objects.create(
-            title=title,
-            workspace_key=workspace_key,
-            owner_username=owner_username,
-        )
-
 
 class AgentChatStreamView(APIView):
     """SSE streaming endpoint that yields thinking steps and the final answer."""
@@ -342,7 +222,7 @@ class AgentChatStreamView(APIView):
                 {"pattern": sensitive_marker},
             )
 
-        conversation = self._get_or_create_conversation(
+        conversation = get_or_create_conversation(
             request.data.get("conversation_id"),
             message,
             workspace_key,
@@ -468,154 +348,3 @@ class AgentChatStreamView(APIView):
         response["Cache-Control"] = "no-cache"
         response["X-Accel-Buffering"] = "no"
         return response
-
-    def _get_or_create_conversation(
-        self,
-        conversation_id,
-        message: str,
-        workspace_key: str,
-        owner_username: str,
-    ) -> Conversation:
-        if conversation_id:
-            return get_object_or_404(
-                Conversation,
-                pk=conversation_id,
-                workspace_key=workspace_key,
-                owner_username=owner_username,
-            )
-
-        title = message[:40]
-        if len(message) > 40:
-            title = f"{title}..."
-        return Conversation.objects.create(
-            title=title,
-            workspace_key=workspace_key,
-            owner_username=owner_username,
-        )
-
-
-class ObservabilityDashboardView(APIView):
-    authentication_classes = []
-    permission_classes = []
-
-    def get(self, request):
-        denied = require_roles(request, [UserProfile.Role.OPERATOR])
-        if denied:
-            return denied
-        limit = min(int(request.query_params.get("limit", 10)), 100)
-        offset = max(int(request.query_params.get("offset", 0)), 0)
-        queryset = (
-            AgentObservation.objects.select_related("conversation", "agent_run")
-            .filter(workspace_key=get_workspace_key(request))
-            .order_by("-id")
-        )
-        total = queryset.count()
-        observations = queryset[offset : offset + limit]
-        return Response(
-            {
-                "summary": observability_summary(get_workspace_key(request)),
-                "observations": [serialize_agent_observation(observation) for observation in observations],
-                "total": total,
-                "has_more": offset + limit < total,
-            }
-        )
-
-
-class EvaluationCaseListView(APIView):
-    authentication_classes = []
-    permission_classes = []
-
-    def get(self, request):
-        denied = require_roles(request, [UserProfile.Role.OPERATOR])
-        if denied:
-            return denied
-        category = request.query_params.get("category")
-        cases = EvaluationCase.objects.prefetch_related("runs").filter(workspace_key=get_workspace_key(request))
-        if category and category != "all":
-            cases = cases.filter(category=category)
-        return Response([serialize_evaluation_case(case) for case in cases])
-
-
-class EvaluationRunView(APIView):
-    authentication_classes = []
-    permission_classes = []
-
-    def post(self, request):
-        denied = require_roles(request, [UserProfile.Role.OPERATOR])
-        if denied:
-            return denied
-        case_id = request.data.get("case_id")
-        limit = request.data.get("limit", 5)
-        try:
-            limit = max(1, min(int(limit), 30))
-        except (TypeError, ValueError):
-            limit = 5
-
-        workspace_key = get_workspace_key(request)
-        if case_id:
-            cases = [get_object_or_404(EvaluationCase, pk=case_id, workspace_key=workspace_key)]
-        else:
-            cases = list(EvaluationCase.objects.filter(is_active=True, workspace_key=workspace_key)[:limit])
-
-        runs = [self._run_case(case) for case in cases]
-        passed_count = sum(1 for run in runs if run.passed)
-        return Response(
-            {
-                "total": len(runs),
-                "passed": passed_count,
-                "pass_rate": round(passed_count / len(runs), 2) if runs else 0,
-                "runs": [serialize_evaluation_run(run) for run in runs],
-            }
-        )
-
-    def _run_case(self, case: EvaluationCase) -> EvaluationRun:
-        started_at = time.perf_counter()
-        try:
-            response = MultiAgentSupervisor(Path(settings.BASE_DIR).parent).chat(case.question)
-            response_data = response.to_dict()
-            observation = create_agent_observation(
-                conversation=None,
-                agent_run=None,
-                input_message=case.question,
-                workspace_key=case.workspace_key,
-                response_data=response_data,
-                latency_ms=round((time.perf_counter() - started_at) * 1000),
-            )
-            metrics = evaluate_answer(case, response_data, observation)
-            passed = (
-                metrics["answer_correctness"] >= 0.6
-                and metrics["faithfulness"] >= 0.7
-                and metrics["tool_success_rate"] >= 0.8
-            )
-            return EvaluationRun.objects.create(
-                case=case,
-                workspace_key=case.workspace_key,
-                observation=observation,
-                answer=response_data.get("answer", ""),
-                metrics=metrics,
-                passed=passed,
-            )
-        except Exception as exc:
-            observation = create_agent_observation(
-                conversation=None,
-                agent_run=None,
-                input_message=case.question,
-                workspace_key=case.workspace_key,
-                latency_ms=round((time.perf_counter() - started_at) * 1000),
-                failure_reason=str(exc),
-            )
-            return EvaluationRun.objects.create(
-                case=case,
-                workspace_key=case.workspace_key,
-                observation=observation,
-                answer="",
-                metrics={
-                    "answer_correctness": 0,
-                    "faithfulness": 0,
-                    "citation_accuracy": 0,
-                    "latency_ms": observation.latency_ms,
-                    "tool_success_rate": 0,
-                    "failure_reason": str(exc),
-                },
-                passed=False,
-            )

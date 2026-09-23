@@ -1,12 +1,10 @@
-import math
-from datetime import timedelta
-from pathlib import Path
-from uuid import uuid4
+"""博客文章资源：列表/创建、详情/编辑、发布审批、相关文章与图片上传。"""
 
-from django.conf import settings
+import math
+from pathlib import Path
+
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
@@ -15,24 +13,8 @@ from rest_framework.views import APIView
 from agent.security import context_from_request
 
 from ..exceptions import ErrorCode
-from ..models import (
-    ApprovalRequest,
-    ArticleCategory,
-    ArticleTag,
-    BlogAgentMessage,
-    BlogAgentSecurityEvent,
-    BlogAgentSession,
-    BlogArticle,
-    BlogComment,
-    UserProfile,
-)
-from ..serializers import (
-    serialize_approval_request,
-    serialize_article,
-    serialize_blog_agent_message,
-    serialize_category,
-    serialize_tag,
-)
+from ..models import ApprovalRequest, BlogArticle, UserProfile
+from ..serializers import serialize_approval_request, serialize_article
 from ..services.blog import (
     ArticleAccessError,
     ArticleListFilters,
@@ -41,21 +23,7 @@ from ..services.blog import (
     set_article_tags,
     unique_slug,
 )
-from ..services.blog_agent import PublicBlogAgent
-from ..services.writing_agent import (
-    WRITING_MODES,
-    BlogWritingAgent,
-    WritingAgentConfigurationError,
-)
-from .common import (
-    BLOG_AGENT_RATE_LIMIT,
-    BLOG_AGENT_RATE_WINDOW_SECONDS,
-    approval_required_response,
-    error_response,
-    get_workspace_key,
-    request_ip_hash,
-    require_roles,
-)
+from .common import approval_required_response, error_response, get_workspace_key, require_roles
 
 
 class BlogArticleListCreateView(APIView):
@@ -179,63 +147,6 @@ class BlogImageUploadView(APIView):
                 "markdown": f"![{Path(upload.name).stem}]({data_url})",
             },
             status=status.HTTP_201_CREATED,
-        )
-
-
-class BlogWritingAgentView(APIView):
-    """Generate Markdown suggestions for an authenticated blog author."""
-
-    authentication_classes = []
-    permission_classes = []
-
-    def post(self, request):
-        context = context_from_request(request)
-        if not context.authenticated:
-            return error_response(
-                "请先登录后再使用写作助手。", ErrorCode.NOT_AUTHENTICATED, status.HTTP_401_UNAUTHORIZED
-            )
-
-        mode = str(request.data.get("mode", "task_list")).strip()
-        if mode not in WRITING_MODES:
-            return error_response(
-                "mode must be one of: task_list, outline, draft, improve",
-                ErrorCode.VALIDATION_ERROR,
-                status.HTTP_400_BAD_REQUEST,
-            )
-
-        instruction = str(request.data.get("instruction", "")).strip()[:2000]
-        raw_draft = request.data.get("draft") or {}
-        if not isinstance(raw_draft, dict):
-            return error_response("draft must be an object", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
-
-        draft = {
-            "title": str(raw_draft.get("title", "")).strip()[:300],
-            "summary": str(raw_draft.get("summary", "")).strip()[:1200],
-            "category": str(raw_draft.get("category", "")).strip()[:120],
-            "tags": str(raw_draft.get("tags", "")).strip()[:500],
-            "content": str(raw_draft.get("content", ""))[:16000],
-        }
-        if not instruction and not draft["title"] and not draft["content"].strip():
-            return error_response(
-                "请填写写作要求、文章标题或正文后再生成。", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            result = BlogWritingAgent().generate(mode=mode, instruction=instruction, draft=draft)
-        except WritingAgentConfigurationError as exc:
-            return error_response(str(exc), ErrorCode.UPSTREAM_UNAVAILABLE, status.HTTP_503_SERVICE_UNAVAILABLE)
-        except Exception:
-            return error_response(
-                "写作助手生成失败，请稍后重试或检查模型配置。", ErrorCode.INTERNAL_ERROR, status.HTTP_502_BAD_GATEWAY
-            )
-
-        return Response(
-            {
-                "markdown": result.markdown,
-                "mode": result.mode,
-                "model": result.model,
-                "api_key_source": result.api_key_source,
-            }
         )
 
 
@@ -449,197 +360,3 @@ class BlogArticleRelatedView(APIView):
         scored.sort(key=lambda x: x[0], reverse=True)
         related = [serialize_article(c) for _, c in scored[:6]]
         return Response(related)
-
-
-class BlogCategoryListView(APIView):
-    authentication_classes = []
-    permission_classes = []
-
-    def get(self, request):
-        categories = ArticleCategory.objects.all()
-        return Response([serialize_category(category) for category in categories])
-
-
-class BlogTagListView(APIView):
-    authentication_classes = []
-    permission_classes = []
-
-    def get(self, request):
-        tags = ArticleTag.objects.all()
-        return Response([serialize_tag(tag) for tag in tags])
-
-
-class BlogArchiveView(APIView):
-    authentication_classes = []
-    permission_classes = []
-
-    def get(self, request):
-        articles = BlogArticle.objects.filter(
-            status=BlogArticle.Status.PUBLISHED,
-            workspace_key=get_workspace_key(request),
-        ).order_by("-published_at")
-        archive: dict[str, list[dict]] = {}
-        for article in articles:
-            key = article.published_at.strftime("%Y-%m") if article.published_at else "未发布"
-            archive.setdefault(key, []).append(serialize_article(article))
-        return Response([{"month": month, "articles": items} for month, items in archive.items()])
-
-
-class BlogAboutView(APIView):
-    authentication_classes = []
-    permission_classes = []
-
-    def get(self, request):
-        return Response(
-            {
-                "title": "关于这个知识型博客",
-                "content": (
-                    "这个博客不是普通 CMS，而是个人技术经历和 Agent 知识库的入口。"
-                    "文章发布后会自动进入知识库，访客不仅能阅读文章，也能向 Agent 询问项目经历、"
-                    "架构思路、论文方向和技术栈选择。"
-                ),
-                "highlights": [
-                    "Vue 3 + Django 的全栈项目",
-                    "LangChain / LangGraph Agentic RAG",
-                    "博客文章自动向量化并进入个人知识库",
-                    "可交互的个人技术简历",
-                ],
-            }
-        )
-
-
-class BlogAgentChatView(APIView):
-    authentication_classes = []
-    permission_classes = []
-
-    def post(self, request):
-        message = str(request.data.get("message", "")).strip()
-        if not message:
-            return error_response("message is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
-        if len(message) > 800:
-            return error_response(
-                "message must be shorter than 800 characters", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST
-            )
-
-        session = self._get_or_create_session(request)
-        if session.is_blocked:
-            return error_response("this visitor session is blocked", ErrorCode.FORBIDDEN, status.HTTP_403_FORBIDDEN)
-        if self._is_rate_limited(session):
-            return error_response(
-                "提问太频繁了，请稍后再试。", ErrorCode.RATE_LIMITED, status.HTTP_429_TOO_MANY_REQUESTS
-            )
-
-        previous_messages = list(session.messages.order_by("-id")[:10])
-        history = [{"role": item.role, "content": item.content} for item in reversed(previous_messages)]
-
-        BlogAgentMessage.objects.create(
-            session=session,
-            role=BlogAgentMessage.Role.USER,
-            content=message,
-        )
-
-        agent = PublicBlogAgent(Path(settings.BASE_DIR).parent)
-        answer = agent.answer(message, history=history)
-        payload = answer.to_dict()
-
-        if answer.blocked:
-            BlogAgentSecurityEvent.objects.create(
-                session=session,
-                question=message,
-                reason=answer.block_reason,
-                ip_hash=session.ip_hash,
-            )
-
-        agent_message = BlogAgentMessage.objects.create(
-            session=session,
-            role=BlogAgentMessage.Role.AGENT,
-            content=answer.answer,
-            sources=payload["sources"],
-            trace=answer.trace,
-            token_usage=answer.token_usage,
-        )
-        session.save(update_fields=["updated_at"])
-
-        return Response(
-            {
-                **payload,
-                "session_key": session.session_key,
-                "message": serialize_blog_agent_message(agent_message),
-            }
-        )
-
-    def get(self, request):
-        session_key = str(request.query_params.get("session_key", "")).strip()
-        if not session_key:
-            return Response({"messages": []})
-
-        session = get_object_or_404(BlogAgentSession, session_key=session_key)
-        messages = session.messages.all().order_by("-id")[:20]
-        return Response(
-            {
-                "session_key": session.session_key,
-                "messages": [serialize_blog_agent_message(message) for message in reversed(messages)],
-            }
-        )
-
-    def _get_or_create_session(self, request) -> BlogAgentSession:
-        session_key = str(request.data.get("session_key", "")).strip()
-        if not session_key:
-            session_key = uuid4().hex
-
-        session, _ = BlogAgentSession.objects.get_or_create(
-            session_key=session_key,
-            defaults={
-                "visitor_label": "匿名访客",
-                "ip_hash": request_ip_hash(request),
-                "user_agent": request.META.get("HTTP_USER_AGENT", "")[:1000],
-            },
-        )
-        return session
-
-    def _is_rate_limited(self, session: BlogAgentSession) -> bool:
-        since = timezone.now() - timedelta(seconds=BLOG_AGENT_RATE_WINDOW_SECONDS)
-        recent_count = session.messages.filter(
-            role=BlogAgentMessage.Role.USER,
-            created_at__gte=since,
-        ).count()
-        return recent_count >= BLOG_AGENT_RATE_LIMIT
-
-
-class BlogCommentCreateView(APIView):
-    authentication_classes = []
-    permission_classes = []
-
-    def get(self, request, slug: str):
-        article = get_object_or_404(BlogArticle, slug=slug, workspace_key=get_workspace_key(request))
-        comments = article.comments.filter(is_approved=True)
-        return Response(
-            [
-                {
-                    "id": comment.id,
-                    "author_name": comment.author_name,
-                    "content": comment.content,
-                    "created_at": comment.created_at.isoformat(),
-                }
-                for comment in comments
-            ]
-        )
-
-    def post(self, request, slug: str):
-        article = get_object_or_404(BlogArticle, slug=slug, workspace_key=get_workspace_key(request))
-        author_name = str(request.data.get("author_name", "")).strip()
-        content = str(request.data.get("content", "")).strip()
-        if not author_name or not content:
-            return error_response(
-                "author_name and content are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST
-            )
-        comment = BlogComment.objects.create(article=article, author_name=author_name, content=content)
-        return Response(
-            {
-                "id": comment.id,
-                "author_name": comment.author_name,
-                "content": comment.content,
-                "created_at": comment.created_at.isoformat(),
-            },
-            status=status.HTTP_201_CREATED,
-        )

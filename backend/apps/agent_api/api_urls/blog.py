@@ -1,19 +1,21 @@
 from django.urls import path
 
-from ..views.blog import (
-    BlogAboutView,
-    BlogAgentChatView,
-    BlogArchiveView,
+from ..views.blog_agent import BlogAgentChatView
+from ..views.blog_articles import (
     BlogArticleDetailView,
     BlogArticleListCreateView,
     BlogArticlePublishView,
     BlogArticleRelatedView,
+    BlogImageUploadView,
+)
+from ..views.blog_public import (
+    BlogAboutView,
+    BlogArchiveView,
     BlogCategoryListView,
     BlogCommentCreateView,
-    BlogImageUploadView,
     BlogTagListView,
-    BlogWritingAgentView,
 )
+from ..views.blog_writing import BlogWritingAgentView
 
 urlpatterns = [
     path("blog/articles/", BlogArticleListCreateView.as_view(), name="blog-article-list-create"),

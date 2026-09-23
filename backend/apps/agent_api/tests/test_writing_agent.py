@@ -17,7 +17,7 @@ class BlogWritingAgentTests(TestCase):
 
         self.assertEqual(response.status_code, 401)
 
-    @patch("apps.agent_api.views.blog.BlogWritingAgent")
+    @patch("apps.agent_api.views.blog_writing.BlogWritingAgent")
     def test_writing_agent_returns_markdown_for_authenticated_author(self, mocked_agent):
         from rest_framework_simplejwt.tokens import RefreshToken
 

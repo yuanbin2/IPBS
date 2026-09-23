@@ -1,20 +1,11 @@
 """Domain-oriented DRF view exports.
 
 Import views from their domain module in new code (e.g.
-``from .blog import BlogArticleListCreateView``). These explicit exports
-preserve the existing public import path while the application stays
-decomposed by domain; star exports are intentionally avoided.
+``from .blog_articles import BlogArticleListCreateView``). These explicit
+exports preserve the existing public import path while the application
+stays decomposed by domain; star exports are intentionally avoided.
 """
 
-from .agent import (
-    AgentChatStreamView,
-    AgentChatView,
-    ConversationDetailView,
-    ConversationListView,
-    EvaluationCaseListView,
-    EvaluationRunView,
-    ObservabilityDashboardView,
-)
 from .auth import (
     AuthLoginView,
     AuthMeView,
@@ -22,20 +13,24 @@ from .auth import (
     SecurityAuditListView,
     SecurityStatusView,
 )
-from .blog import (
-    BlogAboutView,
-    BlogAgentChatView,
-    BlogArchiveView,
+from .blog_agent import BlogAgentChatView
+from .blog_articles import (
     BlogArticleDetailView,
     BlogArticleListCreateView,
     BlogArticlePublishView,
     BlogArticleRelatedView,
+    BlogImageUploadView,
+)
+from .blog_public import (
+    BlogAboutView,
+    BlogArchiveView,
     BlogCategoryListView,
     BlogCommentCreateView,
-    BlogImageUploadView,
     BlogTagListView,
-    BlogWritingAgentView,
 )
+from .blog_writing import BlogWritingAgentView
+from .chat import AgentChatStreamView, AgentChatView
+from .conversations import ConversationDetailView, ConversationListView
 from .governance import (
     ApprovalRequestDetailView,
     ApprovalRequestListView,
@@ -54,6 +49,11 @@ from .knowledge import (
     KnowledgeBaseListView,
     KnowledgeSearchView,
     TaskStatusView,
+)
+from .observability import (
+    EvaluationCaseListView,
+    EvaluationRunView,
+    ObservabilityDashboardView,
 )
 
 __all__ = [

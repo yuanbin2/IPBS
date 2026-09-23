@@ -61,6 +61,26 @@ def get_conversation_owner(request) -> str:
     return context_from_request(request).actor or "anonymous"
 
 
+def get_or_create_conversation(conversation_id, message: str, workspace_key: str, owner_username: str) -> Conversation:
+    """按 id 取会话（带 workspace/owner 校验，不能跨用户复用），缺省则创建。"""
+    if conversation_id:
+        return get_object_or_404(
+            Conversation,
+            pk=conversation_id,
+            workspace_key=workspace_key,
+            owner_username=owner_username,
+        )
+
+    title = message[:40]
+    if len(message) > 40:
+        title = f"{title}..."
+    return Conversation.objects.create(
+        title=title,
+        workspace_key=workspace_key,
+        owner_username=owner_username,
+    )
+
+
 def error_response(detail: str, code: str, http_status: int, **extra) -> Response:
     """统一错误响应：detail 给人看，code 给前端做程序化分支（见 exceptions.py）。"""
     return Response({"detail": detail, "code": code, **extra}, status=http_status)
