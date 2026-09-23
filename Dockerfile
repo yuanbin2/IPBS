@@ -13,7 +13,6 @@ RUN apt-get update \
 COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install -r /app/backend/requirements.txt
 
-COPY agent /app/agent
 COPY backend /app/backend
 COPY deploy/backend/entrypoint.sh /entrypoint.sh
 
