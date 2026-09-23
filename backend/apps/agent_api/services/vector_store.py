@@ -7,13 +7,12 @@ EmbeddingRecord table, but production retrieval should go through pgvector.
 
 from __future__ import annotations
 
-import os
 import json
+import os
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from django.db import connection
-
 
 PGVECTOR_TABLE = "agent_api_vectorindex"
 INDEXED_DIMENSIONS = (384, 1536, 3072)
@@ -51,8 +50,7 @@ def ensure_pgvector_schema() -> None:
         return
     with connection.cursor() as cursor:
         cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        cursor.execute(
-            f"""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS {PGVECTOR_TABLE} (
                 chunk_id bigint PRIMARY KEY
                     REFERENCES agent_api_documentchunk(id) ON DELETE CASCADE,
@@ -67,23 +65,18 @@ def ensure_pgvector_schema() -> None:
                 metadata jsonb NOT NULL DEFAULT '{{}}'::jsonb,
                 updated_at timestamptz NOT NULL DEFAULT now()
             )
-            """
-        )
-        cursor.execute(
-            f"""
+            """)
+        cursor.execute(f"""
             CREATE INDEX IF NOT EXISTS agent_api_vectorindex_workspace_kb_idx
             ON {PGVECTOR_TABLE} (workspace_key, knowledge_base_id)
-            """
-        )
+            """)
         for dimensions in INDEXED_DIMENSIONS:
-            cursor.execute(
-                f"""
+            cursor.execute(f"""
                 CREATE INDEX IF NOT EXISTS agent_api_vectorindex_embedding_{dimensions}_hnsw_idx
                 ON {PGVECTOR_TABLE}
                 USING hnsw ((embedding::vector({dimensions})) vector_cosine_ops)
                 WHERE vector_dimensions = {dimensions}
-                """
-            )
+                """)
 
 
 def upsert_chunk_vector(chunk, model: str, vector: list[float]) -> None:

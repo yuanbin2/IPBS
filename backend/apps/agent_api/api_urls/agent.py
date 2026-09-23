@@ -1,8 +1,8 @@
 from django.urls import path
 
 from ..views.agent import (
-    AgentChatView,
     AgentChatStreamView,
+    AgentChatView,
     ConversationDetailView,
     ConversationListView,
     EvaluationCaseListView,

@@ -14,4 +14,3 @@ class HealthCheckView(APIView):
                 "modules": ["blog", "knowledge-base", "agent", "rag", "mcp"],
             }
         )
-

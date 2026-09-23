@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-import json
 import ipaddress
+import json
 import os
 import re
 import subprocess
@@ -146,8 +146,10 @@ class _BaiduHTMLParser(HTMLParser):
                 self._capture = "title"
                 self._buffer = []
         # Snippet area
-        elif self._in_result and tag in {"span", "div"} and (
-            "c-abstract" in classes or "content-right_8Zs40" in classes or "c-span-last" in classes
+        elif (
+            self._in_result
+            and tag in {"span", "div"}
+            and ("c-abstract" in classes or "content-right_8Zs40" in classes or "c-span-last" in classes)
         ):
             self._capture = "snippet"
             self._buffer = []
@@ -295,7 +297,7 @@ class LocalMCPToolRunner:
                 lines.append(f"  湿度：{humidity}%，风速：{wind} km/h")
 
             if forecasts:
-                lines.append(f"\n📅 未来天气预报：")
+                lines.append("\n📅 未来天气预报：")
                 for day in forecasts[:3]:
                     date = day.get("date", "")
                     max_temp = day.get("maxtempC", "?")
@@ -305,7 +307,11 @@ class LocalMCPToolRunner:
                     if hourly:
                         noon = hourly[4] if len(hourly) > 4 else hourly[0]
                         desc_cn = noon.get("lang_zh", [{}])
-                        day_desc = desc_cn[0].get("value", "") if desc_cn else noon.get("weatherDesc", [{}])[0].get("value", "")
+                        day_desc = (
+                            desc_cn[0].get("value", "")
+                            if desc_cn
+                            else noon.get("weatherDesc", [{}])[0].get("value", "")
+                        )
                     lines.append(f"  {date}：{min_temp}°C ~ {max_temp}°C，{day_desc}")
 
             return "\n".join(lines)
@@ -315,15 +321,18 @@ class LocalMCPToolRunner:
         # Fallback: search Chinese weather sites directly
         try:
             search_url = "https://www.baidu.com/s?" + urlencode({"wd": f"{location} 天气预报 明日"})
-            request = Request(search_url, headers={
-                "Accept": "text/html",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            })
+            request = Request(
+                search_url,
+                headers={
+                    "Accept": "text/html",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                },
+            )
             with self._open_url(request, timeout=timeout) as response:
                 html = response.read().decode("utf-8", errors="replace")
             # Extract weather data from Baidu's inline weather widget (if present)
             # Baidu embeds weather in a <div class="op_weather4_t498"> or similar
-            temp_match = re.search(r'(\-?\d+)\s*°', html)
+            temp_match = re.search(r"(\-?\d+)\s*°", html)
             if temp_match:
                 return f"🌤 {location}天气：从百度搜索结果获取到温度 {temp_match.group(1)}°C（建议访问 weather.com.cn 获取详细预报）"
         except Exception:
@@ -529,7 +538,11 @@ class LocalMCPToolRunner:
         haystack = f"{text} {target_url}".lower()
         ascii_terms = re.findall(r"[a-z0-9][a-z0-9.+#_-]{1,}", query_lower)
         chinese_segments = re.findall(r"[\u4e00-\u9fff]{2,}", query_lower)
-        chinese_terms = [segment for value in chinese_segments for segment in ([value] + [value[i:i + 2] for i in range(len(value) - 1)])]
+        chinese_terms = [
+            segment
+            for value in chinese_segments
+            for segment in ([value] + [value[i : i + 2] for i in range(len(value) - 1)])
+        ]
         terms = list(dict.fromkeys([*ascii_terms, *chinese_terms]))
         overlap = sum(1 for term in terms if term in haystack)
         score = overlap * 3.0 - position * 0.08

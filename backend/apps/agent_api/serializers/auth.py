@@ -15,8 +15,15 @@ class SecurityAuditEventSerializer(serializers.ModelSerializer):
     class Meta:
         model = SecurityAuditEvent
         fields = [
-            "id", "event_type", "actor", "role", "workspace_key", "path",
-            "detail", "metadata", "created_at",
+            "id",
+            "event_type",
+            "actor",
+            "role",
+            "workspace_key",
+            "path",
+            "detail",
+            "metadata",
+            "created_at",
         ]
 
 

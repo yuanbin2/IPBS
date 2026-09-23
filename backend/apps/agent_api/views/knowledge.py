@@ -59,10 +59,7 @@ class KnowledgeBaseListView(APIView):
         # 搜索
         search = request.query_params.get("search")
         if search:
-            knowledge_bases = knowledge_bases.filter(
-                Q(name__icontains=search) |
-                Q(description__icontains=search)
-            )
+            knowledge_bases = knowledge_bases.filter(Q(name__icontains=search) | Q(description__icontains=search))
 
         # 是否包含归档
         include_archived = request.query_params.get("include_archived", "false").lower() == "true"
@@ -95,7 +92,9 @@ class KnowledgeBaseListView(APIView):
             if "tags" in request.data:
                 knowledge_base.tags = request.data["tags"]
             knowledge_base.save(update_fields=["description", "category", "tags", "updated_at"])
-        return Response(serialize_knowledge_base(knowledge_base), status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        return Response(
+            serialize_knowledge_base(knowledge_base), status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        )
 
 
 class KnowledgeBaseDetailView(APIView):
@@ -133,13 +132,16 @@ class KnowledgeBaseDetailView(APIView):
             title=f"删除知识库：{knowledge_base.name}",
             description="删除知识库会级联删除其中的文档、切片和向量索引。",
             payload={"knowledge_base_id": knowledge_base.id, "name": knowledge_base.name},
-            requester=str(request.data.get("requester", "operator")).strip() if hasattr(request, "data") else "operator",
+            requester=(
+                str(request.data.get("requester", "operator")).strip() if hasattr(request, "data") else "operator"
+            ),
         )
         return approval_required_response(approval)
 
 
 class KnowledgeBaseArchiveView(APIView):
     """归档/取消归档知识库"""
+
     authentication_classes = []
     permission_classes = []
 
@@ -157,13 +159,12 @@ class KnowledgeBaseArchiveView(APIView):
             knowledge_base.is_archived = False
             message = f"知识库 '{knowledge_base.name}' 已取消归档"
         else:
-            return error_response("action must be 'archive' or 'unarchive'", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "action must be 'archive' or 'unarchive'", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST
+            )
 
         knowledge_base.save(update_fields=["is_archived", "updated_at"])
-        return Response({
-            "message": message,
-            "knowledge_base": serialize_knowledge_base(knowledge_base)
-        })
+        return Response({"message": message, "knowledge_base": serialize_knowledge_base(knowledge_base)})
 
 
 class DocumentListUploadView(APIView):
@@ -188,11 +189,17 @@ class DocumentListUploadView(APIView):
 
         suffix = Path(upload.name).suffix.lower()
         if suffix not in {".md", ".markdown", ".txt", ".pdf"}:
-            return error_response("only Markdown, txt and PDF files are supported", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "only Markdown, txt and PDF files are supported",
+                ErrorCode.VALIDATION_ERROR,
+                status.HTTP_400_BAD_REQUEST,
+            )
 
         knowledge_base_id = request.data.get("knowledge_base_id")
         if knowledge_base_id:
-            knowledge_base = get_object_or_404(KnowledgeBase, pk=knowledge_base_id, workspace_key=get_workspace_key(request))
+            knowledge_base = get_object_or_404(
+                KnowledgeBase, pk=knowledge_base_id, workspace_key=get_workspace_key(request)
+            )
         else:
             knowledge_base = get_default_knowledge_base(get_workspace_key(request))
 
@@ -226,7 +233,9 @@ class DocumentDetailView(APIView):
             title=f"删除文档：{document.title}",
             description="删除文档会删除对应切片、embedding 记录，并影响知识库检索结果。",
             payload={"document_id": document.id, "title": document.title},
-            requester=str(request.data.get("requester", "operator")).strip() if hasattr(request, "data") else "operator",
+            requester=(
+                str(request.data.get("requester", "operator")).strip() if hasattr(request, "data") else "operator"
+            ),
         )
         return approval_required_response(approval)
 
@@ -252,6 +261,7 @@ class DocumentReindexView(APIView):
 
 class TaskStatusView(APIView):
     """Expose a Celery task as a polling-friendly REST resource."""
+
     authentication_classes = []
     permission_classes = []
 

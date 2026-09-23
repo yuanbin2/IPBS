@@ -11,9 +11,18 @@ class KnowledgeBaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = KnowledgeBase
         fields = [
-            "id", "name", "description", "category", "category_label", "tags",
-            "is_archived", "sort_order", "document_count", "chunk_count",
-            "created_at", "updated_at",
+            "id",
+            "name",
+            "description",
+            "category",
+            "category_label",
+            "tags",
+            "is_archived",
+            "sort_order",
+            "document_count",
+            "chunk_count",
+            "created_at",
+            "updated_at",
         ]
 
 
@@ -23,8 +32,15 @@ class DocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = [
-            "id", "knowledge_base_id", "title", "content_type", "status",
-            "error_message", "chunk_count", "created_at", "updated_at",
+            "id",
+            "knowledge_base_id",
+            "title",
+            "content_type",
+            "status",
+            "error_message",
+            "chunk_count",
+            "created_at",
+            "updated_at",
         ]
 
 

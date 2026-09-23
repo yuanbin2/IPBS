@@ -1,6 +1,5 @@
 from django.db import migrations, models
 
-
 DEFAULT_KNOWLEDGE_BASE_NAME = "默认知识库"
 DEFAULT_DESCRIPTION = "Day4 本地知识库，用于上传文档、切分、向量检索和 Agent RAG。"
 

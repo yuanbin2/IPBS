@@ -1,8 +1,8 @@
-import tempfile
 import json
+import tempfile
 from pathlib import Path
-from urllib.error import URLError
 from unittest.mock import patch
+from urllib.error import URLError
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -14,8 +14,8 @@ from langchain_core.runnables import RunnableLambda
 from agent.simple_agent import SimpleToolCallingAgent
 
 from .models import (
-    AgentRun,
     AgentObservation,
+    AgentRun,
     ApprovalRequest,
     BlogAgentMessage,
     BlogAgentSecurityEvent,
@@ -33,19 +33,18 @@ from .models import (
     SecurityAuditEvent,
     UserProfile,
 )
+from .services.blog import ArticleAccessError, ArticleListFilters, list_articles
+from .services.blog_agent import PublicBlogAgent
 from .services.rag import (
     LOCAL_EMBEDDING_DIMENSIONS,
     LOCAL_EMBEDDING_MODEL,
     SearchResult,
-    expand_search_results_with_neighbors,
     expand_multilingual_query,
+    expand_search_results_with_neighbors,
     keyword_similarity,
     search_knowledge_base,
 )
-from .services.blog import ArticleAccessError, ArticleListFilters, list_articles
-from .services.blog_agent import PublicBlogAgent
 from .services.vector_store import VectorMatch, vector_literal
-
 
 NO_MODEL_ENV = {
     "OPENAI_API_KEY": "",
@@ -240,16 +239,11 @@ class AgentChatTests(TestCase):
         self.assertEqual(payload["supervisor"]["selected_agent"], "rag_agent")
         self.assertTrue(
             any(
-                item.startswith("context_query_rewrite ->")
-                and "卫晓斌" in item
-                and "学校" in item
+                item.startswith("context_query_rewrite ->") and "卫晓斌" in item and "学校" in item
                 for item in payload["trace"]
             )
         )
-        knowledge_calls = [
-            item for item in payload["tool_calls"]
-            if item["name"] == "knowledge_search"
-        ]
+        knowledge_calls = [item for item in payload["tool_calls"] if item["name"] == "knowledge_search"]
         self.assertTrue(knowledge_calls)
         self.assertIn("卫晓斌", knowledge_calls[0]["input"])
 
@@ -1024,9 +1018,9 @@ class AgentChatTests(TestCase):
         upload = SimpleUploadedFile(
             "rag-notes.txt",
             (
-                "LangGraph controls agent state transitions.\n\n"
-                "RAG retrieves knowledge chunks and passes them into the final model prompt."
-            ).encode("utf-8"),
+                b"LangGraph controls agent state transitions.\n\n"
+                b"RAG retrieves knowledge chunks and passes them into the final model prompt."
+            ),
             content_type="text/plain",
         )
 
@@ -1054,7 +1048,7 @@ class AgentChatTests(TestCase):
     def test_document_upload_falls_back_to_inline_processing_when_broker_is_unavailable(self, _delay):
         upload = SimpleUploadedFile(
             "local-upload.txt",
-            "Local development upload should work without a broker.".encode("utf-8"),
+            b"Local development upload should work without a broker.",
             content_type="text/plain",
         )
 
@@ -1079,9 +1073,9 @@ class AgentChatTests(TestCase):
         upload = SimpleUploadedFile(
             "knowledge.txt",
             (
-                "Agentic RAG means the agent retrieves context first.\n\n"
-                "The retrieved context is inserted into the prompt before the model answers."
-            ).encode("utf-8"),
+                b"Agentic RAG means the agent retrieves context first.\n\n"
+                b"The retrieved context is inserted into the prompt before the model answers."
+            ),
             content_type="text/plain",
         )
         self.client.post(
@@ -1108,10 +1102,7 @@ class AgentChatTests(TestCase):
         workspace = "sample-workspace"
         upload = SimpleUploadedFile(
             "codex-rag-smoke.txt",
-            (
-                "Codex RAG smoke marker ALPHA42.\n\n"
-                "The uploaded sample says the retrieval answer color is teal."
-            ).encode("utf-8"),
+            (b"Codex RAG smoke marker ALPHA42.\n\n" b"The uploaded sample says the retrieval answer color is teal."),
             content_type="text/plain",
         )
 
@@ -1174,7 +1165,7 @@ class AgentChatTests(TestCase):
                 "教育经历：重庆三峡科技大学 硕士 计算机技术 2024-2027；晋中学院 本科 计算机科学与技术 2020-2024。\n"
                 "方向：Python 后端开发、Django、Vue、RAG 知识库和 Agent 工程。\n"
                 "项目：构建个人博客智能体系统，支持文档上传、知识库检索和问答引用。"
-            ).encode("utf-8"),
+            ).encode(),
             content_type="text/plain",
         )
 
@@ -1418,7 +1409,7 @@ class AgentChatTests(TestCase):
     def test_document_ingestion_syncs_vectors_to_pgvector_store(self, _should_use_pgvector, mocked_upsert):
         upload = SimpleUploadedFile(
             "pgvector-sync.txt",
-            "This document should be embedded and written to the vector store.".encode("utf-8"),
+            b"This document should be embedded and written to the vector store.",
             content_type="text/plain",
         )
 
@@ -1444,7 +1435,7 @@ class AgentChatTests(TestCase):
     def test_document_reindex_rebuilds_chunks(self):
         upload = SimpleUploadedFile(
             "reindex.txt",
-            "RAG reindex should rebuild document chunks.".encode("utf-8"),
+            b"RAG reindex should rebuild document chunks.",
             content_type="text/plain",
         )
         upload_response = self.client.post(

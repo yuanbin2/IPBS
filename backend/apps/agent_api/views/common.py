@@ -40,7 +40,6 @@ from ..models import (
 from ..serializers import serialize_approval_request
 from ..services.blog import publish_article_to_knowledge_base
 
-
 DEFAULT_MESSAGE_LIMIT = 30
 
 
@@ -124,7 +123,7 @@ def request_ip_hash(request) -> str:
     ip = forwarded_for.split(",")[0].strip() or request.META.get("REMOTE_ADDR", "")
     if not ip:
         return ""
-    return hashlib.sha256(f"{settings.SECRET_KEY}:{ip}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{settings.SECRET_KEY}:{ip}".encode()).hexdigest()
 
 
 DEFAULT_MCP_TOOLS = [
@@ -219,7 +218,9 @@ def evaluate_answer(case: EvaluationCase, response_data: dict, observation: Agen
     keyword_hits = sum(1 for keyword in keywords if keyword and keyword in answer_lower)
     keyword_score = keyword_hits / len(keywords) if keywords else 1.0
     route_score = 1.0 if not case.expected_agent or selected_agent == case.expected_agent else 0.0
-    citation_score = 1.0 if response_data.get("sources") else (0.7 if case.category == EvaluationCase.Category.JAILBREAK else 0.0)
+    citation_score = (
+        1.0 if response_data.get("sources") else (0.7 if case.category == EvaluationCase.Category.JAILBREAK else 0.0)
+    )
     faithful_markers = ["不能", "无法", "审批", "知识库", "来源", "Agent", "RAG", "博客"]
     faithfulness = 1.0 if any(marker in answer for marker in faithful_markers) else 0.5
     correctness = round((keyword_score * 0.6) + (route_score * 0.4), 2)
@@ -342,7 +343,9 @@ def maybe_create_blog_delete_approval(message: str, request) -> ApprovalRequest 
         title=f"删除博客：{article.title}",
         description="对话触发的删除博客请求，需要管理员审批后才会删除文章和对应知识库文档。",
         payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
-        requester=str(request.data.get("requester", "chat-agent")).strip() if hasattr(request, "data") else "chat-agent",
+        requester=(
+            str(request.data.get("requester", "chat-agent")).strip() if hasattr(request, "data") else "chat-agent"
+        ),
     )
 
 
@@ -380,7 +383,9 @@ def execute_approval_request(approval: ApprovalRequest) -> str:
         return f"文档已删除：{title}"
 
     if approval.action == ApprovalRequest.Action.DELETE_KNOWLEDGE_BASE:
-        knowledge_base = get_object_or_404(KnowledgeBase, pk=payload.get("knowledge_base_id"), workspace_key=approval.workspace_key)
+        knowledge_base = get_object_or_404(
+            KnowledgeBase, pk=payload.get("knowledge_base_id"), workspace_key=approval.workspace_key
+        )
         name = knowledge_base.name
         knowledge_base.delete()
         return f"知识库已删除：{name}"

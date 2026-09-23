@@ -9,7 +9,6 @@ from django.utils.text import slugify
 from ..models import ArticleCategory, ArticleTag, BlogArticle, Document
 from .rag import get_default_knowledge_base, ingest_document
 
-
 ARTICLE_LIST_LIMIT = 50
 
 
@@ -65,7 +64,9 @@ def list_articles(
         articles = articles.filter(tags__slug=filters.tag_slug)
     if filters.query:
         articles = articles.filter(
-            Q(title__icontains=filters.query) | Q(summary__icontains=filters.query) | Q(content__icontains=filters.query)
+            Q(title__icontains=filters.query)
+            | Q(summary__icontains=filters.query)
+            | Q(content__icontains=filters.query)
         )
 
     return list(articles.distinct()[:ARTICLE_LIST_LIMIT])

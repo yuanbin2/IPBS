@@ -7,8 +7,14 @@ class MessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
         fields = [
-            "id", "role", "content", "tool_calls", "sources", "trace",
-            "token_usage", "created_at",
+            "id",
+            "role",
+            "content",
+            "tool_calls",
+            "sources",
+            "trace",
+            "token_usage",
+            "created_at",
         ]
 
 
@@ -19,10 +25,24 @@ class AgentObservationSerializer(serializers.ModelSerializer):
     class Meta:
         model = AgentObservation
         fields = [
-            "id", "conversation_id", "agent_run_id", "input_message", "answer",
-            "route", "selected_agent", "trace", "tool_calls", "sources",
-            "token_usage", "latency_ms", "tool_success_rate", "status",
-            "failure_reason", "langsmith_project", "langsmith_run_id", "created_at",
+            "id",
+            "conversation_id",
+            "agent_run_id",
+            "input_message",
+            "answer",
+            "route",
+            "selected_agent",
+            "trace",
+            "tool_calls",
+            "sources",
+            "token_usage",
+            "latency_ms",
+            "tool_success_rate",
+            "status",
+            "failure_reason",
+            "langsmith_project",
+            "langsmith_run_id",
+            "created_at",
         ]
 
 
@@ -35,8 +55,14 @@ class ConversationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
         fields = [
-            "id", "title", "created_at", "updated_at", "matched_message_id",
-            "messages", "has_more_before", "has_more_after",
+            "id",
+            "title",
+            "created_at",
+            "updated_at",
+            "matched_message_id",
+            "messages",
+            "has_more_before",
+            "has_more_after",
         ]
 
     def get_messages(self, instance):

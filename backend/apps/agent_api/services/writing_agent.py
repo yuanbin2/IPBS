@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-
 WRITING_MODES = {
     "task_list": (
         "把写作目标拆成可执行的 Markdown 任务清单。使用 `- [ ]`，按资料准备、写作、"
@@ -56,9 +55,7 @@ class BlogWritingAgent:
 
         self.api_key_source = "dedicated" if dedicated_key else "shared"
         self.model = (
-            os.getenv("BLOG_WRITING_AGENT_MODEL", "").strip()
-            or os.getenv("OPENAI_MODEL", "").strip()
-            or "gpt-4o-mini"
+            os.getenv("BLOG_WRITING_AGENT_MODEL", "").strip() or os.getenv("OPENAI_MODEL", "").strip() or "gpt-4o-mini"
         )
         base_url = (
             os.getenv("BLOG_WRITING_AGENT_BASE_URL", "").strip()

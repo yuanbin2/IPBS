@@ -10,9 +10,7 @@ def upgrade_web_search(apps, schema_editor):
 
 def downgrade_web_search(apps, schema_editor):
     MCPTool = apps.get_model("agent_api", "MCPTool")
-    MCPTool.objects.filter(name="web_search").update(
-        config={"provider": "duckduckgo", "max_results": 5}
-    )
+    MCPTool.objects.filter(name="web_search").update(config={"provider": "duckduckgo", "max_results": 5})
 
 
 class Migration(migrations.Migration):

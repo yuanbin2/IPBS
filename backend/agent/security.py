@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
-
 
 TOKEN_SALT = "knowledge-agent-auth"
 TOKEN_MAX_AGE_SECONDS = 60 * 60 * 12

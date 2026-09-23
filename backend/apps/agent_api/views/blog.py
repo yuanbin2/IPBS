@@ -43,8 +43,8 @@ from ..services.blog import (
 )
 from ..services.blog_agent import PublicBlogAgent
 from ..services.writing_agent import (
-    BlogWritingAgent,
     WRITING_MODES,
+    BlogWritingAgent,
     WritingAgentConfigurationError,
 )
 from .common import (
@@ -88,7 +88,9 @@ class BlogArticleListCreateView(APIView):
         title = str(request.data.get("title", "")).strip()
         content = str(request.data.get("content", "")).strip()
         if not title or not content:
-            return error_response("title and content are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "title and content are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST
+            )
 
         context = context_from_request(request)
 
@@ -119,7 +121,12 @@ class BlogArticleListCreateView(APIView):
             workspace_key=get_workspace_key(request),
             title=f"发布博客：{article.title}",
             description=f"{'用户 ' + author_name + ' 提交的' if context.authenticated else '访客 ' + author_name + ' 提交的'}博客文章，发布后会公开并写入知识库。",
-            payload={"article_slug": article.slug, "article_id": article.id, "title": article.title, "author_name": author_name},
+            payload={
+                "article_slug": article.slug,
+                "article_id": article.id,
+                "title": article.title,
+                "author_name": author_name,
+            },
             requester=author_name,
         )
         return Response(
@@ -147,7 +154,9 @@ class BlogImageUploadView(APIView):
             return error_response("image is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
 
         if not upload.content_type.startswith("image/"):
-            return error_response("only image files are supported", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "only image files are supported", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST
+            )
 
         suffix = Path(upload.name).suffix.lower() or ".png"
         if suffix not in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}:
@@ -155,9 +164,12 @@ class BlogImageUploadView(APIView):
 
         max_size = 5 * 1024 * 1024
         if upload.size > max_size:
-            return error_response("image must be smaller than 5MB", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "image must be smaller than 5MB", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST
+            )
 
         import base64
+
         image_data = base64.b64encode(upload.read()).decode("utf-8")
         content_type = upload.content_type or "image/png"
         data_url = f"data:{content_type};base64,{image_data}"
@@ -179,11 +191,17 @@ class BlogWritingAgentView(APIView):
     def post(self, request):
         context = context_from_request(request)
         if not context.authenticated:
-            return error_response("请先登录后再使用写作助手。", ErrorCode.NOT_AUTHENTICATED, status.HTTP_401_UNAUTHORIZED)
+            return error_response(
+                "请先登录后再使用写作助手。", ErrorCode.NOT_AUTHENTICATED, status.HTTP_401_UNAUTHORIZED
+            )
 
         mode = str(request.data.get("mode", "task_list")).strip()
         if mode not in WRITING_MODES:
-            return error_response("mode must be one of: task_list, outline, draft, improve", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "mode must be one of: task_list, outline, draft, improve",
+                ErrorCode.VALIDATION_ERROR,
+                status.HTTP_400_BAD_REQUEST,
+            )
 
         instruction = str(request.data.get("instruction", "")).strip()[:2000]
         raw_draft = request.data.get("draft") or {}
@@ -198,14 +216,18 @@ class BlogWritingAgentView(APIView):
             "content": str(raw_draft.get("content", ""))[:16000],
         }
         if not instruction and not draft["title"] and not draft["content"].strip():
-            return error_response("请填写写作要求、文章标题或正文后再生成。", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "请填写写作要求、文章标题或正文后再生成。", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             result = BlogWritingAgent().generate(mode=mode, instruction=instruction, draft=draft)
         except WritingAgentConfigurationError as exc:
             return error_response(str(exc), ErrorCode.UPSTREAM_UNAVAILABLE, status.HTTP_503_SERVICE_UNAVAILABLE)
         except Exception:
-            return error_response("写作助手生成失败，请稍后重试或检查模型配置。", ErrorCode.INTERNAL_ERROR, status.HTTP_502_BAD_GATEWAY)
+            return error_response(
+                "写作助手生成失败，请稍后重试或检查模型配置。", ErrorCode.INTERNAL_ERROR, status.HTTP_502_BAD_GATEWAY
+            )
 
         return Response(
             {
@@ -356,7 +378,9 @@ class BlogArticleDetailView(APIView):
             title=f"删除博客：{article.title}",
             description="删除博客会移除文章，并删除它同步到知识库的文档。",
             payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
-            requester=str(request.data.get("requester", "blog-editor")).strip() if hasattr(request, "data") else "blog-editor",
+            requester=(
+                str(request.data.get("requester", "blog-editor")).strip() if hasattr(request, "data") else "blog-editor"
+            ),
         )
         return approval_required_response(approval)
 
@@ -376,7 +400,9 @@ class BlogArticlePublishView(APIView):
             title=f"发布博客：{article.title}",
             description="发布博客会公开文章，并将文章内容写入知识库供 Agent 检索。",
             payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
-            requester=str(request.data.get("requester", "blog-editor")).strip() if hasattr(request, "data") else "blog-editor",
+            requester=(
+                str(request.data.get("requester", "blog-editor")).strip() if hasattr(request, "data") else "blog-editor"
+            ),
         )
         return approval_required_response(approval)
 
@@ -491,19 +517,20 @@ class BlogAgentChatView(APIView):
         if not message:
             return error_response("message is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
         if len(message) > 800:
-            return error_response("message must be shorter than 800 characters", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "message must be shorter than 800 characters", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST
+            )
 
         session = self._get_or_create_session(request)
         if session.is_blocked:
             return error_response("this visitor session is blocked", ErrorCode.FORBIDDEN, status.HTTP_403_FORBIDDEN)
         if self._is_rate_limited(session):
-            return error_response("提问太频繁了，请稍后再试。", ErrorCode.RATE_LIMITED, status.HTTP_429_TOO_MANY_REQUESTS)
+            return error_response(
+                "提问太频繁了，请稍后再试。", ErrorCode.RATE_LIMITED, status.HTTP_429_TOO_MANY_REQUESTS
+            )
 
         previous_messages = list(session.messages.order_by("-id")[:10])
-        history = [
-            {"role": item.role, "content": item.content}
-            for item in reversed(previous_messages)
-        ]
+        history = [{"role": item.role, "content": item.content} for item in reversed(previous_messages)]
 
         BlogAgentMessage.objects.create(
             session=session,
@@ -603,7 +630,9 @@ class BlogCommentCreateView(APIView):
         author_name = str(request.data.get("author_name", "")).strip()
         content = str(request.data.get("content", "")).strip()
         if not author_name or not content:
-            return error_response("author_name and content are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "author_name and content are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST
+            )
         comment = BlogComment.objects.create(article=article, author_name=author_name, content=content)
         return Response(
             {

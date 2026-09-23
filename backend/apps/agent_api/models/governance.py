@@ -70,10 +70,7 @@ class MCPTool(models.Model):
     success_count = models.IntegerField(default=0, help_text="Number of successful calls")
     # 健康检查字段
     health_status = models.CharField(
-        max_length=20,
-        choices=HealthStatus.choices,
-        default=HealthStatus.UNKNOWN,
-        help_text="Current health status"
+        max_length=20, choices=HealthStatus.choices, default=HealthStatus.UNKNOWN, help_text="Current health status"
     )
     last_health_check = models.DateTimeField(null=True, blank=True, help_text="Last health check time")
     health_message = models.TextField(blank=True, help_text="Health check message or error")

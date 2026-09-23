@@ -6,43 +6,43 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('agent_api', '0023_blogarticle_cover_image'),
+        ("agent_api", "0023_blogarticle_cover_image"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='mcptool',
-            name='call_count',
-            field=models.IntegerField(default=0, help_text='Total number of calls'),
+            model_name="mcptool",
+            name="call_count",
+            field=models.IntegerField(default=0, help_text="Total number of calls"),
         ),
         migrations.AddField(
-            model_name='mcptool',
-            name='success_count',
-            field=models.IntegerField(default=0, help_text='Number of successful calls'),
+            model_name="mcptool",
+            name="success_count",
+            field=models.IntegerField(default=0, help_text="Number of successful calls"),
         ),
         migrations.AddField(
-            model_name='mcptool',
-            name='health_status',
+            model_name="mcptool",
+            name="health_status",
             field=models.CharField(
                 choices=[
-                    ('healthy', 'Healthy'),
-                    ('warning', 'Warning'),
-                    ('error', 'Error'),
-                    ('unknown', 'Unknown'),
+                    ("healthy", "Healthy"),
+                    ("warning", "Warning"),
+                    ("error", "Error"),
+                    ("unknown", "Unknown"),
                 ],
-                default='unknown',
-                help_text='Current health status',
+                default="unknown",
+                help_text="Current health status",
                 max_length=20,
             ),
         ),
         migrations.AddField(
-            model_name='mcptool',
-            name='last_health_check',
-            field=models.DateTimeField(blank=True, help_text='Last health check time', null=True),
+            model_name="mcptool",
+            name="last_health_check",
+            field=models.DateTimeField(blank=True, help_text="Last health check time", null=True),
         ),
         migrations.AddField(
-            model_name='mcptool',
-            name='health_message',
-            field=models.TextField(blank=True, help_text='Health check message or error'),
+            model_name="mcptool",
+            name="health_message",
+            field=models.TextField(blank=True, help_text="Health check message or error"),
         ),
     ]

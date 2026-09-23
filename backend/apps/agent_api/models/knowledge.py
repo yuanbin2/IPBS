@@ -14,25 +14,10 @@ class KnowledgeBase(models.Model):
     name = models.CharField(max_length=120)
     workspace_key = models.CharField(max_length=80, default=DEFAULT_WORKSPACE_KEY, db_index=True)
     description = models.TextField(blank=True)
-    category = models.CharField(
-        max_length=30,
-        choices=Category.choices,
-        default=Category.OTHER,
-        help_text="知识库分类"
-    )
-    tags = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="标签列表，如 ['AI', 'Python', '教程']"
-    )
-    is_archived = models.BooleanField(
-        default=False,
-        help_text="是否已归档"
-    )
-    sort_order = models.IntegerField(
-        default=0,
-        help_text="排序顺序，数字越小越靠前"
-    )
+    category = models.CharField(max_length=30, choices=Category.choices, default=Category.OTHER, help_text="知识库分类")
+    tags = models.JSONField(default=list, blank=True, help_text="标签列表，如 ['AI', 'Python', '教程']")
+    is_archived = models.BooleanField(default=False, help_text="是否已归档")
+    sort_order = models.IntegerField(default=0, help_text="排序顺序，数字越小越靠前")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

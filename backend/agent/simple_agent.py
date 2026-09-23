@@ -8,18 +8,24 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterator, Literal, TypedDict
+from typing import Literal, TypedDict
 
 try:
     from django.conf import settings
 
-    if settings.configured and settings.DEBUG and os.getenv("AGENT_ENABLE_LANGSMITH", "").lower() not in {
-        "1",
-        "true",
-        "yes",
-    }:
+    if (
+        settings.configured
+        and settings.DEBUG
+        and os.getenv("AGENT_ENABLE_LANGSMITH", "").lower()
+        not in {
+            "1",
+            "true",
+            "yes",
+        }
+    ):
         os.environ["LANGCHAIN_TRACING_V2"] = "false"
         os.environ["LANGSMITH_TRACING"] = "false"
 except Exception:
@@ -31,7 +37,6 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
 from .tools import SafeCalculator, ToolResult, search_knowledge
-
 
 Route = Literal["retrieve", "direct"]
 GradingDecision = Literal["rewrite", "generate"]
@@ -106,11 +111,7 @@ class SimpleToolCallingAgent:
         # 先结合历史消解代词，再进入检索图；否则“他/这个项目”等
         # 追问会丢失上一轮的人名或主题。
         retrieval_query = self.rewrite_retrieval_query(message, history)
-        context_trace = (
-            [f"context_query_rewrite -> {retrieval_query}"]
-            if retrieval_query != message
-            else []
-        )
+        context_trace = [f"context_query_rewrite -> {retrieval_query}"] if retrieval_query != message else []
         initial_state: AgentState = {
             "message": message,
             "query": retrieval_query,
@@ -156,11 +157,7 @@ class SimpleToolCallingAgent:
         message = message.strip()
         history = history or []
         retrieval_query = self.rewrite_retrieval_query(message, history)
-        context_trace = (
-            [f"context_query_rewrite -> {retrieval_query}"]
-            if retrieval_query != message
-            else []
-        )
+        context_trace = [f"context_query_rewrite -> {retrieval_query}"] if retrieval_query != message else []
         initial_state: AgentState = {
             "message": message,
             "query": retrieval_query,
@@ -180,7 +177,7 @@ class SimpleToolCallingAgent:
 
         try:
             for step in self.graph.stream(initial_state, stream_mode="updates"):
-                for node_name, state_update in step.items():
+                for state_update in step.values():
                     traces = state_update.get("trace", [])
                     for trace_entry in traces[seen_trace_count:]:
                         yield {"type": "trace", "data": trace_entry}
@@ -277,7 +274,10 @@ class SimpleToolCallingAgent:
                     "4. 不要建议用户去其他网站查找——你已经通过联网搜索获取了结果。\n"
                     "5. 明确标注关键结论对应的 [1]、[2] 来源。",
                 ),
-                ("human", "最近对话：\n{history}\n\n当前问题：\n{message}\n\n网页搜索结果：\n{context}\n\n请根据以上搜索结果直接回答用户问题，提取并呈现搜索结果中的具体信息。"),
+                (
+                    "human",
+                    "最近对话：\n{history}\n\n当前问题：\n{message}\n\n网页搜索结果：\n{context}\n\n请根据以上搜索结果直接回答用户问题，提取并呈现搜索结果中的具体信息。",
+                ),
             ]
         )
         try:
@@ -294,12 +294,16 @@ class SimpleToolCallingAgent:
             )
         except Exception as exc:
             import traceback
+
             traceback.print_exc()
             return AgentResponse(
                 answer=f"网页搜索已完成，但模型生成失败，先返回搜索结果：\n\n{context}",
                 tool_calls=[tool_call],
                 sources=[],
-                trace=["internet_search -> completed", f"internet_generate -> failed: {type(exc).__name__}: {str(exc)[:200]}"],
+                trace=[
+                    "internet_search -> completed",
+                    f"internet_generate -> failed: {type(exc).__name__}: {str(exc)[:200]}",
+                ],
                 route="internet",
                 token_usage=self._empty_token_usage(),
             )
@@ -328,9 +332,7 @@ class SimpleToolCallingAgent:
         )
         try:
             rewritten = str(
-                (prompt | self.llm).invoke(
-                    {"history": self._format_history(history), "message": message}
-                ).content
+                (prompt | self.llm).invoke({"history": self._format_history(history), "message": message}).content
             )
             rewritten = re.sub(r"[\r\n]+", " ", rewritten).strip(" `\"'，。")
             return rewritten[:160] or fallback
@@ -361,9 +363,7 @@ class SimpleToolCallingAgent:
         )
         try:
             rewritten = str(
-                (prompt | self.llm).invoke(
-                    {"history": self._format_history(history), "message": message}
-                ).content
+                (prompt | self.llm).invoke({"history": self._format_history(history), "message": message}).content
             )
             rewritten = re.sub(r"[\r\n]+", " ", rewritten).strip(" `\"'，。")
             return rewritten[:160] or fallback
@@ -374,7 +374,18 @@ class SimpleToolCallingAgent:
     def _fallback_contextual_search_query(message: str, history: ConversationHistory) -> str:
         follow_up_markers = ["它", "他", "这个", "那个", "那", "呢", "继续", "上述", "上面", "刚才"]
         # Search-prefixed messages are standalone queries, not follow-ups
-        search_prefixes = ["搜索", "检索", "查找", "查询", "网页搜索", "网络搜索", "在网上", "在网络", "用网络", "用网页"]
+        search_prefixes = [
+            "搜索",
+            "检索",
+            "查找",
+            "查询",
+            "网页搜索",
+            "网络搜索",
+            "在网上",
+            "在网络",
+            "用网络",
+            "用网页",
+        ]
         has_search_prefix = any(prefix in message for prefix in search_prefixes)
         is_follow_up = not has_search_prefix and (
             len(message.strip()) <= 24 or any(marker in message for marker in follow_up_markers)
@@ -580,7 +591,9 @@ class SimpleToolCallingAgent:
             final_message = self._invoke_direct_answer_chain(state["message"])
         elif state.get("sources"):
             affiliation_answer = self._answer_affiliation_question(state["message"], state.get("sources", []))
-            final_message = AIMessage(content=affiliation_answer) if affiliation_answer else self._invoke_agentic_rag_chain(state)
+            final_message = (
+                AIMessage(content=affiliation_answer) if affiliation_answer else self._invoke_agentic_rag_chain(state)
+            )
         else:
             final_message = self._invoke_no_source_chain(state)
 
@@ -733,9 +746,7 @@ class SimpleToolCallingAgent:
                 ("human", "最近对话：\n{history}\n\n当前问题：{message}"),
             ]
         )
-        return (prompt | self.llm).invoke(
-            {"message": message, "history": self._format_history(history or [])}
-        )
+        return (prompt | self.llm).invoke({"message": message, "history": self._format_history(history or [])})
 
     @staticmethod
     def _format_history(history: ConversationHistory) -> str:
@@ -819,8 +830,8 @@ class SimpleToolCallingAgent:
             for match in re.finditer(institution_pattern, text):
                 start = max(0, match.start() - 28)
                 end = min(len(text), match.end() + 40)
-                before_window = text[start:match.start()]
-                after_window = text[match.end():end]
+                before_window = text[start : match.start()]
+                after_window = text[match.end() : end]
                 after_segment = re.split(r"[；;。.\n]", after_window, maxsplit=1)[0]
                 before_segment = re.split(r"[；;。.\n]", before_window)[-1]
                 degree_match = re.search(degree_pattern, after_segment) or re.search(

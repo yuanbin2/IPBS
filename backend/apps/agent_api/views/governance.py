@@ -49,9 +49,13 @@ class ApprovalRequestDetailView(APIView):
         note = str(request.data.get("note", "")).strip()
 
         if approval.status != ApprovalRequest.Status.PENDING:
-            return error_response("approval request is no longer pending", ErrorCode.CONFLICT, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "approval request is no longer pending", ErrorCode.CONFLICT, status.HTTP_400_BAD_REQUEST
+            )
         if decision not in {"approve", "reject"}:
-            return error_response("decision must be approve or reject", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "decision must be approve or reject", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST
+            )
 
         approval.reviewer = reviewer
         approval.review_note = note
@@ -66,10 +70,9 @@ class ApprovalRequestDetailView(APIView):
             if approval.action == ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE:
                 article_slug = approval.payload.get("article_slug")
                 if article_slug:
-                    BlogArticle.objects.filter(
-                        slug=article_slug,
-                        workspace_key=get_workspace_key(request)
-                    ).update(status=BlogArticle.Status.REJECTED)
+                    BlogArticle.objects.filter(slug=article_slug, workspace_key=get_workspace_key(request)).update(
+                        status=BlogArticle.Status.REJECTED
+                    )
 
             return Response(serialize_approval_request(approval))
 
@@ -102,15 +105,17 @@ class MCPToolListView(APIView):
         total_success = sum(t.success_count for t in tools)
         avg_success_rate = (total_success / total_calls * 100) if total_calls > 0 else 100
 
-        return Response({
-            "tools": [serialize_mcp_tool(tool) for tool in tools],
-            "summary": {
-                "total_count": total_count,
-                "enabled_count": enabled_count,
-                "total_calls": total_calls,
-                "avg_success_rate": round(avg_success_rate, 1),
+        return Response(
+            {
+                "tools": [serialize_mcp_tool(tool) for tool in tools],
+                "summary": {
+                    "total_count": total_count,
+                    "enabled_count": enabled_count,
+                    "total_calls": total_calls,
+                    "avg_success_rate": round(avg_success_rate, 1),
+                },
             }
-        })
+        )
 
 
 class MCPToolDetailView(APIView):
@@ -185,6 +190,7 @@ class MCPToolHealthCheckView(APIView):
 
         try:
             from agent.mcp_tools import LocalMCPToolRunner
+
             runner = LocalMCPToolRunner(Path(settings.BASE_DIR).parent)
 
             # 尝试执行一个简单的测试查询
@@ -216,12 +222,10 @@ class MCPToolBulkHealthCheckView(APIView):
         if denied:
             return denied
 
-        tools = MCPTool.objects.filter(
-            workspace_key=get_workspace_key(request),
-            is_enabled=True
-        )
+        tools = MCPTool.objects.filter(workspace_key=get_workspace_key(request), is_enabled=True)
 
         from agent.mcp_tools import LocalMCPToolRunner
+
         runner = LocalMCPToolRunner(Path(settings.BASE_DIR).parent)
 
         results = []

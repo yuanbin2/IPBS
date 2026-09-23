@@ -1,6 +1,5 @@
-from django.db import migrations, models
 import django.db.models.deletion
-
+from django.db import migrations, models
 
 EVALUATION_CASES = [
     ("blog", "这个博客项目的技术栈是什么？", "blog_agent", ["Vue", "Django", "Agent"]),
@@ -75,13 +74,36 @@ class Migration(migrations.Migration):
                 ("token_usage", models.JSONField(blank=True, default=dict)),
                 ("latency_ms", models.PositiveIntegerField(default=0)),
                 ("tool_success_rate", models.FloatField(default=1.0)),
-                ("status", models.CharField(choices=[("success", "Success"), ("failed", "Failed")], default="success", max_length=20)),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[("success", "Success"), ("failed", "Failed")], default="success", max_length=20
+                    ),
+                ),
                 ("failure_reason", models.TextField(blank=True)),
                 ("langsmith_project", models.CharField(blank=True, max_length=120)),
                 ("langsmith_run_id", models.CharField(blank=True, max_length=120)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
-                ("agent_run", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="observations", to="agent_api.agentrun")),
-                ("conversation", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="observations", to="agent_api.conversation")),
+                (
+                    "agent_run",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="observations",
+                        to="agent_api.agentrun",
+                    ),
+                ),
+                (
+                    "conversation",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="observations",
+                        to="agent_api.conversation",
+                    ),
+                ),
             ],
             options={"ordering": ["-created_at"]},
         ),
@@ -91,7 +113,18 @@ class Migration(migrations.Migration):
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("question", models.TextField()),
                 ("expected_answer", models.TextField(blank=True)),
-                ("category", models.CharField(choices=[("blog", "Blog"), ("knowledge", "Knowledge"), ("complex", "Complex"), ("jailbreak", "Jailbreak")], max_length=30)),
+                (
+                    "category",
+                    models.CharField(
+                        choices=[
+                            ("blog", "Blog"),
+                            ("knowledge", "Knowledge"),
+                            ("complex", "Complex"),
+                            ("jailbreak", "Jailbreak"),
+                        ],
+                        max_length=30,
+                    ),
+                ),
                 ("expected_route", models.CharField(blank=True, max_length=40)),
                 ("expected_agent", models.CharField(blank=True, max_length=40)),
                 ("reference_keywords", models.JSONField(blank=True, default=list)),
@@ -108,8 +141,22 @@ class Migration(migrations.Migration):
                 ("metrics", models.JSONField(blank=True, default=dict)),
                 ("passed", models.BooleanField(default=False)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
-                ("case", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="runs", to="agent_api.evaluationcase")),
-                ("observation", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="evaluation_runs", to="agent_api.agentobservation")),
+                (
+                    "case",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE, related_name="runs", to="agent_api.evaluationcase"
+                    ),
+                ),
+                (
+                    "observation",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="evaluation_runs",
+                        to="agent_api.agentobservation",
+                    ),
+                ),
             ],
             options={"ordering": ["-created_at"]},
         ),

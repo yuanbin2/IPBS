@@ -101,12 +101,8 @@ class ConversationDetailView(APIView):
             anchor_message = get_object_or_404(messages_queryset, pk=anchor)
             before_count = max(1, limit // 2)
             after_count = max(0, limit - before_count)
-            before_messages = list(
-                messages_queryset.filter(id__lte=anchor_message.id).order_by("-id")[:before_count]
-            )
-            after_messages = list(
-                messages_queryset.filter(id__gt=anchor_message.id).order_by("id")[:after_count]
-            )
+            before_messages = list(messages_queryset.filter(id__lte=anchor_message.id).order_by("-id")[:before_count])
+            after_messages = list(messages_queryset.filter(id__gt=anchor_message.id).order_by("id")[:after_count])
             messages = [*reversed(before_messages), *after_messages]
             has_more_after = messages_queryset.filter(id__gt=messages[-1].id).exists() if messages else False
         elif before:
@@ -155,8 +151,7 @@ class AgentChatView(APIView):
         )
         # 只把最近十条消息送入 Agent，既保留追问上下文，也控制 prompt 长度。
         history = [
-            {"role": item.role, "content": item.content}
-            for item in conversation.messages.order_by("-id")[:10][::-1]
+            {"role": item.role, "content": item.content} for item in conversation.messages.order_by("-id")[:10][::-1]
         ]
         Message.objects.create(
             conversation=conversation,
@@ -354,8 +349,7 @@ class AgentChatStreamView(APIView):
             get_conversation_owner(request),
         )
         history = [
-            {"role": item.role, "content": item.content}
-            for item in conversation.messages.order_by("-id")[:10][::-1]
+            {"role": item.role, "content": item.content} for item in conversation.messages.order_by("-id")[:10][::-1]
         ]
         Message.objects.create(
             conversation=conversation,
@@ -510,9 +504,11 @@ class ObservabilityDashboardView(APIView):
             return denied
         limit = min(int(request.query_params.get("limit", 10)), 100)
         offset = max(int(request.query_params.get("offset", 0)), 0)
-        queryset = AgentObservation.objects.select_related("conversation", "agent_run").filter(
-            workspace_key=get_workspace_key(request)
-        ).order_by("-id")
+        queryset = (
+            AgentObservation.objects.select_related("conversation", "agent_run")
+            .filter(workspace_key=get_workspace_key(request))
+            .order_by("-id")
+        )
         total = queryset.count()
         observations = queryset[offset : offset + limit]
         return Response(

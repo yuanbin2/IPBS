@@ -1,6 +1,6 @@
+import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
-import django.db.models.deletion
 
 
 def seed_profiles_for_existing_users(apps, schema_editor):
@@ -72,11 +72,25 @@ class Migration(migrations.Migration):
             name="UserProfile",
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("role", models.CharField(choices=[("admin", "Admin"), ("operator", "Operator"), ("visitor", "Visitor")], default="visitor", max_length=20)),
+                (
+                    "role",
+                    models.CharField(
+                        choices=[("admin", "Admin"), ("operator", "Operator"), ("visitor", "Visitor")],
+                        default="visitor",
+                        max_length=20,
+                    ),
+                ),
                 ("workspace_key", models.CharField(db_index=True, default="default", max_length=80)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
-                ("user", models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name="agent_profile", to=settings.AUTH_USER_MODEL)),
+                (
+                    "user",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="agent_profile",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={"ordering": ["user_id"]},
         ),
@@ -84,7 +98,19 @@ class Migration(migrations.Migration):
             name="SecurityAuditEvent",
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("event_type", models.CharField(choices=[("login", "Login"), ("access_denied", "Access denied"), ("sensitive_input", "Sensitive input"), ("output_redacted", "Output redacted"), ("tool_blocked", "Tool blocked")], max_length=40)),
+                (
+                    "event_type",
+                    models.CharField(
+                        choices=[
+                            ("login", "Login"),
+                            ("access_denied", "Access denied"),
+                            ("sensitive_input", "Sensitive input"),
+                            ("output_redacted", "Output redacted"),
+                            ("tool_blocked", "Tool blocked"),
+                        ],
+                        max_length=40,
+                    ),
+                ),
                 ("actor", models.CharField(blank=True, max_length=120)),
                 ("role", models.CharField(blank=True, max_length=20)),
                 ("workspace_key", models.CharField(db_index=True, default="default", max_length=80)),

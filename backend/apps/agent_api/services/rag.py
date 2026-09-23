@@ -10,9 +10,9 @@ import hashlib
 import math
 import os
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from django.conf import settings
 from django.db import transaction
@@ -22,7 +22,6 @@ from langchain_openai import OpenAIEmbeddings
 from ..models import Document, DocumentChunk, EmbeddingRecord, KnowledgeBase
 from ..models.constants import DEFAULT_WORKSPACE_KEY
 from .vector_store import search_pgvector, should_use_pgvector, upsert_chunk_vector
-
 
 DEFAULT_KNOWLEDGE_BASE_NAME = "默认知识库"
 DEFAULT_BAILIAN_EMBEDDING_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -161,7 +160,7 @@ def ingest_document(document: Document) -> Document:
         vectors = embed_texts(chunks)
         model_name = embedding_model() if use_remote_embeddings() else LOCAL_EMBEDDING_MODEL
 
-        for index, (content, vector) in enumerate(zip(chunks, vectors)):
+        for index, (content, vector) in enumerate(zip(chunks, vectors, strict=True)):
             chunk = DocumentChunk.objects.create(
                 document=document,
                 knowledge_base=document.knowledge_base,
@@ -225,18 +224,13 @@ def use_remote_embeddings() -> bool:
 
 def embedding_api_key() -> str:
     return (
-        os.getenv("BAILIAN_API_KEY")
-        or os.getenv("DASHSCOPE_API_KEY")
-        or os.getenv("OPENAI_EMBEDDING_API_KEY")
-        or ""
+        os.getenv("BAILIAN_API_KEY") or os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_EMBEDDING_API_KEY") or ""
     ).strip()
 
 
 def embedding_model() -> str:
     return (
-        os.getenv("BAILIAN_EMBEDDING_MODEL")
-        or os.getenv("OPENAI_EMBEDDING_MODEL")
-        or DEFAULT_BAILIAN_EMBEDDING_MODEL
+        os.getenv("BAILIAN_EMBEDDING_MODEL") or os.getenv("OPENAI_EMBEDDING_MODEL") or DEFAULT_BAILIAN_EMBEDDING_MODEL
     ).strip()
 
 
@@ -274,7 +268,7 @@ def cosine_similarity(left: Iterable[float], right: Iterable[float]) -> float:
     right_values = list(right)
     if not left_values or not right_values or len(left_values) != len(right_values):
         return 0.0
-    numerator = sum(a * b for a, b in zip(left_values, right_values))
+    numerator = sum(a * b for a, b in zip(left_values, right_values, strict=True))
     left_norm = math.sqrt(sum(a * a for a in left_values))
     right_norm = math.sqrt(sum(b * b for b in right_values))
     if left_norm == 0 or right_norm == 0:
@@ -393,8 +387,7 @@ def query_entity_terms(query: str) -> list[str]:
     )
 
     candidates = [
-        match.group(1)
-        for match in re.finditer(fr"{prefixes}([\u4e00-\u9fff]{{2,4}})(?:{suffixes})", compact)
+        match.group(1) for match in re.finditer(rf"{prefixes}([\u4e00-\u9fff]{{2,4}})(?:{suffixes})", compact)
     ]
     for suffix in re.split(r"\|", suffixes):
         plain_suffix = suffix.replace("?", "")
@@ -622,9 +615,7 @@ def expand_search_results_with_neighbors(
         chunk_filter |= Q(document_id=document_id, chunk_index__in=indexes)
 
     chunks = list(
-        DocumentChunk.objects.select_related("document")
-        .filter(chunk_filter)
-        .order_by("document_id", "chunk_index")
+        DocumentChunk.objects.select_related("document").filter(chunk_filter).order_by("document_id", "chunk_index")
     )
     original_by_id = {result.chunk_id: result for result in unique_results}
     original_by_document: dict[int, list[SearchResult]] = {}

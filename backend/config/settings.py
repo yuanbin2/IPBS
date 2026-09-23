@@ -1,7 +1,7 @@
-from pathlib import Path
 import os
 import sys
 from datetime import timedelta
+from pathlib import Path
 
 import dj_database_url
 from dotenv import load_dotenv
@@ -29,9 +29,7 @@ DEBUG = LOCAL_MODE or env_bool("DJANGO_DEBUG", True)
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
 AGENT_SECURITY_ENFORCED = env_bool("AGENT_SECURITY_ENFORCED")
 CSRF_TRUSTED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
-    if origin.strip()
+    origin.strip() for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if origin.strip()
 ]
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 

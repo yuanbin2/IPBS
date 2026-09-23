@@ -71,7 +71,7 @@ def search_project_files(project_root: Path, query: str) -> str:
         for line in text.splitlines():
             line_lower = line.lower()
             if not terms or any(term in line_lower for term in terms):
-                cleaned = line.strip("#- ` ")
+                cleaned = line.strip("#- ` ")  # noqa: B005 - 去的是一组 markdown 符号字符
                 if cleaned:
                     matches.append(f"{source.name}: {cleaned}")
             if len(matches) >= 5:

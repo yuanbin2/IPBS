@@ -7,14 +7,14 @@ Supervisor 只负责识别意图、执行安全策略并把请求交给专用 Ag
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Literal
 
-from .simple_agent import AgentResponse, SimpleToolCallingAgent, SourceCitation, TokenUsage
 from .security import detect_sensitive_input, redact_sensitive_output
+from .simple_agent import AgentResponse, SimpleToolCallingAgent, SourceCitation, TokenUsage
 from .tools import ToolResult
-
 
 SpecializedAgentName = Literal[
     "rag_agent",
@@ -113,9 +113,8 @@ class MultiAgentSupervisor:
         # 联网必须由用户显式授权：要么打开开关，要么在消息中明确要求
         # “网页搜索/联网搜索”。实际访问仍只通过注册过的 web_search MCP。
         if explicit_web_search or (
-            internet_enabled and (
-                not self.is_mcp_request(message) or self.select_mcp_tool_name(message) == "web_search"
-            )
+            internet_enabled
+            and (not self.is_mcp_request(message) or self.select_mcp_tool_name(message) == "web_search")
         ):
             return self._run_internet_agent(message, trace, history)
 
@@ -178,10 +177,14 @@ class MultiAgentSupervisor:
                 "trace": response.trace,
                 "route": response.route,
                 "token_usage": response.token_usage,
-                "supervisor": asdict(self._decision(
-                    "admin_approval_agent", "Admin Approval Agent",
-                    "security filter requires human approval", 0.97,
-                )),
+                "supervisor": asdict(
+                    self._decision(
+                        "admin_approval_agent",
+                        "Admin Approval Agent",
+                        "security filter requires human approval",
+                        0.97,
+                    )
+                ),
             }
             return
 
@@ -200,9 +203,8 @@ class MultiAgentSupervisor:
 
         # Internet search path
         if explicit_web_search or (
-            internet_enabled and (
-                not self.is_mcp_request(message) or self.select_mcp_tool_name(message) == "web_search"
-            )
+            internet_enabled
+            and (not self.is_mcp_request(message) or self.select_mcp_tool_name(message) == "web_search")
         ):
             yield {"type": "trace", "data": "internet_agent -> starting web search"}
             response = self._run_internet_agent(message, base_trace, history)
@@ -541,8 +543,8 @@ class MultiAgentSupervisor:
     def _run_mcp_tool_agent(self, message: str) -> MultiAgentResponse:
         from django.utils import timezone
 
-        from apps.agent_api.models import MCPTool
         from agent.mcp_tools import LocalMCPToolRunner
+        from apps.agent_api.models import MCPTool
 
         selected_tool = self.select_mcp_tool_name(message)
 
@@ -648,11 +650,24 @@ class MultiAgentSupervisor:
             return "current_time"
         if cls._contains_any(lowered, ["git", "仓库", "提交", "分支"]):
             return "git_repo_info"
-        if cls._contains_any(lowered, [
-            "网页", "联网", "网络搜索", "网上搜索", "互联网", "web",
-            "在网络中查找", "在网络中搜索", "在网上查找", "在网上搜索",
-            "用网络查找", "用网络搜索", "网页搜索",
-        ]):
+        if cls._contains_any(
+            lowered,
+            [
+                "网页",
+                "联网",
+                "网络搜索",
+                "网上搜索",
+                "互联网",
+                "web",
+                "在网络中查找",
+                "在网络中搜索",
+                "在网上查找",
+                "在网上搜索",
+                "用网络查找",
+                "用网络搜索",
+                "网页搜索",
+            ],
+        ):
             return "web_search"
         if cls._contains_any(lowered, ["数据库统计", "数据统计", "系统统计", "业务统计", "统计", "数量"]):
             return "safe_database_stats"
@@ -685,8 +700,8 @@ class MultiAgentSupervisor:
     ) -> MultiAgentResponse:
         from django.utils import timezone
 
-        from apps.agent_api.models import MCPTool
         from agent.mcp_tools import LocalMCPToolRunner
+        from apps.agent_api.models import MCPTool
 
         decision = self._decision("mcp_tool_agent", "Internet + LLM Agent", "internet explicitly enabled", 0.98)
         try:

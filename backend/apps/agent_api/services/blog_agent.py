@@ -17,7 +17,6 @@ from langchain_openai import ChatOpenAI
 from ..models import BlogArticle
 from .rag import expand_search_results_with_neighbors, search_knowledge_base, split_text
 
-
 PUBLIC_README_FILES = [
     "README.md",
     "docs/architecture.md",
@@ -284,15 +283,9 @@ class PublicBlogAgent:
         if not self._is_full_article_request(question):
             return None
 
-        articles = BlogArticle.objects.filter(status=BlogArticle.Status.PUBLISHED).select_related(
-            "knowledge_document"
-        )
+        articles = BlogArticle.objects.filter(status=BlogArticle.Status.PUBLISHED).select_related("knowledge_document")
         normalized_question = self._normalize_title(question)
-        title_matches = [
-            article
-            for article in articles
-            if self._normalize_title(article.title) in normalized_question
-        ]
+        title_matches = [article for article in articles if self._normalize_title(article.title) in normalized_question]
         if title_matches:
             return max(title_matches, key=lambda article: len(self._normalize_title(article.title)))
 
@@ -302,9 +295,7 @@ class PublicBlogAgent:
         for item in reversed(history[-10:]):
             normalized_history = self._normalize_title(item.get("content", ""))
             history_matches = [
-                article
-                for article in article_list
-                if self._normalize_title(article.title) in normalized_history
+                article for article in article_list if self._normalize_title(article.title) in normalized_history
             ]
             if history_matches:
                 return max(history_matches, key=lambda article: len(self._normalize_title(article.title)))
@@ -332,10 +323,7 @@ class PublicBlogAgent:
         canonical_source = BlogAgentSource(
             title=article.title,
             kind="blog_article",
-            content=(
-                article.summary.strip()
-                or f"完整文章，共 {self._article_chunk_count(article)} 个有序知识片段。"
-            ),
+            content=(article.summary.strip() or f"完整文章，共 {self._article_chunk_count(article)} 个有序知识片段。"),
             url=f"/blog/{article.slug}",
             score=1.0,
             document_id=article.knowledge_document_id,
@@ -343,16 +331,13 @@ class PublicBlogAgent:
         matched_chunks = [
             source
             for source in sources
-            if source.kind == "blog_knowledge"
-            and source.document_id == article.knowledge_document_id
+            if source.kind == "blog_knowledge" and source.document_id == article.knowledge_document_id
         ]
         return [canonical_source, *matched_chunks[:7]]
 
     def _ordered_article_chunks(self, article: BlogArticle) -> list[str]:
         if article.knowledge_document_id:
-            chunks = list(
-                article.knowledge_document.chunks.order_by("chunk_index").values_list("content", flat=True)
-            )
+            chunks = list(article.knowledge_document.chunks.order_by("chunk_index").values_list("content", flat=True))
             if chunks:
                 return chunks
         return split_text(article.content)
@@ -415,8 +400,7 @@ class PublicBlogAgent:
             {
                 "title": article.title,
                 "summaries": "\n\n".join(
-                    f"第 {index} 部分：\n{summary}"
-                    for index, summary in enumerate(partial_summaries, start=1)
+                    f"第 {index} 部分：\n{summary}" for index, summary in enumerate(partial_summaries, start=1)
                 ),
             }
         )
@@ -425,7 +409,7 @@ class PublicBlogAgent:
 
     def _fallback_full_article_summary(self, article: BlogArticle) -> str:
         headings = []
-        for level, heading in re.findall(r"(?m)^(#{1,6})\s+(.+?)\s*$", article.content):
+        for heading in re.findall(r"(?m)^#{1,6}\s+(.+?)\s*$", article.content):
             clean_heading = re.sub(r"[`*_]", "", heading).strip()
             if clean_heading and clean_heading not in headings:
                 headings.append(clean_heading)
@@ -445,7 +429,9 @@ class PublicBlogAgent:
     @staticmethod
     def _is_system_tech_stack_question(question: str) -> bool:
         lowered = question.lower()
-        has_subject = any(keyword in lowered for keyword in ["本系统", "本项目", "本博客", "博客系统", "这个项目", "技术栈"])
+        has_subject = any(
+            keyword in lowered for keyword in ["本系统", "本项目", "本博客", "博客系统", "这个项目", "技术栈"]
+        )
         has_stack = any(keyword in lowered for keyword in ["技术栈", "使用了什么技术", "用了哪些技术", "系统架构"])
         return has_subject and has_stack
 
@@ -455,8 +441,29 @@ class PublicBlogAgent:
 
         evidence = "\n".join(source.content for source in sources).lower()
         groups = [
-            ("前端", [("Vue 3", ["vue 3"]), ("TypeScript", ["typescript"]), ("Vite", ["vite"]), ("Pinia", ["pinia"]), ("Vue Router", ["vue router"]), ("Element Plus", ["element plus"]), ("md-editor-v3", ["md-editor-v3"])]),
-            ("后端", [("Python", ["python"]), ("Django", ["django"]), ("Django REST Framework", ["django rest framework", "drf"]), ("ASGI", ["asgi"]), ("Uvicorn", ["uvicorn"]), ("Gunicorn", ["gunicorn"])]),
+            (
+                "前端",
+                [
+                    ("Vue 3", ["vue 3"]),
+                    ("TypeScript", ["typescript"]),
+                    ("Vite", ["vite"]),
+                    ("Pinia", ["pinia"]),
+                    ("Vue Router", ["vue router"]),
+                    ("Element Plus", ["element plus"]),
+                    ("md-editor-v3", ["md-editor-v3"]),
+                ],
+            ),
+            (
+                "后端",
+                [
+                    ("Python", ["python"]),
+                    ("Django", ["django"]),
+                    ("Django REST Framework", ["django rest framework", "drf"]),
+                    ("ASGI", ["asgi"]),
+                    ("Uvicorn", ["uvicorn"]),
+                    ("Gunicorn", ["gunicorn"]),
+                ],
+            ),
             (
                 "数据与异步任务",
                 [
@@ -468,8 +475,26 @@ class PublicBlogAgent:
                     ("Celery Beat", ["celery beat"]),
                 ],
             ),
-            ("Agent 与 AI", [("LangChain", ["langchain"]), ("LangGraph", ["langgraph"]), ("Agentic RAG", ["agentic rag"]), ("MCP", ["mcp"]), ("Human-in-the-loop", ["human-in-the-loop", "hitl"]), ("LangSmith", ["langsmith"])]),
-            ("部署与工程化", [("Docker", ["docker"]), ("Docker Compose", ["docker compose"]), ("Nginx", ["nginx"]), ("GitHub Actions", ["github actions"])]),
+            (
+                "Agent 与 AI",
+                [
+                    ("LangChain", ["langchain"]),
+                    ("LangGraph", ["langgraph"]),
+                    ("Agentic RAG", ["agentic rag"]),
+                    ("MCP", ["mcp"]),
+                    ("Human-in-the-loop", ["human-in-the-loop", "hitl"]),
+                    ("LangSmith", ["langsmith"]),
+                ],
+            ),
+            (
+                "部署与工程化",
+                [
+                    ("Docker", ["docker"]),
+                    ("Docker Compose", ["docker compose"]),
+                    ("Nginx", ["nginx"]),
+                    ("GitHub Actions", ["github actions"]),
+                ],
+            ),
         ]
 
         lines = ["根据已发布博客中的系统技术栈说明，本系统实际使用："]

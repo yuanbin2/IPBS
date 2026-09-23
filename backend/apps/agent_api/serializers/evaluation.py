@@ -18,8 +18,15 @@ class EvaluationCaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = EvaluationCase
         fields = [
-            "id", "question", "expected_answer", "category", "expected_route",
-            "expected_agent", "reference_keywords", "is_active", "created_at",
+            "id",
+            "question",
+            "expected_answer",
+            "category",
+            "expected_route",
+            "expected_agent",
+            "reference_keywords",
+            "is_active",
+            "created_at",
             "latest_run",
         ]
 

@@ -1,0 +1,19 @@
+[tool.black]
+line-length = 120
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+# 历史代码里少量超长行/命名先放行，按 coding-conventions.md §9 路线图逐步收敛
+ignore = [
+    "E501",  # 行宽由 black 负责，ruff 不重复报
+    "B008",  # DRF/Django 惯用在函数签名里用默认可变值的场景极少，先放行
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agent", "apps", "config"]
+combine-as-imports = true

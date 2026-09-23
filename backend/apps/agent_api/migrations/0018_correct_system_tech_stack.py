@@ -1,12 +1,8 @@
 from django.db import migrations
 
-
 ARTICLE_SLUG = "system-technology-stack"
 OLD_TEXT = "Redis 作为缓存及 Celery broker；异步任务使用 Celery Worker 和 Celery Beat。"
-NEW_TEXT = (
-    "Redis 作为缓存和任务结果后端，RabbitMQ 作为 Celery broker；"
-    "异步任务使用 Celery Worker 和 Celery Beat。"
-)
+NEW_TEXT = "Redis 作为缓存和任务结果后端，RabbitMQ 作为 Celery broker；" "异步任务使用 Celery Worker 和 Celery Beat。"
 
 
 def correct_system_tech_stack(apps, schema_editor):

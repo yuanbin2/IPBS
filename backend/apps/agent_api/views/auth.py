@@ -30,7 +30,9 @@ class AuthLoginView(APIView):
         username = str(request.data.get("username", "")).strip()
         password = str(request.data.get("password", ""))
         if not username or not password:
-            return error_response("username and password are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "username and password are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST
+            )
 
         user = authenticate(request, username=username, password=password)
         if user is None:
@@ -66,9 +68,13 @@ class AuthRegisterView(APIView):
         role = str(request.data.get("role", UserProfile.Role.ADMIN)).strip().lower()
         workspace_key = normalize_workspace_key(request.data.get("workspace_key", "default"))
         if not username or not password:
-            return error_response("username and password are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "username and password are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST
+            )
         if len(password) < 8:
-            return error_response("password must be at least 8 characters", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                "password must be at least 8 characters", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST
+            )
         if role not in {UserProfile.Role.ADMIN, UserProfile.Role.OPERATOR, UserProfile.Role.VISITOR}:
             role = UserProfile.Role.ADMIN
 

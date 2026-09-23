@@ -1,0 +1,6 @@
+# 开发工具链（不进入生产镜像；生产依赖见 backend/requirements.txt）
+# 安装：pip install -r backend/requirements-dev.txt
+# 代码规范见 docs/coding-conventions.md §3.5
+ruff==0.16.8
+black==26.5.1
+pre-commit==4.5.0

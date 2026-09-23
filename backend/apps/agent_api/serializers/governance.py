@@ -9,9 +9,20 @@ class ApprovalRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = ApprovalRequest
         fields = [
-            "id", "action", "action_label", "title", "description", "payload",
-            "status", "requester", "reviewer", "review_note", "result",
-            "created_at", "reviewed_at", "executed_at",
+            "id",
+            "action",
+            "action_label",
+            "title",
+            "description",
+            "payload",
+            "status",
+            "requester",
+            "reviewer",
+            "review_note",
+            "result",
+            "created_at",
+            "reviewed_at",
+            "executed_at",
         ]
 
 
@@ -21,11 +32,24 @@ class MCPToolSerializer(serializers.ModelSerializer):
     class Meta:
         model = MCPTool
         fields = [
-            "id", "name", "display_name", "description", "category",
-            "permission_scope", "is_enabled", "requires_approval", "config",
-            "last_used_at", "call_count", "success_count",
-            "health_status", "health_status_label", "last_health_check", "health_message",
-            "created_at", "updated_at",
+            "id",
+            "name",
+            "display_name",
+            "description",
+            "category",
+            "permission_scope",
+            "is_enabled",
+            "requires_approval",
+            "config",
+            "last_used_at",
+            "call_count",
+            "success_count",
+            "health_status",
+            "health_status_label",
+            "last_health_check",
+            "health_message",
+            "created_at",
+            "updated_at",
         ]
 
 

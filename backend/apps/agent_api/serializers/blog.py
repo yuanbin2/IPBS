@@ -1,7 +1,11 @@
 from rest_framework import serializers
 
 from ..models import (
-    ArticleCategory, ArticleTag, BlogAgentMessage, BlogArticle, BlogComment,
+    ArticleCategory,
+    ArticleTag,
+    BlogAgentMessage,
+    BlogArticle,
+    BlogComment,
 )
 
 
@@ -43,19 +47,30 @@ class BlogArticleSerializer(serializers.ModelSerializer):
     class Meta:
         model = BlogArticle
         fields = [
-            "id", "title", "slug", "author_name", "summary", "cover_image",
-            "status", "view_count", "category", "tags", "published_at",
-            "created_at", "updated_at", "knowledge_document_id",
-            "comment_count", "content", "comments",
+            "id",
+            "title",
+            "slug",
+            "author_name",
+            "summary",
+            "cover_image",
+            "status",
+            "view_count",
+            "category",
+            "tags",
+            "published_at",
+            "created_at",
+            "updated_at",
+            "knowledge_document_id",
+            "comment_count",
+            "content",
+            "comments",
         ]
 
     def get_comment_count(self, instance):
         return instance.comments.filter(is_approved=True).count()
 
     def get_comments(self, instance):
-        return BlogCommentSerializer(
-            instance.comments.filter(is_approved=True), many=True
-        ).data
+        return BlogCommentSerializer(instance.comments.filter(is_approved=True), many=True).data
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
