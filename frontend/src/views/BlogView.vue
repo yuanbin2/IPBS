@@ -2,6 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   Refresh,
+  Search,
+  Loading,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { type UploadImgEvent } from "md-editor-v3";
@@ -66,10 +68,17 @@ const authorName = ref(localStorage.getItem("blogAuthorName") || "");
 const myArticlesLoading = ref(false);
 const editingArticle = ref<BlogArticle | null>(null);
 const updatingArticle = ref(false);
+const relatedArticles = ref<BlogArticle[]>([]);
+const relatedLoading = ref(false);
+const activeCategory = ref("");
+const showWriter = ref(false);
+const showMyNotes = ref(false);
+const searchQuery = ref("");
 
 const draft = ref({
   title: "我的 LangGraph 项目复盘",
   summary: "从环境搭建到 Agentic RAG，记录这个项目的关键工程选择。",
+  cover_image: "",
   category: "项目复盘",
   tags: "LangGraph,RAG,Django",
   content: [
@@ -177,7 +186,7 @@ onMounted(async () => {
     await loadArticle(activeSlug.value);
   }
   await loadBlogAgentHistory();
-  if (authorName.value) {
+  if (auth.isAuthenticated) {
     await loadMyArticles();
   }
 });
@@ -214,6 +223,19 @@ async function loadArticles(params: Record<string, string> = {}) {
 
 async function loadArticle(slug: string) {
   currentArticle.value = await requestJson(`/api/agent/blog/articles/${encodeURIComponent(slug)}/`);
+  loadRelatedArticles(slug);
+}
+
+async function loadRelatedArticles(slug: string) {
+  relatedLoading.value = true;
+  relatedArticles.value = [];
+  try {
+    relatedArticles.value = await requestJson(`/api/agent/blog/articles/${encodeURIComponent(slug)}/related/`);
+  } catch {
+    relatedArticles.value = [];
+  } finally {
+    relatedLoading.value = false;
+  }
 }
 
 async function loadTags() {
@@ -242,25 +264,12 @@ async function loadMyArticles() {
 
   myArticlesLoading.value = true;
   try {
-    const isAdmin = auth.session.role === "admin" || auth.session.role === "operator";
-
-    // 管理员/操作员可以看到所有草稿，普通用户只能看到自己的
-    const draftQuery = isAdmin
-      ? '/api/agent/blog/articles/?status=draft'
-      : '/api/agent/blog/articles/?status=draft';
-
-    // 查询被拒绝的文章
-    const rejectedQuery = isAdmin
-      ? '/api/agent/blog/articles/?status=rejected'
-      : '/api/agent/blog/articles/?status=rejected';
-
-    // 查询自己发布的文章
-    const publishedQuery = `/api/agent/blog/articles/?status=published&author_name=${encodeURIComponent(auth.session.actor)}`;
-
+    // 后端已根据 context.actor 过滤草稿/拒绝文章
+    // 已发布文章通过 my=1 参数过滤为自己的
     const [drafts, rejected, published] = await Promise.all([
-      requestJson(draftQuery),
-      requestJson(rejectedQuery),
-      requestJson(publishedQuery)
+      requestJson('/api/agent/blog/articles/?status=draft'),
+      requestJson('/api/agent/blog/articles/?status=rejected'),
+      requestJson('/api/agent/blog/articles/?status=published&my=1')
     ]);
     myPendingArticles.value = [...drafts, ...rejected];
     myPublishedArticles.value = published;
@@ -275,8 +284,78 @@ async function openArticle(article: BlogArticle) {
 
 async function applyFilter(params: Record<string, string>) {
   currentArticle.value = null;
+  activeCategory.value = params.category || "";
   await router.push("/blog");
   await loadArticles(params);
+}
+
+async function filterByCategory(slug: string) {
+  activeCategory.value = slug;
+  currentArticle.value = null;
+  await loadArticles({ category: slug });
+}
+
+async function clearCategoryFilter() {
+  activeCategory.value = "";
+  currentArticle.value = null;
+  await loadArticles();
+}
+
+async function searchArticles() {
+  const q = searchQuery.value.trim();
+  if (!q) {
+    await loadArticles();
+    return;
+  }
+  currentArticle.value = null;
+  await loadArticles({ q });
+}
+
+function openWriterForNew() {
+  editingArticle.value = null;
+  draft.value = {
+    title: "",
+    summary: "",
+    cover_image: "",
+    category: "",
+    tags: "",
+    content: ""
+  };
+  showWriter.value = true;
+}
+
+function openWriterForEdit(article: BlogArticle) {
+  editingArticle.value = article;
+  editPendingArticle(article);
+  showWriter.value = true;
+}
+
+function closeWriter() {
+  showWriter.value = false;
+  editingArticle.value = null;
+  restoreDraft();
+}
+
+async function openRelatedArticle(article: BlogArticle) {
+  await router.push({ name: "blog", params: { slug: article.slug } });
+}
+
+async function handleCoverImageUpload(file: File) {
+  uploadingImage.value = true;
+  try {
+    const formData = new FormData();
+    formData.append("image", file);
+    const payload = await requestJson("/api/agent/blog/images/", {
+      method: "POST",
+      body: formData
+    });
+    draft.value.cover_image = payload.url;
+    ElMessage.success("封面图已上传");
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "封面图上传失败");
+  } finally {
+    uploadingImage.value = false;
+  }
 }
 
 async function publishDraft() {
@@ -286,10 +365,8 @@ async function publishDraft() {
     return;
   }
 
-  // 已登录用户使用用户名，未登录用户使用昵称
-  const articleAuthor = auth.isAuthenticated ? auth.session.actor : authorName.value;
-  if (!articleAuthor) {
-    editorError.value = auth.isAuthenticated ? "请先登录" : "请先填写你的昵称。";
+  if (!auth.isAuthenticated) {
+    editorError.value = "请先登录后再发布笔记。";
     return;
   }
 
@@ -300,7 +377,6 @@ async function publishDraft() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...draft.value,
-        author_name: articleAuthor,
         tags: draft.value.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
         publish: true
       })
@@ -309,9 +385,11 @@ async function publishDraft() {
     await loadArchive();
     await loadMyArticles();
     if (payload.approval_required) {
+      showWriter.value = false;
       ElMessage.success("笔记已提交，等待管理员审核后会公开发布。");
       return;
     }
+    showWriter.value = false;
     await openArticle(payload);
   } catch (error) {
     editorError.value = error instanceof Error ? error.message : "发布失败，请稍后重试。";
@@ -412,6 +490,7 @@ async function clearDraftCache() {
   draft.value = {
     title: "",
     summary: "",
+    cover_image: "",
     category: "",
     tags: "",
     content: ""
@@ -465,6 +544,7 @@ async function editPendingArticle(article: BlogArticle) {
   draft.value = {
     title: article.title,
     summary: article.summary || "",
+    cover_image: article.cover_image || "",
     category: article.category?.name || "",
     tags: article.tags?.map((t) => t.name).join(",") || "",
     content: content || ""
@@ -489,10 +569,8 @@ async function updatePendingArticle() {
     return;
   }
 
-  // 已登录用户使用用户名，未登录用户使用昵称
-  const articleAuthor = auth.isAuthenticated ? auth.session.actor : authorName.value;
-  if (!articleAuthor) {
-    editorError.value = auth.isAuthenticated ? "请先登录" : "请先填写你的昵称。";
+  if (!auth.isAuthenticated) {
+    editorError.value = "请先登录后再更新笔记。";
     return;
   }
 
@@ -503,13 +581,13 @@ async function updatePendingArticle() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...draft.value,
-        author_name: articleAuthor,
         tags: draft.value.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
       })
     });
     await loadArticles();
     await loadMyArticles();
     editingArticle.value = null;
+    showWriter.value = false;
     ElMessage.success("文章已更新，等待管理员审核。");
     restoreDraft();
   } catch (error) {
@@ -701,113 +779,134 @@ async function requestJson(url: string, options: RequestInit = {}) {
           {{ rightPanelVisible ? "›" : "‹" }}
         </button>
         <main class="blog-main">
-          <section class="write-box author-name-box">
-            <el-input
-              v-model="authorName"
-              placeholder="你的昵称（提交笔记时显示）"
-              size="large"
-              @change="localStorage.setItem('blogAuthorName', authorName); loadMyArticles()"
+          <!-- 顶部工具栏：搜索 + 操作按钮 -->
+          <section class="blog-toolbar" v-if="!currentArticle">
+            <div class="blog-search-bar">
+              <el-input
+                v-model="searchQuery"
+                placeholder="搜索文章标题、摘要、内容..."
+                size="large"
+                clearable
+                @keyup.enter="searchArticles"
+                @clear="loadArticles()"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+                <template #append>
+                  <el-button @click="searchArticles">搜索</el-button>
+                </template>
+              </el-input>
+            </div>
+            <div class="blog-toolbar-actions">
+              <el-button
+                v-if="auth.isAuthenticated"
+                type="default"
+                @click="showMyNotes = true"
+              >
+                我的笔记
+              </el-button>
+              <el-button
+                v-if="!auth.isAuthenticated"
+                type="default"
+              >
+                <RouterLink to="/login" style="text-decoration: none; color: inherit;">登录</RouterLink>
+              </el-button>
+              <el-button
+                type="primary"
+                @click="openWriterForNew"
+              >
+                写博客
+              </el-button>
+            </div>
+          </section>
+
+          <!-- 编辑器覆盖层 -->
+          <div v-if="showWriter" class="writer-overlay">
+            <div class="writer-overlay-header">
+              <h2>{{ editingArticle ? `编辑: ${editingArticle.title}` : '写新博客' }}</h2>
+              <div class="writer-overlay-actions">
+                <span v-if="auth.isAuthenticated" class="writer-user-badge">
+                  {{ auth.session.actor }}
+                </span>
+                <el-button @click="closeWriter">关闭</el-button>
+                <el-button
+                  type="primary"
+                  :loading="editingArticle ? updatingArticle : publishing"
+                  @click="editingArticle ? updatePendingArticle() : publishDraft()"
+                >
+                  {{ editingArticle ? '更新并重新提交' : '发布并加入知识库' }}
+                </el-button>
+              </div>
+            </div>
+            <BlogWriter
+              :draft="draft"
+              :templates="noteTemplates"
+              :stats="editorStats"
+              :publishing="publishing"
+              :uploading-image="uploadingImage"
+              :error="editorError"
+              :upload-handler="handleEditorUpload"
+              :editing-article="editingArticle"
+              :updating="updatingArticle"
+              @publish="publishDraft"
+              @update="updatePendingArticle"
+              @cancel-edit="closeWriter"
+              @apply-template="applyTemplate"
+              @insert-snippet="insertSnippet"
+              @clear-draft="clearDraftCache"
+              @import-markdown="importMarkdownFile"
+              @upload-cover-image="handleCoverImageUpload"
             />
-          </section>
+          </div>
 
-          <BlogWriter
-            :draft="draft"
-            :templates="noteTemplates"
-            :stats="editorStats"
-            :publishing="publishing"
-            :uploading-image="uploadingImage"
-            :error="editorError"
-            :upload-handler="handleEditorUpload"
-            :editing-article="editingArticle"
-            :updating="updatingArticle"
-            @publish="publishDraft"
-            @update="updatePendingArticle"
-            @cancel-edit="cancelEditArticle"
-            @apply-template="applyTemplate"
-            @insert-snippet="insertSnippet"
-            @clear-draft="clearDraftCache"
-            @import-markdown="importMarkdownFile"
-          />
-
-          <section v-if="!auth.isAuthenticated" class="write-box login-hint">
-            <p>登录后可以提交笔记、查看审核状态和管理已发布的文章。</p>
-            <RouterLink to="/login">
-              <el-button type="primary">登录 / 注册</el-button>
-            </RouterLink>
-          </section>
-
-          <section v-if="auth.isAuthenticated && (myPendingArticles.length || myPublishedArticles.length)" class="write-box my-pending-articles">
-            <h2>我的笔记</h2>
-
-            <template v-if="myPendingArticles.length">
-              <h3>待审核笔记</h3>
-              <p class="my-pending-hint">
-                {{ auth.session.role === 'admin' || auth.session.role === 'operator'
-                  ? '以下是待审核的笔记，审核通过后会公开发布。'
-                  : '以下笔记已提交，等待管理员审核后会公开发布。'
-                }}
-                被拒绝的笔记可以修改后重新提交。
-              </p>
-              <article
-                v-for="item in myPendingArticles"
-                :key="item.id"
-                class="article-card"
-                :class="{ 'rejected': item.status === 'rejected' }"
-              >
-                <header>
-                  <span :class="['status-pill', item.status === 'rejected' ? 'rejected' : 'pending']">
-                    {{ item.status === 'rejected' ? '已拒绝' : '待审核' }}
-                  </span>
-                  <small>{{ item.created_at }}</small>
-                </header>
-                <h2>{{ item.title }}</h2>
-                <p>{{ item.summary }}</p>
-                <footer>
-                  <el-button
-                    size="small"
-                    type="primary"
-                    plain
-                    @click="editPendingArticle(item)"
-                  >
-                    编辑
-                  </el-button>
-                </footer>
-              </article>
-            </template>
-
-            <template v-if="myPublishedArticles.length">
-              <h3>已发布笔记</h3>
-              <p class="my-pending-hint">以下笔记已发布。点击标题查看，点击编辑按钮可修改内容，修改后需要重新审核。</p>
-              <article
-                v-for="item in myPublishedArticles"
-                :key="item.id"
-                class="article-card"
-              >
-                <header>
-                  <span class="status-pill published">已发布</span>
-                  <small>{{ item.published_at || item.created_at }}</small>
-                </header>
-                <h2 class="clickable-title" @click="openArticle(item)">{{ item.title }}</h2>
-                <p>{{ item.summary }}</p>
-                <footer>
-                  <el-button
-                    size="small"
-                    @click="openArticle(item)"
-                  >
-                    查看
-                  </el-button>
-                  <el-button
-                    size="small"
-                    type="primary"
-                    plain
-                    @click="editPendingArticle(item)"
-                  >
-                    编辑
-                  </el-button>
-                </footer>
-              </article>
-            </template>
-          </section>
+          <!-- 我的笔记弹窗 -->
+          <el-dialog v-model="showMyNotes" title="我的笔记" width="700px" align-center>
+            <section v-if="myArticlesLoading" class="my-notes-loading">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              <span>加载中...</span>
+            </section>
+            <section v-else-if="!myPendingArticles.length && !myPublishedArticles.length" class="my-notes-empty">
+              <p>你还没有提交过笔记。</p>
+            </section>
+            <section v-else class="my-notes-content">
+              <template v-if="myPendingArticles.length">
+                <h3>待审核笔记</h3>
+                <article
+                  v-for="item in myPendingArticles"
+                  :key="item.id"
+                  class="my-note-item"
+                >
+                  <div class="my-note-info">
+                    <span :class="['status-pill', item.status === 'rejected' ? 'rejected' : 'pending']">
+                      {{ item.status === 'rejected' ? '已拒绝' : '待审核' }}
+                    </span>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.created_at }}</small>
+                  </div>
+                  <el-button size="small" type="primary" plain @click="openWriterForEdit(item); showMyNotes = false">编辑</el-button>
+                </article>
+              </template>
+              <template v-if="myPublishedArticles.length">
+                <h3>已发布笔记</h3>
+                <article
+                  v-for="item in myPublishedArticles"
+                  :key="item.id"
+                  class="my-note-item"
+                >
+                  <div class="my-note-info">
+                    <span class="status-pill published">已发布</span>
+                    <strong @click="openArticle(item); showMyNotes = false" style="cursor: pointer;">{{ item.title }}</strong>
+                    <small>{{ item.published_at || item.created_at }}</small>
+                  </div>
+                  <div>
+                    <el-button size="small" @click="openArticle(item); showMyNotes = false">查看</el-button>
+                    <el-button size="small" type="primary" plain @click="openWriterForEdit(item); showMyNotes = false">编辑</el-button>
+                  </div>
+                </article>
+              </template>
+            </section>
+          </el-dialog>
 
           <ArticleDetail
             v-if="currentArticle"
@@ -816,18 +915,25 @@ async function requestJson(url: string, options: RequestInit = {}) {
             :publishing="publishing"
             :submitting-comment="submittingComment"
             :deleting-slug="deletingArticleSlug"
+            :related-articles="relatedArticles"
+            :related-loading="relatedLoading"
             @back="currentArticle = null; router.push('/blog')"
             @ask-agent="askAgent"
             @sync="syncArticleKnowledge"
             @remove="deleteArticle"
             @submit-comment="submitComment"
+            @open-related="openRelatedArticle"
           />
           <ArticleList
             v-else
             :articles="articles"
             :deleting-slug="deletingArticleSlug"
+            :active-category="activeCategory"
+            :categories="categories"
             @open="openArticle"
             @remove="deleteArticle"
+            @filter-category="filterByCategory"
+            @clear-filter="clearCategoryFilter"
           />
         </main>
 
@@ -846,6 +952,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
           :categories="categories"
           :archive="archive"
           :about="about"
+          :active-category="activeCategory"
           @filter="applyFilter"
         />
       </section>

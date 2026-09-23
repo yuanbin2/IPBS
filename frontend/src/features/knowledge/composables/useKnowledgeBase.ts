@@ -260,29 +260,60 @@ export function useKnowledgeBase() {
   async function deleteDocument(document: KnowledgeDocument) {
     try {
       await ElMessageBox.confirm(
-        `确定删除文档“${document.title}”吗？它的切片和向量索引也会删除。`,
-        "删除文档",
-        { confirmButtonText: "删除", cancelButtonText: "取消", type: "warning" }
+        `确定删除文档”${document.title}”吗？它的切片和向量索引也会删除。`,
+        '删除文档',
+        { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
       );
     } catch {
       return;
     }
     deletingDocumentId.value = document.id;
     try {
-      const response = await fetch(`/api/agent/documents/${document.id}/`, { method: "DELETE" });
-      if (!response.ok) throw new Error(await errorMessage(response, "删除文档失败"));
+      const response = await fetch(`/api/agent/documents/${document.id}/`, { method: 'DELETE' });
+      if (!response.ok) throw new Error(await errorMessage(response, '删除文档失败'));
       const payload = await readPayload(response);
       await Promise.all([loadKnowledgeBases(), loadDocuments()]);
       if (payload?.approval_required) {
         ElMessage.warning(`已提交审批 #${payload.approval.id}，批准后才会删除文档`);
       } else {
         searchResults.value = searchResults.value.filter((item) => item.document_id !== document.id);
-        ElMessage.success("文档已删除");
+        ElMessage.success('文档已删除');
       }
     } catch (error) {
-      ElMessage.error(error instanceof Error ? error.message : "删除文档失败");
+      ElMessage.error(error instanceof Error ? error.message : '删除文档失败');
     } finally {
       deletingDocumentId.value = null;
+    }
+  }
+
+  async function archiveKnowledgeBase(base: KnowledgeBase, action: 'archive' | 'unarchive') {
+    try {
+      const response = await fetch(`/api/agent/knowledge-bases/${base.id}/archive/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      if (!response.ok) throw new Error(await errorMessage(response, '操作失败'));
+      const payload = await response.json();
+      ElMessage.success(payload.message);
+      await loadKnowledgeBases();
+    } catch (error) {
+      ElMessage.error(error instanceof Error ? error.message : '操作失败');
+    }
+  }
+
+  async function createKnowledgeBase(data: { name: string; description: string; category: string; tags: string[] }) {
+    try {
+      const response = await fetch('/api/agent/knowledge-bases/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error(await errorMessage(response, '创建知识库失败'));
+      await loadKnowledgeBases();
+      ElMessage.success(`知识库 "${data.name}" 创建成功`);
+    } catch (error) {
+      ElMessage.error(error instanceof Error ? error.message : '创建知识库失败');
     }
   }
 
@@ -296,7 +327,8 @@ export function useKnowledgeBase() {
     searchQuery, searchResults, loading, uploading, uploadProgress, uploadStage, searching,
     reindexingDocumentId, deletingKnowledgeBaseId, deletingDocumentId,
     loadKnowledgeBases, loadDocuments, selectKnowledgeBase, handleFileChange,
-    uploadDocument, searchKnowledge, reindexDocument, deleteKnowledgeBase, deleteDocument
+    uploadDocument, searchKnowledge, reindexDocument, deleteKnowledgeBase, deleteDocument,
+    archiveKnowledgeBase, createKnowledgeBase
   };
 }
 

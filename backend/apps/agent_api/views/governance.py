@@ -79,7 +79,23 @@ class MCPToolListView(APIView):
             return denied
         ensure_default_mcp_tools()
         tools = MCPTool.objects.filter(workspace_key=get_workspace_key(request))
-        return Response([serialize_mcp_tool(tool) for tool in tools])
+
+        # 计算统计概览
+        total_count = tools.count()
+        enabled_count = tools.filter(is_enabled=True).count()
+        total_calls = sum(t.call_count for t in tools)
+        total_success = sum(t.success_count for t in tools)
+        avg_success_rate = (total_success / total_calls * 100) if total_calls > 0 else 100
+
+        return Response({
+            "tools": [serialize_mcp_tool(tool) for tool in tools],
+            "summary": {
+                "total_count": total_count,
+                "enabled_count": enabled_count,
+                "total_calls": total_calls,
+                "avg_success_rate": round(avg_success_rate, 1),
+            }
+        })
 
 
 class MCPToolDetailView(APIView):
@@ -128,7 +144,10 @@ class MCPToolExecuteView(APIView):
 
         execution = LocalMCPToolRunner(Path(settings.BASE_DIR).parent).run(tool.name, query)
         tool.last_used_at = timezone.now()
-        tool.save(update_fields=["last_used_at", "updated_at"])
+        tool.call_count += 1
+        if execution.output and "error" not in execution.output.lower():
+            tool.success_count += 1
+        tool.save(update_fields=["last_used_at", "call_count", "success_count", "updated_at"])
         return Response(
             {
                 "tool": serialize_mcp_tool(tool),
@@ -136,3 +155,78 @@ class MCPToolExecuteView(APIView):
                 "output": execution.output,
             }
         )
+
+
+class MCPToolHealthCheckView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request, pk: int):
+        """执行单个工具的健康检查"""
+        denied = require_roles(request, [UserProfile.Role.ADMIN])
+        if denied:
+            return denied
+        tool = get_object_or_404(MCPTool, pk=pk, workspace_key=get_workspace_key(request))
+
+        try:
+            from agent.mcp_tools import LocalMCPToolRunner
+            runner = LocalMCPToolRunner(Path(settings.BASE_DIR).parent)
+
+            # 尝试执行一个简单的测试查询
+            test_query = "health check test"
+            execution = runner.run(tool.name, test_query)
+
+            if execution.output and "error" not in execution.output.lower():
+                tool.health_status = MCPTool.HealthStatus.HEALTHY
+                tool.health_message = "工具运行正常"
+            else:
+                tool.health_status = MCPTool.HealthStatus.WARNING
+                tool.health_message = execution.output[:200] if execution.output else "无输出"
+        except Exception as e:
+            tool.health_status = MCPTool.HealthStatus.ERROR
+            tool.health_message = str(e)[:200]
+
+        tool.last_health_check = timezone.now()
+        tool.save(update_fields=["health_status", "health_message", "last_health_check", "updated_at"])
+        return Response(serialize_mcp_tool(tool))
+
+
+class MCPToolBulkHealthCheckView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        """批量健康检查所有工具"""
+        denied = require_roles(request, [UserProfile.Role.ADMIN])
+        if denied:
+            return denied
+
+        tools = MCPTool.objects.filter(
+            workspace_key=get_workspace_key(request),
+            is_enabled=True
+        )
+
+        from agent.mcp_tools import LocalMCPToolRunner
+        runner = LocalMCPToolRunner(Path(settings.BASE_DIR).parent)
+
+        results = []
+        for tool in tools:
+            try:
+                test_query = "health check test"
+                execution = runner.run(tool.name, test_query)
+
+                if execution.output and "error" not in execution.output.lower():
+                    tool.health_status = MCPTool.HealthStatus.HEALTHY
+                    tool.health_message = "工具运行正常"
+                else:
+                    tool.health_status = MCPTool.HealthStatus.WARNING
+                    tool.health_message = execution.output[:200] if execution.output else "无输出"
+            except Exception as e:
+                tool.health_status = MCPTool.HealthStatus.ERROR
+                tool.health_message = str(e)[:200]
+
+            tool.last_health_check = timezone.now()
+            tool.save(update_fields=["health_status", "health_message", "last_health_check", "updated_at"])
+            results.append(serialize_mcp_tool(tool))
+
+        return Response(results)

@@ -1,3 +1,5 @@
+import math
+
 from .common import *
 
 
@@ -33,6 +35,11 @@ class BlogArticleListCreateView(APIView):
             author_name = str(request.query_params.get("author_name", "")).strip()
             if author_name:
                 articles = articles.filter(author_name__iexact=author_name)
+            # 已登录非管理员用户查看已发布文章时，如果没指定 author_name，自动过滤为自己的
+            elif context.authenticated and not is_admin:
+                my_only = str(request.query_params.get("my", "")).strip()
+                if my_only == "1":
+                    articles = articles.filter(author_name__iexact=context.actor)
 
         if category:
             articles = articles.filter(category__slug=category)
@@ -65,6 +72,7 @@ class BlogArticleListCreateView(APIView):
             slug=unique_slug(BlogArticle, request.data.get("slug") or title, max_length=200),
             author_name=author_name,
             summary=str(request.data.get("summary", "")).strip(),
+            cover_image=str(request.data.get("cover_image", "")).strip(),
             content=content,
             category=get_or_create_category(request.data.get("category")),
             status=BlogArticle.Status.DRAFT,
@@ -115,14 +123,14 @@ class BlogImageUploadView(APIView):
         if upload.size > max_size:
             return Response({"detail": "image must be smaller than 5MB"}, status=status.HTTP_400_BAD_REQUEST)
 
-        filename = f"blog/{uuid4().hex}{suffix}"
-        saved_path = default_storage.save(filename, ContentFile(upload.read()))
-        media_url = f"/{settings.MEDIA_URL.lstrip('/')}{saved_path}"
-        image_url = request.build_absolute_uri(media_url)
+        import base64
+        image_data = base64.b64encode(upload.read()).decode("utf-8")
+        content_type = upload.content_type or "image/png"
+        data_url = f"data:{content_type};base64,{image_data}"
         return Response(
             {
-                "url": image_url,
-                "markdown": f"![{Path(upload.name).stem}]({image_url})",
+                "url": data_url,
+                "markdown": f"![{Path(upload.name).stem}]({data_url})",
             },
             status=status.HTTP_201_CREATED,
         )
@@ -169,6 +177,8 @@ class BlogArticleDetailView(APIView):
             article.title = str(request.data["title"]).strip()
         if "summary" in request.data:
             article.summary = str(request.data["summary"]).strip()
+        if "cover_image" in request.data:
+            article.cover_image = str(request.data["cover_image"]).strip()
         if "content" in request.data:
             article.content = str(request.data["content"]).strip()
         if "category" in request.data:
@@ -190,22 +200,21 @@ class BlogArticleDetailView(APIView):
             payload__article_slug=article.slug,
             status=ApprovalRequest.Status.PENDING,
             workspace_key=get_workspace_key(request),
-        ).update(status=ApprovalRequest.Status.REJECTED, result="访客更新了文章内容，此审批已被替代。")
+        ).update(status=ApprovalRequest.Status.REJECTED, result="用户更新了文章内容，此审批已被替代。")
 
         # Create a new approval request
-        context = context_from_request(request)
         approval = ApprovalRequest.objects.create(
             action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
             workspace_key=get_workspace_key(request),
             title=f"发布博客：{article.title}",
-            description=f"访客 {author_name} {'更新了' if article.created_at else '提交了'}博客文章，发布后会公开并写入知识库。",
+            description=f"用户 {context.actor} 更新了博客文章，发布后会公开并写入知识库。",
             payload={
                 "article_slug": article.slug,
                 "article_id": article.id,
                 "title": article.title,
-                "author_name": author_name,
+                "author_name": context.actor,
             },
-            requester=author_name or str(context.actor or "anonymous"),
+            requester=context.actor,
         )
 
         return Response(
@@ -227,6 +236,8 @@ class BlogArticleDetailView(APIView):
             article.title = str(request.data["title"]).strip()
         if "summary" in request.data:
             article.summary = str(request.data["summary"]).strip()
+        if "cover_image" in request.data:
+            article.cover_image = str(request.data["cover_image"]).strip()
         if "content" in request.data:
             article.content = str(request.data["content"]).strip()
         if "category" in request.data:
@@ -293,6 +304,50 @@ class BlogArticlePublishView(APIView):
             requester=str(request.data.get("requester", "blog-editor")).strip() if hasattr(request, "data") else "blog-editor",
         )
         return approval_required_response(approval)
+
+
+class BlogArticleRelatedView(APIView):
+    """Return related articles based on category and tag overlap."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request, slug: str):
+        article = get_object_or_404(
+            BlogArticle.objects.select_related("category").prefetch_related("tags"),
+            slug=slug,
+            workspace_key=get_workspace_key(request),
+        )
+
+        article_tag_ids = set(article.tags.values_list("id", flat=True))
+        category_id = article.category_id
+
+        candidates = (
+            BlogArticle.objects.filter(
+                status=BlogArticle.Status.PUBLISHED,
+                workspace_key=get_workspace_key(request),
+            )
+            .exclude(pk=article.pk)
+            .select_related("category")
+            .prefetch_related("tags")
+        )
+
+        scored = []
+        for candidate in candidates:
+            score = 0
+            if category_id and candidate.category_id == category_id:
+                score += 10
+            candidate_tag_ids = set(candidate.tags.values_list("id", flat=True))
+            overlap = article_tag_ids & candidate_tag_ids
+            score += len(overlap) * 3
+            if candidate.view_count > 0:
+                score += min(5, math.log10(candidate.view_count))
+            if score > 0:
+                scored.append((score, candidate))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        related = [serialize_article(c) for _, c in scored[:6]]
+        return Response(related)
 
 
 class BlogCategoryListView(APIView):

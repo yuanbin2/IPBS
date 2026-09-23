@@ -27,15 +27,37 @@ const emit = defineEmits<{
   insertSnippet: [content: string];
   clearDraft: [];
   importMarkdown: [data: ParsedMarkdown];
+  uploadCoverImage: [file: File];
 }>();
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const coverInputRef = ref<HTMLInputElement | null>(null);
 const editorRef = ref<InstanceType<typeof MdEditor>>();
 const headings = ref<HeadList[]>([]);
 const activeHeadingIndex = ref(0);
 
 const ALLOWED_EXTENSIONS = [".md", ".markdown", ".txt"];
 const MAX_FILE_SIZE = 1024 * 1024; // 1MB
+
+function triggerCoverInput() {
+  coverInputRef.value?.click();
+}
+
+function handleCoverSelect(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    ElMessage.error("仅支持图片文件");
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.error("图片大小不能超过 5MB");
+    return;
+  }
+  emit("uploadCoverImage", file);
+}
 
 function triggerFileInput() {
   fileInputRef.value?.click();
@@ -143,6 +165,28 @@ function handleEditorScroll() {
     <div class="writer-fields">
       <el-input v-model="draft.title" size="large" placeholder="文章标题" />
       <el-input v-model="draft.summary" placeholder="摘要，会显示在文章卡片里" />
+
+      <!-- 封面图 -->
+      <div class="writer-cover-image">
+        <el-input v-model="draft.cover_image" placeholder="封面图片 URL（可粘贴地址或点击上传）">
+          <template #prepend>封面图</template>
+          <template #append>
+            <input
+              ref="coverInputRef"
+              type="file"
+              accept="image/*"
+              style="display: none"
+              @change="handleCoverSelect"
+            />
+            <el-button @click="triggerCoverInput">上传</el-button>
+          </template>
+        </el-input>
+        <div v-if="draft.cover_image" class="cover-preview">
+          <img :src="draft.cover_image" alt="封面预览" />
+          <el-button size="small" type="danger" plain @click="draft.cover_image = ''">移除</el-button>
+        </div>
+      </div>
+
       <div class="writer-meta">
         <el-input v-model="draft.category" placeholder="分类" />
         <el-input v-model="draft.tags" placeholder="标签，逗号分隔" />

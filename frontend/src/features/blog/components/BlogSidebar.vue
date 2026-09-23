@@ -7,6 +7,7 @@ defineProps<{
   categories: BlogCategory[];
   archive: ArchiveGroup[];
   about: { title: string; content: string; highlights: string[] } | null;
+  activeCategory: string;
 }>();
 
 defineEmits<{ filter: [params: Record<string, string>] }>();
@@ -25,14 +26,23 @@ defineEmits<{ filter: [params: Record<string, string>] }>();
 
     <section class="side-box">
       <h2>分类</h2>
-      <div class="tag-cloud">
+      <div class="category-list">
+        <button
+          type="button"
+          :class="['category-item', { active: !activeCategory }]"
+          @click="$emit('filter', { category: '' })"
+        >
+          <span class="category-name">全部分类</span>
+        </button>
         <button
           v-for="category in categories"
           :key="category.id"
           type="button"
+          :class="['category-item', { active: activeCategory === category.slug }]"
           @click="$emit('filter', { category: category.slug })"
         >
-          {{ category.name }} {{ category.article_count }}
+          <span class="category-name">{{ category.name }}</span>
+          <span class="category-count">{{ category.article_count }}</span>
         </button>
       </div>
     </section>

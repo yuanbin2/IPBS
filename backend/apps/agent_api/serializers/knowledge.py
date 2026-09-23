@@ -6,11 +6,13 @@ from ..models import Document, KnowledgeBase
 class KnowledgeBaseSerializer(serializers.ModelSerializer):
     document_count = serializers.IntegerField(source="documents.count", read_only=True)
     chunk_count = serializers.IntegerField(source="chunks.count", read_only=True)
+    category_label = serializers.CharField(source="get_category_display", read_only=True)
 
     class Meta:
         model = KnowledgeBase
         fields = [
-            "id", "name", "description", "document_count", "chunk_count",
+            "id", "name", "description", "category", "category_label", "tags",
+            "is_archived", "sort_order", "document_count", "chunk_count",
             "created_at", "updated_at",
         ]
 

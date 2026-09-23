@@ -41,6 +41,7 @@ class BlogArticle(models.Model):
     slug = models.SlugField(max_length=220, unique=True, allow_unicode=True)
     author_name = models.CharField(max_length=80, blank=True, default="")
     summary = models.TextField(blank=True)
+    cover_image = models.TextField(blank=True, default="")
     content = models.TextField()
     category = models.ForeignKey(
         ArticleCategory,

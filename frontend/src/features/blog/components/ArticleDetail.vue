@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { ChatDotRound, Delete, ArrowLeft } from "@element-plus/icons-vue";
+import { ChatDotRound, Delete, ArrowLeft, Loading } from "@element-plus/icons-vue";
 import { MdPreview, type HeadList } from "md-editor-v3";
 import type { BlogArticle } from "../types";
 
@@ -10,6 +10,8 @@ defineProps<{
   publishing: boolean;
   submittingComment: boolean;
   deletingSlug: string;
+  relatedArticles: BlogArticle[];
+  relatedLoading: boolean;
 }>();
 
 defineEmits<{
@@ -18,6 +20,7 @@ defineEmits<{
   sync: [article: BlogArticle];
   remove: [article: BlogArticle];
   submitComment: [article: BlogArticle];
+  openRelated: [article: BlogArticle];
 }>();
 
 const headings = ref<HeadList[]>([]);
@@ -43,6 +46,11 @@ function scrollToHeading(item: HeadList, index: number) {
   if (element) {
     element.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+}
+
+function excerpt(text: string, maxLen = 60): string {
+  if (!text) return "";
+  return text.length > maxLen ? text.slice(0, maxLen) + "..." : text;
 }
 </script>
 
@@ -94,6 +102,11 @@ function scrollToHeading(item: HeadList, index: number) {
 
       <!-- 右侧文章内容 -->
       <main class="article-main">
+        <!-- 封面图 -->
+        <div class="article-cover" v-if="article.cover_image">
+          <img :src="article.cover_image" :alt="article.title" />
+        </div>
+
         <h1 class="article-title">{{ article.title }}</h1>
         <div class="article-meta">
           <span>{{ article.category?.name || "未分类" }}</span>
@@ -115,6 +128,39 @@ function scrollToHeading(item: HeadList, index: number) {
 
         <div class="tag-row">
           <span v-for="tag in article.tags" :key="tag.id">{{ tag.name }}</span>
+        </div>
+
+        <!-- 相关推荐 -->
+        <section class="related-articles" v-if="relatedArticles.length">
+          <h3>相关推荐</h3>
+          <div class="related-grid">
+            <article
+              v-for="related in relatedArticles"
+              :key="related.id"
+              class="related-card"
+              @click="$emit('openRelated', related)"
+            >
+              <div class="related-cover" v-if="related.cover_image">
+                <img :src="related.cover_image" :alt="related.title" loading="lazy" />
+              </div>
+              <div class="related-cover placeholder" v-else>
+                <span>{{ related.title.charAt(0) }}</span>
+              </div>
+              <div class="related-info">
+                <h4>{{ related.title }}</h4>
+                <p>{{ excerpt(related.summary) }}</p>
+                <footer>
+                  <span v-if="related.category">{{ related.category.name }}</span>
+                  <span>{{ related.view_count }} 浏览</span>
+                </footer>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <div class="related-loading" v-if="relatedLoading">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>正在加载推荐...</span>
         </div>
 
         <!-- 评论区 -->

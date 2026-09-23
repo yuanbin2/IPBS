@@ -1445,14 +1445,14 @@ class BlogImageUploadView(APIView):
         if upload.size > max_size:
             return Response({"detail": "image must be smaller than 5MB"}, status=status.HTTP_400_BAD_REQUEST)
 
-        filename = f"blog/{uuid4().hex}{suffix}"
-        saved_path = default_storage.save(filename, ContentFile(upload.read()))
-        media_url = f"/{settings.MEDIA_URL.lstrip('/')}{saved_path}"
-        image_url = request.build_absolute_uri(media_url)
+        import base64
+        image_data = base64.b64encode(upload.read()).decode("utf-8")
+        content_type = upload.content_type or "image/png"
+        data_url = f"data:{content_type};base64,{image_data}"
         return Response(
             {
-                "url": image_url,
-                "markdown": f"![{Path(upload.name).stem}]({image_url})",
+                "url": data_url,
+                "markdown": f"![{Path(upload.name).stem}]({data_url})",
             },
             status=status.HTTP_201_CREATED,
         )

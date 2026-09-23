@@ -49,6 +49,12 @@ class MCPTool(models.Model):
         WEB = "web", "Web"
         DATABASE = "database", "Database"
 
+    class HealthStatus(models.TextChoices):
+        HEALTHY = "healthy", "Healthy"
+        WARNING = "warning", "Warning"
+        ERROR = "error", "Error"
+        UNKNOWN = "unknown", "Unknown"
+
     name = models.CharField(max_length=80, unique=True)
     workspace_key = models.CharField(max_length=80, default=DEFAULT_WORKSPACE_KEY, db_index=True)
     display_name = models.CharField(max_length=120)
@@ -59,6 +65,18 @@ class MCPTool(models.Model):
     requires_approval = models.BooleanField(default=False)
     config = models.JSONField(default=dict, blank=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
+    # 使用统计字段
+    call_count = models.IntegerField(default=0, help_text="Total number of calls")
+    success_count = models.IntegerField(default=0, help_text="Number of successful calls")
+    # 健康检查字段
+    health_status = models.CharField(
+        max_length=20,
+        choices=HealthStatus.choices,
+        default=HealthStatus.UNKNOWN,
+        help_text="Current health status"
+    )
+    last_health_check = models.DateTimeField(null=True, blank=True, help_text="Last health check time")
+    health_message = models.TextField(blank=True, help_text="Health check message or error")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

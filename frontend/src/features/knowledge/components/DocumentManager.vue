@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Delete, Refresh, UploadFilled } from "@element-plus/icons-vue";
+import { Delete, Document, Refresh, UploadFilled } from "@element-plus/icons-vue";
 import type { KnowledgeDocument } from "../types";
 
 defineProps<{
@@ -21,6 +21,19 @@ defineEmits<{
   reindex: [document: KnowledgeDocument];
   remove: [document: KnowledgeDocument];
 }>();
+
+function getStatusIcon(status: string) {
+  switch (status) {
+    case "ready":
+      return "✓";
+    case "processing":
+      return "⏳";
+    case "failed":
+      return "✗";
+    default:
+      return "○";
+  }
+}
 </script>
 
 <template>
@@ -50,43 +63,49 @@ defineEmits<{
     </div>
   </section>
 
-  <section class="document-table">
+  <section class="document-grid-section">
     <div class="section-heading">
-      <h2>文档处理状态</h2>
+      <h2><el-icon><Document /></el-icon> 文档列表</h2>
       <el-button :icon="Refresh" @click="$emit('refresh')">刷新</el-button>
     </div>
-    <table>
-      <thead>
-        <tr><th>标题</th><th>状态</th><th>片段</th><th>类型</th><th>操作</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="document in documents" :key="document.id">
-          <td>{{ document.title }}</td>
-          <td><span class="status-pill" :class="document.status">{{ document.status }}</span></td>
-          <td>{{ document.chunk_count }}</td>
-          <td>{{ document.content_type || "-" }}</td>
-          <td>
-            <el-button
-              size="small"
-              :loading="reindexingId === document.id"
-              @click="$emit('reindex', document)"
-            >
-              重新处理
-            </el-button>
-            <el-button
-              size="small"
-              type="danger"
-              plain
-              :icon="Delete"
-              :loading="deletingId === document.id"
-              @click="$emit('remove', document)"
-            >
-              删除
-            </el-button>
-          </td>
-        </tr>
-        <tr v-if="documents.length === 0"><td colspan="5">还没有上传文档</td></tr>
-      </tbody>
-    </table>
+
+    <div class="document-grid">
+      <article v-for="doc in documents" :key="doc.id" class="document-card">
+        <div class="doc-status-icon" :class="doc.status">
+          {{ getStatusIcon(doc.status) }}
+        </div>
+        <div class="doc-info">
+          <h3>{{ doc.title }}</h3>
+          <div class="doc-meta">
+            <span class="doc-type">{{ doc.content_type || "未知类型" }}</span>
+            <span class="doc-chunks">{{ doc.chunk_count }} 片段</span>
+          </div>
+        </div>
+        <div class="doc-actions">
+          <el-button
+            size="small"
+            :loading="reindexingId === doc.id"
+            @click="$emit('reindex', doc)"
+          >
+            重新处理
+          </el-button>
+          <el-button
+            size="small"
+            type="danger"
+            plain
+            :icon="Delete"
+            :loading="deletingId === doc.id"
+            @click="$emit('remove', doc)"
+          >
+            删除
+          </el-button>
+        </div>
+      </article>
+
+      <div v-if="documents.length === 0" class="doc-empty">
+        <el-icon><Document /></el-icon>
+        <span>还没有上传文档</span>
+      </div>
+    </div>
   </section>
 </template>

@@ -29,6 +29,30 @@ class KnowledgeBaseListView(APIView):
     def get(self, request):
         get_default_knowledge_base(get_workspace_key(request))
         knowledge_bases = KnowledgeBase.objects.filter(workspace_key=get_workspace_key(request))
+
+        # 按分类筛选
+        category = request.query_params.get("category")
+        if category and category != "all":
+            knowledge_bases = knowledge_bases.filter(category=category)
+
+        # 按标签筛选
+        tag = request.query_params.get("tag")
+        if tag:
+            knowledge_bases = knowledge_bases.filter(tags__contains=[tag])
+
+        # 搜索
+        search = request.query_params.get("search")
+        if search:
+            knowledge_bases = knowledge_bases.filter(
+                models.Q(name__icontains=search) |
+                models.Q(description__icontains=search)
+            )
+
+        # 是否包含归档
+        include_archived = request.query_params.get("include_archived", "false").lower() == "true"
+        if not include_archived:
+            knowledge_bases = knowledge_bases.filter(is_archived=False)
+
         return Response([serialize_knowledge_base(item) for item in knowledge_bases])
 
     def post(self, request):
@@ -44,17 +68,43 @@ class KnowledgeBaseListView(APIView):
             workspace_key=get_workspace_key(request),
             defaults={
                 "description": str(request.data.get("description", "")).strip(),
+                "category": str(request.data.get("category", "other")).strip(),
+                "tags": request.data.get("tags", []),
             },
         )
         if not created:
             knowledge_base.description = str(request.data.get("description", knowledge_base.description)).strip()
-            knowledge_base.save(update_fields=["description", "updated_at"])
+            if "category" in request.data:
+                knowledge_base.category = str(request.data["category"]).strip()
+            if "tags" in request.data:
+                knowledge_base.tags = request.data["tags"]
+            knowledge_base.save(update_fields=["description", "category", "tags", "updated_at"])
         return Response(serialize_knowledge_base(knowledge_base), status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 class KnowledgeBaseDetailView(APIView):
     authentication_classes = []
     permission_classes = []
+
+    def patch(self, request, pk: int):
+        """更新知识库信息（分类、标签、排序等）"""
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
+        knowledge_base = get_object_or_404(KnowledgeBase, pk=pk, workspace_key=get_workspace_key(request))
+
+        if "name" in request.data:
+            knowledge_base.name = str(request.data["name"]).strip()
+        if "description" in request.data:
+            knowledge_base.description = str(request.data["description"]).strip()
+        if "category" in request.data:
+            knowledge_base.category = str(request.data["category"]).strip()
+        if "tags" in request.data:
+            knowledge_base.tags = request.data["tags"]
+        if "sort_order" in request.data:
+            knowledge_base.sort_order = int(request.data["sort_order"])
+        knowledge_base.save()
+        return Response(serialize_knowledge_base(knowledge_base))
 
     def delete(self, request, pk: int):
         denied = require_roles(request, [UserProfile.Role.ADMIN])
@@ -70,6 +120,34 @@ class KnowledgeBaseDetailView(APIView):
             requester=str(request.data.get("requester", "operator")).strip() if hasattr(request, "data") else "operator",
         )
         return approval_required_response(approval)
+
+
+class KnowledgeBaseArchiveView(APIView):
+    """归档/取消归档知识库"""
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request, pk: int):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
+        knowledge_base = get_object_or_404(KnowledgeBase, pk=pk, workspace_key=get_workspace_key(request))
+        action = str(request.data.get("action", "archive")).strip().lower()
+
+        if action == "archive":
+            knowledge_base.is_archived = True
+            message = f"知识库 '{knowledge_base.name}' 已归档"
+        elif action == "unarchive":
+            knowledge_base.is_archived = False
+            message = f"知识库 '{knowledge_base.name}' 已取消归档"
+        else:
+            return Response({"detail": "action must be 'archive' or 'unarchive'"}, status=status.HTTP_400_BAD_REQUEST)
+
+        knowledge_base.save(update_fields=["is_archived", "updated_at"])
+        return Response({
+            "message": message,
+            "knowledge_base": serialize_knowledge_base(knowledge_base)
+        })
 
 
 class DocumentListUploadView(APIView):

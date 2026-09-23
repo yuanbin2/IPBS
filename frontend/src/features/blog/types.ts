@@ -26,6 +26,7 @@ export interface BlogArticle {
   slug: string;
   author_name: string;
   summary: string;
+  cover_image: string;
   content?: string;
   status: string;
   view_count: number;
@@ -70,6 +71,7 @@ export interface ApprovalRequest {
 export interface BlogDraft {
   title: string;
   summary: string;
+  cover_image: string;
   category: string;
   tags: string;
   content: string;

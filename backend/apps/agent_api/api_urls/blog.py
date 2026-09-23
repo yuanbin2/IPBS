@@ -7,6 +7,7 @@ from ..views.blog import (
     BlogArticleDetailView,
     BlogArticleListCreateView,
     BlogArticlePublishView,
+    BlogArticleRelatedView,
     BlogCategoryListView,
     BlogCommentCreateView,
     BlogImageUploadView,
@@ -15,6 +16,7 @@ from ..views.blog import (
 
 urlpatterns = [
     path("blog/articles/", BlogArticleListCreateView.as_view(), name="blog-article-list-create"),
+    path("blog/articles/<str:slug>/related/", BlogArticleRelatedView.as_view(), name="blog-article-related"),
     path("blog/articles/<str:slug>/", BlogArticleDetailView.as_view(), name="blog-article-detail"),
     path("blog/articles/<str:slug>/publish/", BlogArticlePublishView.as_view(), name="blog-article-publish"),
     path("blog/articles/<str:slug>/comments/", BlogCommentCreateView.as_view(), name="blog-comment-create"),

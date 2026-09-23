@@ -226,27 +226,29 @@ async function requestJson(url: string, options: RequestInit = {}) {
               <el-radio-button label="jailbreak">越权</el-radio-button>
             </el-radio-group>
           </section>
-          <article v-for="item in cases" :key="item.id" class="evaluation-card">
-            <header>
-              <div>
-                <span>{{ item.category }} / {{ item.expected_agent || "-" }}</span>
-                <h3>{{ item.question }}</h3>
+          <div class="evaluation-scroll">
+            <article v-for="item in cases" :key="item.id" class="evaluation-card">
+              <header>
+                <div>
+                  <span>{{ item.category }} / {{ item.expected_agent || "-" }}</span>
+                  <h3>{{ item.question }}</h3>
+                </div>
+                <el-button size="small" :loading="running" @click="runEvaluation(item.id)">评估</el-button>
+              </header>
+              <div class="keyword-row">
+                <span v-for="keyword in item.reference_keywords" :key="keyword">{{ keyword }}</span>
               </div>
-              <el-button size="small" :loading="running" @click="runEvaluation(item.id)">评估</el-button>
-            </header>
-            <div class="keyword-row">
-              <span v-for="keyword in item.reference_keywords" :key="keyword">{{ keyword }}</span>
-            </div>
-            <footer v-if="item.latest_run">
-              <span class="status-pill" :class="item.latest_run.passed ? 'ready' : 'failed'">
-                {{ item.latest_run.passed ? "通过" : "未通过" }}
-              </span>
-              <small>
-                correctness {{ item.latest_run.metrics.answer_correctness }}
-                / latency {{ item.latest_run.metrics.latency_ms }}ms
-              </small>
-            </footer>
-          </article>
+              <footer v-if="item.latest_run">
+                <span class="status-pill" :class="item.latest_run.passed ? 'ready' : 'failed'">
+                  {{ item.latest_run.passed ? "通过" : "未通过" }}
+                </span>
+                <small>
+                  correctness {{ item.latest_run.metrics.answer_correctness }}
+                  / latency {{ item.latest_run.metrics.latency_ms }}ms
+                </small>
+              </footer>
+            </article>
+          </div>
         </section>
       </section>
     </section>

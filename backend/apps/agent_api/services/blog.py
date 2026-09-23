@@ -116,6 +116,7 @@ def serialize_article(article: BlogArticle, include_content: bool = False) -> di
         "title": article.title,
         "slug": article.slug,
         "summary": article.summary,
+        "cover_image": article.cover_image or "",
         "status": article.status,
         "view_count": article.view_count,
         "category": serialize_category(article.category) if article.category else None,

@@ -16,3 +16,8 @@ backend/frontend_dist/
 .vscode/
 *.log
 celerybeat-schedule*
+
+# Desktop app browser profiles
+app-desktop/.edge-profile/
+desktop-app/.edge-profile/
+frontend/frontend/

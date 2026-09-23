@@ -4,14 +4,40 @@ from .constants import DEFAULT_WORKSPACE_KEY
 
 
 class KnowledgeBase(models.Model):
+    class Category(models.TextChoices):
+        TECH_DOCS = "tech_docs", "技术文档"
+        PRODUCT_DOCS = "product_docs", "产品文档"
+        LEARNING_NOTES = "learning_notes", "学习笔记"
+        PROJECT_DOCS = "project_docs", "项目资料"
+        OTHER = "other", "其他"
+
     name = models.CharField(max_length=120)
     workspace_key = models.CharField(max_length=80, default=DEFAULT_WORKSPACE_KEY, db_index=True)
     description = models.TextField(blank=True)
+    category = models.CharField(
+        max_length=30,
+        choices=Category.choices,
+        default=Category.OTHER,
+        help_text="知识库分类"
+    )
+    tags = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="标签列表，如 ['AI', 'Python', '教程']"
+    )
+    is_archived = models.BooleanField(
+        default=False,
+        help_text="是否已归档"
+    )
+    sort_order = models.IntegerField(
+        default=0,
+        help_text="排序顺序，数字越小越靠前"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["name"]
+        ordering = ["sort_order", "name"]
         constraints = [
             models.UniqueConstraint(fields=["workspace_key", "name"], name="unique_knowledge_base_per_workspace"),
         ]

@@ -18,6 +18,8 @@ const knowledge = useKnowledgeBase();
         @select="knowledge.selectKnowledgeBase"
         @refresh="knowledge.loadKnowledgeBases"
         @remove="knowledge.deleteKnowledgeBase"
+        @archive="knowledge.archiveKnowledgeBase"
+        @create="knowledge.createKnowledgeBase"
       />
       <section class="knowledge-main">
         <DocumentManager
