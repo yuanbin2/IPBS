@@ -9,6 +9,7 @@ from django.conf import settings
 from django.test import TestCase
 
 from ..models import MCPTool
+from .support import NO_MODEL_ENV
 
 
 class WebSearchTests(TestCase):
@@ -147,3 +148,105 @@ class WebSearchTests(TestCase):
         self.assertEqual(ranked[0][1], "https://docs.djangoproject.com/")
         self.assertEqual(len(ranked), 2)
         self.assertEqual(runner._normalize_duckduckgo_url("https://127.0.0.1/admin"), "")
+
+
+class InternetAgentTests(TestCase):
+    """联网 Agent：显式开关、追问重写与降级路径。"""
+
+    @patch("agent.mcp_tools.LocalMCPToolRunner.run")
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_internet_toggle_searches_web_and_then_uses_answer_path(self, mocked_run):
+        from agent.mcp_tools import MCPToolExecution
+
+        MCPTool.objects.update_or_create(
+            name="web_search",
+            defaults={
+                "display_name": "网页搜索",
+                "category": MCPTool.Category.WEB,
+                "permission_scope": "network:web_search",
+                "is_enabled": True,
+                "requires_approval": False,
+            },
+        )
+        mocked_run.return_value = MCPToolExecution("web_search", "Python 3.14", "[1] Python release notes")
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "Python 3.14 有什么变化？", "internet_enabled": True},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route"], "internet")
+        self.assertEqual(payload["tool_calls"][0]["name"], "mcp:web_search")
+        self.assertIn("网页搜索结果", payload["answer"])
+
+    @patch("agent.mcp_tools.LocalMCPToolRunner.run")
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_explicit_web_search_runs_even_when_internet_toggle_is_off(self, mocked_run):
+        from agent.mcp_tools import MCPToolExecution
+
+        MCPTool.objects.update_or_create(
+            name="web_search",
+            defaults={
+                "display_name": "网页搜索",
+                "category": MCPTool.Category.WEB,
+                "permission_scope": "network:web_search",
+                "is_enabled": True,
+                "requires_approval": False,
+            },
+        )
+        mocked_run.return_value = MCPToolExecution("web_search", "Python 官方文档", "[1] Python docs")
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "网页搜索 Python 官方文档", "internet_enabled": False},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["tool_calls"][0]["name"], "mcp:web_search")
+        mocked_run.assert_called_once()
+
+    @patch("agent.mcp_tools.LocalMCPToolRunner.run")
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_internet_follow_up_rewrites_search_query_with_conversation_context(self, mocked_run):
+        from agent.mcp_tools import MCPToolExecution
+
+        MCPTool.objects.update_or_create(
+            name="web_search",
+            defaults={
+                "display_name": "网页搜索",
+                "category": MCPTool.Category.WEB,
+                "permission_scope": "network:web_search",
+                "is_enabled": True,
+                "requires_approval": False,
+            },
+        )
+        mocked_run.return_value = MCPToolExecution("web_search", "query", "[1] result")
+        first = self.client.post(
+            "/api/agent/chat/",
+            {"message": "介绍一下 Python 3.14"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        conversation_id = first.json()["conversation"]["id"]
+
+        second = self.client.post(
+            "/api/agent/chat/",
+            {
+                "message": "那它有哪些重要的新特性？",
+                "conversation_id": conversation_id,
+                "internet_enabled": True,
+            },
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(second.status_code, 200)
+        rewritten_query = mocked_run.call_args.args[1]
+        self.assertIn("Python 3.14", rewritten_query)
+        self.assertIn("重要的新特性", rewritten_query)
+        self.assertEqual(second.json()["tool_calls"][0]["input"], rewritten_query)
+        self.assertTrue(any("internet_query_rewrite" in item for item in second.json()["trace"]))
