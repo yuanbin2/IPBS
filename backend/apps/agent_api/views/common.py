@@ -24,6 +24,7 @@ except ImportError:
     role_allowed = None
     security_enforced = None
 
+from ..exceptions import ErrorCode
 from ..models import (
     AgentObservation,
     AgentRun,
@@ -61,6 +62,11 @@ def get_conversation_owner(request) -> str:
     return context_from_request(request).actor or "anonymous"
 
 
+def error_response(detail: str, code: str, http_status: int, **extra) -> Response:
+    """统一错误响应：detail 给人看，code 给前端做程序化分支（见 exceptions.py）。"""
+    return Response({"detail": detail, "code": code, **extra}, status=http_status)
+
+
 def audit_security_event(request, event_type: str, detail: str = "", metadata: dict | None = None) -> None:
     context = context_from_request(request)
     SecurityAuditEvent.objects.create(
@@ -85,13 +91,12 @@ def require_roles(request, allowed_roles: list[str]) -> Response | None:
         SecurityAuditEvent.EventType.ACCESS_DENIED,
         f"required roles: {', '.join(allowed_roles)}",
     )
-    return Response(
-        {
-            "detail": "permission denied",
-            "required_roles": allowed_roles,
-            "current_role": context.role,
-        },
-        status=status.HTTP_403_FORBIDDEN,
+    return error_response(
+        "permission denied",
+        ErrorCode.FORBIDDEN,
+        status.HTTP_403_FORBIDDEN,
+        required_roles=allowed_roles,
+        current_role=context.role,
     )
 
 

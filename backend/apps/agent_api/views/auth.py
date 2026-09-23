@@ -9,11 +9,13 @@ from rest_framework.views import APIView
 
 from agent.security import issue_jwt_pair, normalize_workspace_key, security_enforced
 
+from ..exceptions import ErrorCode
 from ..models import SecurityAuditEvent, UserProfile
 from ..serializers import serialize_security_audit_event, serialize_user_profile
 from .common import (
     audit_security_event,
     env_file_is_git_tracked,
+    error_response,
     get_workspace_key,
     require_roles,
     serialize_security_context,
@@ -28,11 +30,11 @@ class AuthLoginView(APIView):
         username = str(request.data.get("username", "")).strip()
         password = str(request.data.get("password", ""))
         if not username or not password:
-            return Response({"detail": "username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("username and password are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
 
         user = authenticate(request, username=username, password=password)
         if user is None:
-            return Response({"detail": "invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+            return error_response("invalid credentials", ErrorCode.INVALID_CREDENTIALS, status.HTTP_401_UNAUTHORIZED)
 
         login(request, user)
         tokens = issue_jwt_pair(user)
@@ -64,15 +66,15 @@ class AuthRegisterView(APIView):
         role = str(request.data.get("role", UserProfile.Role.ADMIN)).strip().lower()
         workspace_key = normalize_workspace_key(request.data.get("workspace_key", "default"))
         if not username or not password:
-            return Response({"detail": "username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("username and password are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
         if len(password) < 8:
-            return Response({"detail": "password must be at least 8 characters"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("password must be at least 8 characters", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
         if role not in {UserProfile.Role.ADMIN, UserProfile.Role.OPERATOR, UserProfile.Role.VISITOR}:
             role = UserProfile.Role.ADMIN
 
         User = get_user_model()
         if User.objects.filter(username=username).exists():
-            return Response({"detail": "username already exists"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("username already exists", ErrorCode.CONFLICT, status.HTTP_400_BAD_REQUEST)
 
         user = User.objects.create_user(username=username, password=password, is_staff=role == UserProfile.Role.ADMIN)
         profile, _ = UserProfile.objects.update_or_create(

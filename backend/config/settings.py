@@ -124,6 +124,7 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.FormParser",
         "rest_framework.parsers.MultiPartParser",
     ],
+    "EXCEPTION_HANDLER": "apps.agent_api.exceptions.exception_handler",
 }
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")

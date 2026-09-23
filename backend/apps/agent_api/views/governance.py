@@ -7,11 +7,13 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ..exceptions import ErrorCode
 from ..models import ApprovalRequest, BlogArticle, MCPTool, UserProfile
 from ..serializers import serialize_approval_request, serialize_mcp_tool
 from .common import (
     approval_required_response,
     ensure_default_mcp_tools,
+    error_response,
     execute_approval_request,
     get_workspace_key,
     require_roles,
@@ -47,12 +49,9 @@ class ApprovalRequestDetailView(APIView):
         note = str(request.data.get("note", "")).strip()
 
         if approval.status != ApprovalRequest.Status.PENDING:
-            return Response(
-                {"detail": "approval request is no longer pending"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("approval request is no longer pending", ErrorCode.CONFLICT, status.HTTP_400_BAD_REQUEST)
         if decision not in {"approve", "reject"}:
-            return Response({"detail": "decision must be approve or reject"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("decision must be approve or reject", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
 
         approval.reviewer = reviewer
         approval.review_note = note
@@ -146,7 +145,7 @@ class MCPToolExecuteView(APIView):
         tool = get_object_or_404(MCPTool, pk=pk, workspace_key=get_workspace_key(request))
         query = str(request.data.get("query", "")).strip()
         if not tool.is_enabled:
-            return Response({"detail": "tool is disabled"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("tool is disabled", ErrorCode.CONFLICT, status.HTTP_400_BAD_REQUEST)
         if tool.requires_approval:
             approval = ApprovalRequest.objects.create(
                 action=ApprovalRequest.Action.EXECUTE_MCP_TOOL,

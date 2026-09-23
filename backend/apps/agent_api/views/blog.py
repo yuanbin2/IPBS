@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 
 from agent.security import context_from_request
 
+from ..exceptions import ErrorCode
 from ..models import (
     ApprovalRequest,
     ArticleCategory,
@@ -50,6 +51,7 @@ from .common import (
     BLOG_AGENT_RATE_LIMIT,
     BLOG_AGENT_RATE_WINDOW_SECONDS,
     approval_required_response,
+    error_response,
     get_workspace_key,
     request_ip_hash,
     require_roles,
@@ -79,14 +81,14 @@ class BlogArticleListCreateView(APIView):
                 is_admin=context.authenticated and context.role in {UserProfile.Role.ADMIN, UserProfile.Role.OPERATOR},
             )
         except ArticleAccessError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+            return error_response(str(exc), ErrorCode.NOT_AUTHENTICATED, status.HTTP_401_UNAUTHORIZED)
         return Response([serialize_article(article) for article in articles])
 
     def post(self, request):
         title = str(request.data.get("title", "")).strip()
         content = str(request.data.get("content", "")).strip()
         if not title or not content:
-            return Response({"detail": "title and content are required"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("title and content are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
 
         context = context_from_request(request)
 
@@ -96,7 +98,7 @@ class BlogArticleListCreateView(APIView):
         else:
             author_name = str(request.data.get("author_name", "")).strip()
             if not author_name:
-                return Response({"detail": "请先登录或填写昵称"}, status=status.HTTP_400_BAD_REQUEST)
+                return error_response("请先登录或填写昵称", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
 
         article = BlogArticle.objects.create(
             title=title,
@@ -142,18 +144,18 @@ class BlogImageUploadView(APIView):
             return denied
         upload = request.FILES.get("image")
         if upload is None:
-            return Response({"detail": "image is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("image is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
 
         if not upload.content_type.startswith("image/"):
-            return Response({"detail": "only image files are supported"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("only image files are supported", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
 
         suffix = Path(upload.name).suffix.lower() or ".png"
         if suffix not in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}:
-            return Response({"detail": "unsupported image format"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("unsupported image format", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
 
         max_size = 5 * 1024 * 1024
         if upload.size > max_size:
-            return Response({"detail": "image must be smaller than 5MB"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("image must be smaller than 5MB", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
 
         import base64
         image_data = base64.b64encode(upload.read()).decode("utf-8")
@@ -177,19 +179,16 @@ class BlogWritingAgentView(APIView):
     def post(self, request):
         context = context_from_request(request)
         if not context.authenticated:
-            return Response({"detail": "请先登录后再使用写作助手。"}, status=status.HTTP_401_UNAUTHORIZED)
+            return error_response("请先登录后再使用写作助手。", ErrorCode.NOT_AUTHENTICATED, status.HTTP_401_UNAUTHORIZED)
 
         mode = str(request.data.get("mode", "task_list")).strip()
         if mode not in WRITING_MODES:
-            return Response(
-                {"detail": "mode must be one of: task_list, outline, draft, improve"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("mode must be one of: task_list, outline, draft, improve", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
 
         instruction = str(request.data.get("instruction", "")).strip()[:2000]
         raw_draft = request.data.get("draft") or {}
         if not isinstance(raw_draft, dict):
-            return Response({"detail": "draft must be an object"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("draft must be an object", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
 
         draft = {
             "title": str(raw_draft.get("title", "")).strip()[:300],
@@ -199,20 +198,14 @@ class BlogWritingAgentView(APIView):
             "content": str(raw_draft.get("content", ""))[:16000],
         }
         if not instruction and not draft["title"] and not draft["content"].strip():
-            return Response(
-                {"detail": "请填写写作要求、文章标题或正文后再生成。"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("请填写写作要求、文章标题或正文后再生成。", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
 
         try:
             result = BlogWritingAgent().generate(mode=mode, instruction=instruction, draft=draft)
         except WritingAgentConfigurationError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return error_response(str(exc), ErrorCode.UPSTREAM_UNAVAILABLE, status.HTTP_503_SERVICE_UNAVAILABLE)
         except Exception:
-            return Response(
-                {"detail": "写作助手生成失败，请稍后重试或检查模型配置。"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+            return error_response("写作助手生成失败，请稍后重试或检查模型配置。", ErrorCode.INTERNAL_ERROR, status.HTTP_502_BAD_GATEWAY)
 
         return Response(
             {
@@ -248,17 +241,11 @@ class BlogArticleDetailView(APIView):
 
         # 必须登录才能编辑
         if not context.authenticated:
-            return Response(
-                {"detail": "请先登录"},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            return error_response("请先登录", ErrorCode.NOT_AUTHENTICATED, status.HTTP_401_UNAUTHORIZED)
 
         # 普通用户只能编辑自己的文章（忽略大小写）
         if not is_admin and article.author_name.lower() != context.actor.lower():
-            return Response(
-                {"detail": "只能编辑自己提交的文章"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            return error_response("只能编辑自己提交的文章", ErrorCode.FORBIDDEN, status.HTTP_403_FORBIDDEN)
 
         # Update article fields
         if "title" in request.data:
@@ -502,18 +489,15 @@ class BlogAgentChatView(APIView):
     def post(self, request):
         message = str(request.data.get("message", "")).strip()
         if not message:
-            return Response({"detail": "message is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("message is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
         if len(message) > 800:
-            return Response({"detail": "message must be shorter than 800 characters"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("message must be shorter than 800 characters", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
 
         session = self._get_or_create_session(request)
         if session.is_blocked:
-            return Response({"detail": "this visitor session is blocked"}, status=status.HTTP_403_FORBIDDEN)
+            return error_response("this visitor session is blocked", ErrorCode.FORBIDDEN, status.HTTP_403_FORBIDDEN)
         if self._is_rate_limited(session):
-            return Response(
-                {"detail": "提问太频繁了，请稍后再试。"},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
+            return error_response("提问太频繁了，请稍后再试。", ErrorCode.RATE_LIMITED, status.HTTP_429_TOO_MANY_REQUESTS)
 
         previous_messages = list(session.messages.order_by("-id")[:10])
         history = [
@@ -619,7 +603,7 @@ class BlogCommentCreateView(APIView):
         author_name = str(request.data.get("author_name", "")).strip()
         content = str(request.data.get("content", "")).strip()
         if not author_name or not content:
-            return Response({"detail": "author_name and content are required"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("author_name and content are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
         comment = BlogComment.objects.create(article=article, author_name=author_name, content=content)
         return Response(
             {

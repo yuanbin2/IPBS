@@ -15,6 +15,7 @@ from rest_framework.views import APIView
 from agent.multi_agent import MultiAgentSupervisor
 from agent.security import detect_sensitive_input
 
+from ..exceptions import ErrorCode
 from ..models import (
     AgentObservation,
     AgentRun,
@@ -36,6 +37,7 @@ from ..serializers import (
 from .common import (
     audit_security_event,
     create_agent_observation,
+    error_response,
     evaluate_answer,
     get_conversation_owner,
     get_message_limit,
@@ -133,10 +135,7 @@ class AgentChatView(APIView):
     def post(self, request):
         message = str(request.data.get("message", "")).strip()
         if not message:
-            return Response(
-                {"detail": "message is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("message is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
         workspace_key = get_workspace_key(request)
         sensitive_marker = detect_sensitive_input(message)
         if sensitive_marker:
@@ -336,10 +335,7 @@ class AgentChatStreamView(APIView):
     def post(self, request):
         message = str(request.data.get("message", "")).strip()
         if not message:
-            return Response(
-                {"detail": "message is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("message is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
 
         workspace_key = get_workspace_key(request)
         sensitive_marker = detect_sensitive_input(message)

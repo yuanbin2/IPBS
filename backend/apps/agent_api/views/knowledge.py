@@ -9,11 +9,12 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ..exceptions import ErrorCode
 from ..models import ApprovalRequest, Document, KnowledgeBase, UserProfile
 from ..serializers import serialize_document, serialize_knowledge_base
 from ..services.rag import get_default_knowledge_base, search_knowledge_base
 from ..tasks import ingest_document_task
-from .common import approval_required_response, get_workspace_key, require_roles
+from .common import approval_required_response, error_response, get_workspace_key, require_roles
 
 
 def dispatch_ingestion_task(document: Document):
@@ -76,7 +77,7 @@ class KnowledgeBaseListView(APIView):
             return denied
         name = str(request.data.get("name", "")).strip()
         if not name:
-            return Response({"detail": "name is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("name is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
 
         knowledge_base, created = KnowledgeBase.objects.get_or_create(
             name=name,
@@ -156,7 +157,7 @@ class KnowledgeBaseArchiveView(APIView):
             knowledge_base.is_archived = False
             message = f"知识库 '{knowledge_base.name}' 已取消归档"
         else:
-            return Response({"detail": "action must be 'archive' or 'unarchive'"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("action must be 'archive' or 'unarchive'", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
 
         knowledge_base.save(update_fields=["is_archived", "updated_at"])
         return Response({
@@ -183,14 +184,11 @@ class DocumentListUploadView(APIView):
             return denied
         upload = request.FILES.get("file")
         if upload is None:
-            return Response({"detail": "file is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("file is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
 
         suffix = Path(upload.name).suffix.lower()
         if suffix not in {".md", ".markdown", ".txt", ".pdf"}:
-            return Response(
-                {"detail": "only Markdown, txt and PDF files are supported"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("only Markdown, txt and PDF files are supported", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
 
         knowledge_base_id = request.data.get("knowledge_base_id")
         if knowledge_base_id:
@@ -277,7 +275,7 @@ class KnowledgeSearchView(APIView):
     def post(self, request):
         query = str(request.data.get("query", "")).strip()
         if not query:
-            return Response({"detail": "query is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("query is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
 
         knowledge_base_id = request.data.get("knowledge_base_id")
         if knowledge_base_id:
