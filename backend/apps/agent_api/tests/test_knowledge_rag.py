@@ -396,7 +396,7 @@ class KnowledgeRagTests(TestCase):
         self.assertEqual(usage["total_tokens"], 0)
 
     @patch.dict("os.environ", NO_MODEL_ENV)
-    @patch("apps.agent_api.services.rag.search_pgvector")
+    @patch("apps.agent_api.services.rag.search.search_pgvector")
     def test_knowledge_search_prefers_pgvector_candidates_when_available(self, mocked_search_pgvector):
         mocked_search_pgvector.return_value = [
             VectorMatch(
@@ -418,8 +418,8 @@ class KnowledgeRagTests(TestCase):
 
     @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
     @patch.dict("os.environ", NO_MODEL_ENV)
-    @patch("apps.agent_api.services.rag.upsert_chunk_vector")
-    @patch("apps.agent_api.services.rag.should_use_pgvector", return_value=True)
+    @patch("apps.agent_api.services.rag.ingest.upsert_chunk_vector")
+    @patch("apps.agent_api.services.rag.ingest.should_use_pgvector", return_value=True)
     def test_document_ingestion_syncs_vectors_to_pgvector_store(self, _should_use_pgvector, mocked_upsert):
         upload = SimpleUploadedFile(
             "pgvector-sync.txt",
