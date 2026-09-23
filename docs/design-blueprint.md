@@ -263,10 +263,17 @@
 
 #### 日志
 
-## 2026.9.23
+## 2026.9.23（二）
+- 执行 `coding-conventions.md` §9 代码层迁移 C1–C8（分支 `refactor/code-conventions-migration`，每项一个 commit）
+  - C1 删除死代码（views.py / models.py / 根级 blog.py / blog_agent.py）；C2 删除根 `agent/` 重复包并合并搜索触发词、根 Dockerfile 去 `COPY agent`；C3 views 星号导入改显式（顺带修复 knowledge 视图潜伏 NameError）；C4 serializers 显式再导出 + `__all__`；C5 文章列表过滤下沉 `list_articles()`；C6 统一错误格式 `{detail, code}` + DRF exception_handler；C7 ruff/black 工具链 + CI 门 + pre-commit；C8 tests.py 拆 `tests/` 包 + 6 个 Supervisor 路由单测
+  - 涉及文件 / 模块：横切全部模块；新增 `exceptions.py`、`pyproject.toml`、`.pre-commit-config.yaml`、`backend/requirements-dev.txt`
+  - 影响的数据空间：无 schema 变更（对象 1-6 字段零变动，`makemigrations --check` 通过）
+  - 测试基线：92 个测试；5 个环境依赖的既有失败（网络/embedding）迁移前后一致，无新增
+
+## 2026.9.23（一）
 - 新增 `coding-conventions.md`（代码规范手册，权威文档），登记进 2.1 文档地图与 4.2 同步约定
   - 涉及文件 / 模块：docs/coding-conventions.md（新增）、docs/design-blueprint.md（本条目）
-  - 影响：横切全部模块（A–G）；代码层迁移路线图 C1–C10 与本表 T1–T9 对齐
+  - 影响：横切全部模块（A–G）；代码层迁移路线图 C1–C11 与本表 T1–T9 对齐
 
 ### 4.2 变更同步约定
 
@@ -281,18 +288,19 @@
 ### 4.3 迭代路线图（初始化：把已发现的技术债登记为待办）
 
 > 来源：`architecture-analysis.md` 技术债清单，按优先级排序。
+> 2026-09-23：T1/T2/T5 已随代码迁移完成（见下方「已完成」），T6 部分完成。
 
-| 优先级 | 编号 | 待办 | 关联模块 |
-| --- | --- | --- | --- |
-| 高 | T1 | 合并 `agent/` 与 `backend/agent/` 双份源码（消除双部署代码分叉） | GAC / GAB |
-| 高 | T2 | 删除 `models.py` 死代码（与 `models/` 包并存） | 对象 1-6 |
-| 中 | T3 | Nginx 补 `proxy_buffering off`（修复 SSE 缓冲） | DAB / GAB |
-| 中 | T4 | 清理 4 个 desktop 目录（删 `desktop-app/` 空壳、统一 preload 键名） | G |
-| 中 | T5 | 补 Supervisor 路由单测（DAG） | DAC |
-| 低 | T6 | 补后端单测（CI 已就绪但无测试） | 横切 |
-| 低 | T7 | Celery Beat 清理（无 schedule，或删容器） | GAB |
-| 低 | T8 | `SecurityView.vue` 挂路由 | E / F |
-| 低 | T9 | 日志自动清理（3 个月）+ 软删除约定落地 | 对象 1 / 2 / 3 |
+| 优先级 | 编号 | 待办 | 关联模块 | 状态 |
+| --- | --- | --- | --- | --- |
+| 高 | T1 | 合并 `agent/` 与 `backend/agent/` 双份源码（消除双部署代码分叉） | GAC / GAB | ✅ C2 |
+| 高 | T2 | 删除 `models.py` 死代码（与 `models/` 包并存） | 对象 1-6 | ✅ C1 |
+| 中 | T3 | Nginx 补 `proxy_buffering off`（修复 SSE 缓冲） | DAB / GAB | 待办 |
+| 中 | T4 | 清理 4 个 desktop 目录（删 `desktop-app/` 空壳、统一 preload 键名） | G | 待办 |
+| 中 | T5 | 补 Supervisor 路由单测（DAG） | DAC | ✅ C8 |
+| 低 | T6 | 补后端单测（CI 已就绪但无测试） | 横切 | 🔶 部分：CI 已接 ruff/black 门 + tests 按域拆分 + 关键路径有测试；按域补满是持续项 |
+| 低 | T7 | Celery Beat 清理（无 schedule，或删容器） | GAB | 待办 |
+| 低 | T8 | `SecurityView.vue` 挂路由 | E / F | 待办 |
+| 低 | T9 | 日志自动清理（3 个月）+ 软删除约定落地 | 对象 1 / 2 / 3 | 待办 |
 
 ---
 

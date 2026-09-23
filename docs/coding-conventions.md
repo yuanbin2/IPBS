@@ -331,22 +331,35 @@ class BlogArticlePublishView(APIView):
 ## 9. 迁移路线图（现状 → 目标）
 
 > 与 `design-blueprint.md` 4.3 的 T1–T9 对齐；本表是**代码层**的执行口径。按优先级排序，每项独立可合并。
+> **2026-09-23 已完成 C1–C8**（分支 `refactor/code-conventions-migration`，每项一个 commit，测试基线：92 个测试、5 个环境依赖的既有失败全程无新增）。
 
-| 优先级 | 编号 | 动作 | 涉及文件 | 对应蓝图 |
-| --- | --- | --- | --- | --- |
-| 高 | C1 | 删除死代码：`views.py`、`models.py`、根级 `blog.py`/`blog_agent.py`（已确认无活跃引用，删除前跑全量测试） | 4 个文件 | T2 |
-| 高 | C2 | 删除根目录 `agent/` 重复包（与 `backend/agent/` 内容分叉，保留 backend 版；先 diff 确认 multi_agent.py 822 vs 818 行差异并合并） | 根 `agent/` | T1 |
-| 高 | C3 | `views/common.py` 与各 view 的星号导入改显式命名导入 | `views/*.py` | — |
-| 中 | C4 | `serializers/__init__.py` 星号导出改显式；视图按需 import | `serializers/` | — |
-| 中 | C5 | View 内联查询逻辑下沉 service（`views/blog.py` 列表过滤先行，示范后推广） | `views/blog.py` → `services/blog.py` | — |
-| 中 | C6 | 统一错误格式：`error_response()` + DRF `exception_handler`，新 API 强制使用 | `views/common.py` | — |
-| 中 | C7 | 接工具链：根 `pyproject.toml`（black/ruff，行宽 120）+ CI 两道检查 + pre-commit | 新增 2 文件 + CI 配置 | T6 |
-| 低 | C8 | `tests.py` 按域拆 `tests/` 包；补 Supervisor 路由单测 | `tests.py` → `tests/` | T5/T6 |
-| 低 | C9 | 新 API 启用响应 envelope；存量接口列迁移清单逐个切换 | `views/` + 前端 `api/` | — |
-| 低 | C10 | `models/blog.py` 清理大段注释掉的示例参数（以 schema reference 为准） | `models/blog.py` | — |
-| 低 | C11 | API 版本前缀决策：新域 API 挂 `/api/v1/`，存量接口登记后逐个迁移 | `api_urls/` + 前端 `api/` | — |
+| 优先级 | 编号 | 动作 | 状态 |
+| --- | --- | --- | --- |
+| 高 | C1 | 删除死代码：`views.py`、`models.py`、根级 `blog.py`/`blog_agent.py` | ✅ 已完成 |
+| 高 | C2 | 删除根目录 `agent/` 重复包；合并其更丰富的搜索触发词进 `backend/agent/multi_agent.py`；根 Dockerfile 去掉 `COPY agent` | ✅ 已完成 |
+| 高 | C3 | `views/common.py` 与各 view 的星号导入改显式命名导入 | ✅ 已完成（顺带修复 `views/knowledge.py` 潜伏的 `models.Q` NameError） |
+| 中 | C4 | `serializers/__init__.py` 星号导出改显式；三个重导出包加 `__all__` | ✅ 已完成 |
+| 中 | C5 | View 内联查询逻辑下沉 service（`views/blog.py` 列表过滤） | ✅ 已完成（`ArticleListFilters` + `list_articles()`，附 6 个服务级测试） |
+| 中 | C6 | 统一错误格式：`error_response()` + DRF `exception_handler` | ✅ 已完成（35 处手写错误响应全量转换，`code` 字段向后兼容） |
+| 中 | C7 | 接工具链：根 `pyproject.toml`（black/ruff，行宽 120）+ CI 两道检查 + pre-commit | ✅ 已完成（含存量 lint 修复与 black 全量格式化） |
+| 低 | C8 | `tests.py` 按域拆 `tests/` 包；补 Supervisor 路由单测 | ✅ 已完成（10 个域模块 + 6 个路由单测） |
+| 低 | C9 | 新 API 启用响应 envelope；存量接口列迁移清单逐个切换 | 📋 已决策，见下方「C9 决策」 |
+| 低 | C10 | `models/blog.py` 清理大段注释掉的示例参数 | ✅ 核实无需处理（注释块在已删除的死代码 `views.py` 里） |
+| 低 | C11 | API 版本前缀决策 | 📋 已决策，见下方「C11 决策」 |
 
 **执行纪律**：每项单独一个 commit，message 带编号（如 `refactor: C3 replace star imports in views with explicit imports`），完成后在蓝图更新日志登记一行。
+
+### C9 决策：响应 envelope（2026-09-23）
+
+- **新 API**：对象型用 `{"data": ..., "meta": {...}}`，列表型用 `{"data": [...], "meta": {"has_more", "next_cursor"}}`。
+- **存量接口**：不做批量切换。前端 `src/api/` 与现有返回形态（裸数组/裸对象）深度耦合，一次性切换成本高、回归面大；按域逐个迁移，每域一个 commit 并同步前端。
+- **迁移顺序建议**（按前端改动量从低到高）：`knowledge-bases`（已是对象数组）→ `documents` → `conversations` → `blog/*` → `agent/*`。
+- 切换某个域前必须先补该域的接口测试（happy path + 错误路径），再改响应形态。
+
+### C11 决策：API 版本前缀（2026-09-23）
+
+- **不加 `/api/v1/` 前缀**。当前全部接口挂在 `/api/agent/` 与 `/api/` 下，前端、部署配置（Nginx/Railway/Cloudflare）均按此约定；加前缀需要三处同步改动而收益仅为理论上的版本管理。
+- 约定改为：**未来若需版本化，以新路径段落地**（如 `/api/v2/agent/`），旧版并行维护一个迭代周期后下线；不在现有路径上追加版本号。
 
 ---
 
