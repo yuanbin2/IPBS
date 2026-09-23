@@ -47,6 +47,8 @@ export interface BlogAgentSource {
   content: string;
   score: number;
   url: string;
+  document_id?: number | null;
+  chunk_index?: number | null;
 }
 
 export interface BlogAgentChatMessage {

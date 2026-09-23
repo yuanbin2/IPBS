@@ -608,9 +608,18 @@ class SimpleToolCallingAgent:
 
     def _search_sources(self, query: str) -> tuple[ToolResult, list[SourceCitation]]:
         try:
-            from apps.agent_api.services.rag import format_search_results, search_knowledge_base
+            from apps.agent_api.services.rag import (
+                expand_search_results_with_neighbors,
+                format_search_results,
+                search_knowledge_base,
+            )
 
             results = search_knowledge_base(query, limit=5, workspace_key=self.workspace_key)
+            results = expand_search_results_with_neighbors(
+                results,
+                neighbor_window=1,
+                max_results=12,
+            )
             sources = [
                 SourceCitation(
                     document_id=result.document_id,

@@ -1,6 +1,11 @@
 import math
 
 from .common import *
+from ..services.writing_agent import (
+    BlogWritingAgent,
+    WRITING_MODES,
+    WritingAgentConfigurationError,
+)
 
 
 class BlogArticleListCreateView(APIView):
@@ -133,6 +138,62 @@ class BlogImageUploadView(APIView):
                 "markdown": f"![{Path(upload.name).stem}]({data_url})",
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class BlogWritingAgentView(APIView):
+    """Generate Markdown suggestions for an authenticated blog author."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        context = context_from_request(request)
+        if not context.authenticated:
+            return Response({"detail": "请先登录后再使用写作助手。"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        mode = str(request.data.get("mode", "task_list")).strip()
+        if mode not in WRITING_MODES:
+            return Response(
+                {"detail": "mode must be one of: task_list, outline, draft, improve"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        instruction = str(request.data.get("instruction", "")).strip()[:2000]
+        raw_draft = request.data.get("draft") or {}
+        if not isinstance(raw_draft, dict):
+            return Response({"detail": "draft must be an object"}, status=status.HTTP_400_BAD_REQUEST)
+
+        draft = {
+            "title": str(raw_draft.get("title", "")).strip()[:300],
+            "summary": str(raw_draft.get("summary", "")).strip()[:1200],
+            "category": str(raw_draft.get("category", "")).strip()[:120],
+            "tags": str(raw_draft.get("tags", "")).strip()[:500],
+            "content": str(raw_draft.get("content", ""))[:16000],
+        }
+        if not instruction and not draft["title"] and not draft["content"].strip():
+            return Response(
+                {"detail": "请填写写作要求、文章标题或正文后再生成。"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = BlogWritingAgent().generate(mode=mode, instruction=instruction, draft=draft)
+        except WritingAgentConfigurationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except Exception:
+            return Response(
+                {"detail": "写作助手生成失败，请稍后重试或检查模型配置。"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response(
+            {
+                "markdown": result.markdown,
+                "mode": result.mode,
+                "model": result.model,
+                "api_key_source": result.api_key_source,
+            }
         )
 
 
@@ -427,6 +488,12 @@ class BlogAgentChatView(APIView):
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
 
+        previous_messages = list(session.messages.order_by("-id")[:10])
+        history = [
+            {"role": item.role, "content": item.content}
+            for item in reversed(previous_messages)
+        ]
+
         BlogAgentMessage.objects.create(
             session=session,
             role=BlogAgentMessage.Role.USER,
@@ -434,7 +501,7 @@ class BlogAgentChatView(APIView):
         )
 
         agent = PublicBlogAgent(Path(settings.BASE_DIR).parent)
-        answer = agent.answer(message)
+        answer = agent.answer(message, history=history)
         payload = answer.to_dict()
 
         if answer.blocked:

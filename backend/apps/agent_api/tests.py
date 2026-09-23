@@ -8,6 +8,8 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableLambda
 
 from agent.simple_agent import SimpleToolCallingAgent
 
@@ -34,10 +36,13 @@ from .models import (
 from .services.rag import (
     LOCAL_EMBEDDING_DIMENSIONS,
     LOCAL_EMBEDDING_MODEL,
+    SearchResult,
+    expand_search_results_with_neighbors,
     expand_multilingual_query,
     keyword_similarity,
     search_knowledge_base,
 )
+from .services.blog_agent import PublicBlogAgent
 from .services.vector_store import VectorMatch, vector_literal
 
 
@@ -1252,6 +1257,138 @@ class AgentChatTests(TestCase):
         self.assertGreaterEqual(len(results), 1)
         self.assertEqual(results[0].chunk_id, strong_chunk.id)
 
+    def test_retrieval_expands_hit_with_ordered_neighbor_chunks(self):
+        knowledge_base = KnowledgeBase.objects.create(name="neighbor context")
+        document = Document.objects.create(
+            knowledge_base=knowledge_base,
+            title="Sequential Guide",
+            status=Document.Status.READY,
+            chunk_count=5,
+        )
+        chunks = [
+            DocumentChunk.objects.create(
+                document=document,
+                knowledge_base=knowledge_base,
+                chunk_index=index,
+                content=f"ordered section {index}",
+            )
+            for index in range(5)
+        ]
+        hit = SearchResult(
+            document_id=document.id,
+            document_title=document.title,
+            chunk_id=chunks[2].id,
+            chunk_index=2,
+            content=chunks[2].content,
+            score=0.9,
+        )
+
+        expanded = expand_search_results_with_neighbors(
+            [hit],
+            neighbor_window=1,
+            max_results=3,
+        )
+
+        self.assertEqual([item.chunk_index for item in expanded], [1, 2, 3])
+        self.assertEqual([item.document_id for item in expanded], [document.id] * 3)
+        self.assertEqual(expanded[1].score, 0.9)
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_blog_agent_reads_all_ordered_chunks_for_full_article_request(self):
+        knowledge_base = KnowledgeBase.objects.create(name="full article")
+        document = Document.objects.create(
+            knowledge_base=knowledge_base,
+            title="博客：跨片段教程",
+            status=Document.Status.READY,
+            chunk_count=3,
+        )
+        for index, content in enumerate(["开篇背景", "中间实现", "末尾结论"]):
+            DocumentChunk.objects.create(
+                document=document,
+                knowledge_base=knowledge_base,
+                chunk_index=index,
+                content=content,
+            )
+        BlogArticle.objects.create(
+            title="跨片段教程",
+            slug="cross-chunk-guide",
+            summary="一篇覆盖完整流程的教程。",
+            content="# 背景\n开篇。\n\n## 实现\n中间。\n\n## 最终结论\n末尾。",
+            status=BlogArticle.Status.PUBLISHED,
+            knowledge_document=document,
+        )
+        agent = PublicBlogAgent(Path(settings.BASE_DIR).parent)
+
+        result = agent.answer("请问《跨片段教程》这篇文章讲了什么？")
+
+        self.assertIn("最终结论", result.answer)
+        self.assertIn("full_article_read -> 3 ordered chunks", result.trace)
+        self.assertIn("已读取整篇文章", result.answer)
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_blog_agent_resolves_full_article_follow_up_from_history(self):
+        article = BlogArticle.objects.create(
+            title="会话关联文章",
+            slug="conversation-linked-article",
+            summary="用于验证会话关联。",
+            content="# 第一部分\n内容。\n\n## 最后一部分\n结论。",
+            status=BlogArticle.Status.PUBLISHED,
+        )
+        agent = PublicBlogAgent(Path(settings.BASE_DIR).parent)
+
+        result = agent.answer(
+            "那这篇文章讲了什么？",
+            history=[{"role": "user", "content": f"我想了解《{article.title}》"}],
+        )
+
+        self.assertIn(article.title, result.answer)
+        self.assertTrue(any(item.startswith("full_article_read ->") for item in result.trace))
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_full_article_summary_maps_every_chunk_before_reducing(self):
+        knowledge_base = KnowledgeBase.objects.create(name="hierarchical summary")
+        document = Document.objects.create(
+            knowledge_base=knowledge_base,
+            title="博客：长文",
+            status=Document.Status.READY,
+            chunk_count=3,
+        )
+        markers = ["FIRST_END", "MIDDLE_END", "FINAL_END"]
+        for index, marker in enumerate(markers):
+            DocumentChunk.objects.create(
+                document=document,
+                knowledge_base=knowledge_base,
+                chunk_index=index,
+                content=(chr(65 + index) * 4800) + marker,
+            )
+        article = BlogArticle.objects.create(
+            title="长文",
+            slug="long-article",
+            content="fallback",
+            status=BlogArticle.Status.PUBLISHED,
+            knowledge_document=document,
+        )
+        captured_prompts: list[str] = []
+
+        def fake_llm(prompt_value):
+            prompt_text = prompt_value.to_messages()[-1].content
+            captured_prompts.append(prompt_text)
+            if "全部阶段摘要" in prompt_text:
+                return AIMessage(content="完整汇总 [1]")
+            return AIMessage(content=f"阶段摘要 {len(captured_prompts)}")
+
+        agent = PublicBlogAgent(Path(settings.BASE_DIR).parent)
+        agent.llm = RunnableLambda(fake_llm)
+
+        answer, usage, chunk_count = agent._summarize_full_article(article)
+
+        map_prompts = captured_prompts[:-1]
+        self.assertEqual(chunk_count, 3)
+        self.assertEqual(len(map_prompts), 3)
+        self.assertTrue(all(any(marker in prompt for prompt in map_prompts) for marker in markers))
+        self.assertEqual(answer, "完整汇总 [1]")
+        self.assertEqual(usage["total_tokens"], 0)
+
     @patch.dict("os.environ", NO_MODEL_ENV)
     @patch("apps.agent_api.services.rag.search_pgvector")
     def test_knowledge_search_prefers_pgvector_candidates_when_available(self, mocked_search_pgvector):
@@ -1639,3 +1776,107 @@ class AgentChatTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Agent", response.json()["content"])
+
+
+class BlogWritingAgentTests(TestCase):
+    def test_writing_agent_requires_login(self):
+        response = self.client.post(
+            "/api/agent/blog/writing-agent/generate/",
+            {"mode": "task_list", "instruction": "整理写作计划"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    @patch("apps.agent_api.views.blog.BlogWritingAgent")
+    def test_writing_agent_returns_markdown_for_authenticated_author(self, mocked_agent):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        from .services.writing_agent import WritingAgentResult
+
+        user = get_user_model().objects.create_user(username="writer", password="secret-pass")
+        access_token = str(RefreshToken.for_user(user).access_token)
+        mocked_agent.return_value.generate.return_value = WritingAgentResult(
+            markdown="## 写作任务\n\n- [ ] 整理资料",
+            mode="task_list",
+            model="test-model",
+            api_key_source="shared",
+        )
+
+        response = self.client.post(
+            "/api/agent/blog/writing-agent/generate/",
+            {
+                "mode": "task_list",
+                "instruction": "整理写作计划",
+                "draft": {"title": "Agent 笔记", "content": "## 背景"},
+            },
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {access_token}",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("- [ ]", payload["markdown"])
+        self.assertEqual(payload["api_key_source"], "shared")
+        mocked_agent.return_value.generate.assert_called_once()
+
+    @patch("apps.agent_api.services.writing_agent.ChatOpenAI")
+    @patch.dict(
+        "os.environ",
+        {
+            "BLOG_WRITING_AGENT_API_KEY": "",
+            "BLOG_WRITING_AGENT_BASE_URL": "",
+            "BLOG_WRITING_AGENT_MODEL": "",
+            "OPENAI_API_KEY": "shared-key",
+            "OPENAI_BASE_URL": "https://example.test/v1",
+            "OPENAI_MODEL": "shared-model",
+        },
+    )
+    def test_writing_agent_falls_back_to_existing_openai_configuration(self, mocked_chat_openai):
+        from .services.writing_agent import BlogWritingAgent
+
+        agent = BlogWritingAgent()
+
+        self.assertEqual(agent.api_key_source, "shared")
+        self.assertEqual(agent.model, "shared-model")
+        mocked_chat_openai.assert_called_once_with(
+            model="shared-model",
+            api_key="shared-key",
+            base_url="https://example.test/v1",
+            temperature=0.35,
+        )
+
+    @patch("apps.agent_api.services.writing_agent.ChatOpenAI")
+    @patch.dict(
+        "os.environ",
+        {
+            "BLOG_WRITING_AGENT_API_KEY": "dedicated-key",
+            "BLOG_WRITING_AGENT_BASE_URL": "https://writer.example.test/v1",
+            "BLOG_WRITING_AGENT_MODEL": "writer-model",
+            "OPENAI_API_KEY": "shared-key",
+            "OPENAI_BASE_URL": "https://shared.example.test/v1",
+            "OPENAI_MODEL": "shared-model",
+        },
+    )
+    def test_writing_agent_prefers_its_dedicated_configuration(self, mocked_chat_openai):
+        from .services.writing_agent import BlogWritingAgent
+
+        agent = BlogWritingAgent()
+
+        self.assertEqual(agent.api_key_source, "dedicated")
+        self.assertEqual(agent.model, "writer-model")
+        mocked_chat_openai.assert_called_once_with(
+            model="writer-model",
+            api_key="dedicated-key",
+            base_url="https://writer.example.test/v1",
+            temperature=0.35,
+        )
+
+    def test_writing_agent_removes_outer_markdown_fence(self):
+        from .services.writing_agent import BlogWritingAgent
+
+        cleaned = BlogWritingAgent._clean_markdown("```markdown\n## 标题\n\n正文\n```")
+
+        self.assertEqual(cleaned, "## 标题\n\n正文")

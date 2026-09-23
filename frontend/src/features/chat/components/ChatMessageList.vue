@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ChatDotRound, CopyDocument, Promotion } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
+import { MdPreview } from "md-editor-v3";
+import "md-editor-v3/lib/style.css";
 import ChatThinkingPanel from "./ChatThinkingPanel.vue";
 import type { ChatMessage, ToolCall } from "../types";
 
@@ -84,7 +86,16 @@ async function copyMessage(content: string) {
         >
           <el-icon><CopyDocument /></el-icon>
         </button>
-        <p>{{ message.content }}</p>
+        <MdPreview
+          v-if="message.role === 'agent'"
+          :model-value="message.content"
+          language="zh-CN"
+          preview-theme="github"
+          code-theme="github"
+          :show-code-row-number="false"
+          class="agent-md-preview"
+        />
+        <p v-else>{{ message.content }}</p>
         <ChatThinkingPanel
           v-if="message.role === 'agent' && (message.streamingTrace?.length || message.trace?.length)"
           :traces="message.streamingTrace?.length ? message.streamingTrace : (message.trace ?? [])"

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { CollectionTag, Files, Promotion } from "@element-plus/icons-vue";
+import { computed } from "vue";
+import { CollectionTag, Files, FolderOpened, Promotion } from "@element-plus/icons-vue";
 import type { ArchiveGroup, BlogCategory, BlogTag } from "../types";
 
-defineProps<{
+const props = defineProps<{
   tags: BlogTag[];
   categories: BlogCategory[];
   archive: ArchiveGroup[];
@@ -11,21 +12,28 @@ defineProps<{
 }>();
 
 defineEmits<{ filter: [params: Record<string, string>] }>();
+
+const articleCount = computed(() => props.categories.reduce((total, item) => total + item.article_count, 0));
 </script>
 
 <template>
   <aside class="blog-panel">
-    <section class="side-box">
-      <h2><el-icon><CollectionTag /></el-icon> 标签</h2>
-      <div class="tag-cloud">
-        <button v-for="tag in tags" :key="tag.id" type="button" @click="$emit('filter', { tag: tag.slug })">
-          {{ tag.name }} {{ tag.article_count }}
-        </button>
+    <section class="side-box index-overview">
+      <span class="side-eyebrow">LIBRARY OVERVIEW</span>
+      <h2>知识索引</h2>
+      <p>按主题浏览技术文章、项目复盘与学习记录。</p>
+      <div class="index-stats">
+        <div><strong>{{ articleCount }}</strong><span>文章</span></div>
+        <div><strong>{{ categories.length }}</strong><span>分类</span></div>
+        <div><strong>{{ tags.length }}</strong><span>标签</span></div>
       </div>
     </section>
 
-    <section class="side-box">
-      <h2>分类</h2>
+    <section class="side-box navigation-box">
+      <header class="side-box-heading">
+        <h2><el-icon><FolderOpened /></el-icon> 文章分类</h2>
+        <small>主题导航</small>
+      </header>
       <div class="category-list">
         <button
           type="button"
@@ -33,6 +41,7 @@ defineEmits<{ filter: [params: Record<string, string>] }>();
           @click="$emit('filter', { category: '' })"
         >
           <span class="category-name">全部分类</span>
+          <span class="category-count">{{ articleCount }}</span>
         </button>
         <button
           v-for="category in categories"
@@ -47,17 +56,36 @@ defineEmits<{ filter: [params: Record<string, string>] }>();
       </div>
     </section>
 
-    <section class="side-box">
-      <h2><el-icon><Files /></el-icon> 归档</h2>
-      <button v-for="group in archive" :key="group.month" type="button" class="archive-item">
-        {{ group.month }} / {{ group.articles.length }} 篇
-      </button>
+    <section class="side-box navigation-box">
+      <header class="side-box-heading">
+        <h2><el-icon><CollectionTag /></el-icon> 专题标签</h2>
+        <small>知识点</small>
+      </header>
+      <div class="topic-list">
+        <button v-for="tag in tags" :key="tag.id" type="button" @click="$emit('filter', { tag: tag.slug })">
+          <span># {{ tag.name }}</span><strong>{{ tag.article_count }}</strong>
+        </button>
+      </div>
+    </section>
+
+    <section class="side-box navigation-box archive-box">
+      <header class="side-box-heading">
+        <h2><el-icon><Files /></el-icon> 时间归档</h2>
+        <small>{{ archive.length }} 期</small>
+      </header>
+      <div class="archive-list">
+        <div v-for="group in archive" :key="group.month" class="archive-item">
+          <span>{{ group.month }}</span><strong>{{ group.articles.length }} 篇</strong>
+        </div>
+      </div>
     </section>
 
     <section v-if="about" class="side-box about-box">
-      <h2><el-icon><Promotion /></el-icon> 关于我</h2>
+      <h2><el-icon><Promotion /></el-icon> 作者简介</h2>
       <p>{{ about.content }}</p>
-      <span v-for="item in about.highlights" :key="item">{{ item }}</span>
+      <div class="about-highlights">
+        <span v-for="item in about.highlights" :key="item">{{ item }}</span>
+      </div>
     </section>
   </aside>
 </template>

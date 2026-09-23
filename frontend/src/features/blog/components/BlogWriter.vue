@@ -1,22 +1,30 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref } from "vue";
 import { EditPen, UploadFilled, ArrowDown } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
-import { MdEditor, type UploadImgEvent, type HeadList } from "md-editor-v3";
-import { EditorView } from "@codemirror/view";
 import type { BlogDraft, EditorStats } from "../types";
+import type { WritingAssistantRequest, WritingAssistantResult } from "../types";
 import { parseMarkdownFile, type ParsedMarkdown } from "../utils/parseMarkdownFile";
+import VditorEditor from "./VditorEditor.vue";
+import WritingAssistantPanel from "./WritingAssistantPanel.vue";
+import ThemeSwitcher from "./ThemeSwitcher.vue";
+import ThemeCreator from "./ThemeCreator.vue";
 
 const props = defineProps<{
   draft: BlogDraft;
   templates: Array<{ name: string; content: string }>;
+  categories: Array<{ id: number; name: string }>;
   stats: EditorStats;
   publishing: boolean;
   uploadingImage: boolean;
   error: string;
-  uploadHandler: UploadImgEvent;
+  uploadHandler: (files: File[]) => Promise<Array<{ url: string; alt?: string; title?: string }>>;
   editingArticle?: { title: string } | null;
   updating?: boolean;
+  authenticated: boolean;
+  writingAssistantLoading: boolean;
+  writingAssistantError: string;
+  writingAssistantResult: WritingAssistantResult | null;
 }>();
 
 const emit = defineEmits<{
@@ -28,13 +36,13 @@ const emit = defineEmits<{
   clearDraft: [];
   importMarkdown: [data: ParsedMarkdown];
   uploadCoverImage: [file: File];
+  generateWithAssistant: [request: WritingAssistantRequest];
+  applyAssistantResult: [strategy: "append" | "replace"];
+  clearAssistantResult: [];
 }>();
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const coverInputRef = ref<HTMLInputElement | null>(null);
-const editorRef = ref<InstanceType<typeof MdEditor>>();
-const headings = ref<HeadList[]>([]);
-const activeHeadingIndex = ref(0);
 
 const ALLOWED_EXTENSIONS = [".md", ".markdown", ".txt"];
 const MAX_FILE_SIZE = 1024 * 1024; // 1MB
@@ -101,36 +109,9 @@ function handleFileSelect(event: Event) {
   reader.readAsText(file, "UTF-8");
 }
 
-// 获取目录
-function handleGetCatalog(list: HeadList[]) {
-  headings.value = list;
-}
-
-// 跳转到标题
-function scrollToHeading(item: HeadList, index: number) {
-  const editorView = editorRef.value?.getEditorView();
-  if (!editorView) return;
-
-  activeHeadingIndex.value = index;
-
-  // 获取标题所在的行
-  const line = item.line;
-  const lineObj = editorView.state.doc.line(line);
-
-  // 滚动到该行并聚焦
-  editorView.dispatch({
-    selection: { anchor: lineObj.from },
-    effects: EditorView.scrollIntoView(lineObj.from, { y: 'start' })
-  });
-
-  // 聚焦编辑器
-  editorView.focus();
-}
-
-// 监听编辑器滚动，更新活跃标题
-function handleEditorScroll() {
-  // 这里可以通过监听编辑器滚动事件来更新 activeHeadingIndex
-  // 简化实现：暂时不自动高亮
+// Image upload adapter for Vditor
+async function vditorUploadHandler(files: File[]): Promise<Array<{ url: string; alt?: string; title?: string }>> {
+  return props.uploadHandler(files);
 }
 </script>
 
@@ -150,6 +131,7 @@ function handleEditorScroll() {
           style="display: none"
           @change="handleFileSelect"
         />
+        <ThemeSwitcher />
         <el-button v-if="editingArticle" @click="emit('cancelEdit')">取消编辑</el-button>
         <el-button
           type="primary"
@@ -188,7 +170,15 @@ function handleEditorScroll() {
       </div>
 
       <div class="writer-meta">
-        <el-input v-model="draft.category" placeholder="分类" />
+        <el-select
+          v-model="draft.category"
+          filterable
+          allow-create
+          default-first-option
+          placeholder="选择已有分类或输入新分类"
+        >
+          <el-option v-for="item in categories" :key="item.id" :label="item.name" :value="item.name" />
+        </el-select>
         <el-input v-model="draft.tags" placeholder="标签，逗号分隔" />
       </div>
     </div>
@@ -229,40 +219,26 @@ function handleEditorScroll() {
       </div>
     </div>
 
-    <!-- 编辑器区域（左侧大纲 + 右侧编辑器） -->
-    <div class="editor-container">
-      <!-- 左侧大纲 -->
-      <aside class="editor-outline" v-if="headings.length">
-        <div class="outline-header">大纲</div>
-        <nav class="outline-nav">
-          <a
-            v-for="(item, index) in headings"
-            :key="index"
-            :class="['outline-item', `level-${item.level}`, { active: activeHeadingIndex === index }]"
-            @click="scrollToHeading(item, index)"
-          >
-            {{ item.text }}
-          </a>
-        </nav>
-      </aside>
+    <WritingAssistantPanel
+      :authenticated="authenticated"
+      :has-content="Boolean(draft.content.trim())"
+      :loading="writingAssistantLoading"
+      :error="writingAssistantError"
+      :result="writingAssistantResult"
+      @generate="emit('generateWithAssistant', $event)"
+      @apply="emit('applyAssistantResult', $event)"
+      @clear="emit('clearAssistantResult')"
+    />
 
-      <!-- 右侧编辑器 -->
-      <div class="editor-main">
-        <MdEditor
-          ref="editorRef"
-          v-model="draft.content"
-          language="zh-CN"
-          preview-theme="github"
-          code-theme="github"
-          :toolbars-exclude="['github']"
-          :show-code-row-number="true"
-          :footers="['markdownTotal', 'scrollSwitch']"
-          :on-upload-img="uploadHandler"
-          @onGetCatalog="handleGetCatalog"
-          placeholder="用 Markdown 写正文，可插入标题、列表、代码块、表格、链接、图片、流程图和公式。"
-          class="blog-md-editor"
-        />
-      </div>
+    <!-- 编辑器区域（Vditor WYSIWYG 编辑器） -->
+    <div class="editor-container">
+      <VditorEditor
+        v-model="draft.content"
+        mode="wysiwyg"
+        :height="600"
+        :upload-handler="vditorUploadHandler"
+        class="blog-vditor-editor"
+      />
     </div>
 
     <!-- 错误提示 -->
@@ -284,4 +260,6 @@ function handleEditorScroll() {
       </el-button>
     </div>
   </section>
+
+  <ThemeCreator />
 </template>

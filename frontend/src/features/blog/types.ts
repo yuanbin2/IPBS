@@ -33,6 +33,8 @@ export interface BlogArticle {
   category: BlogCategory | null;
   tags: BlogTag[];
   published_at: string | null;
+  created_at: string;
+  updated_at?: string;
   knowledge_document_id: number | null;
   comment_count: number;
   comments?: BlogComment[];
@@ -49,6 +51,8 @@ export interface BlogAgentSource {
   content: string;
   score: number;
   url: string;
+  document_id?: number | null;
+  chunk_index?: number | null;
 }
 
 export interface BlogAgentChatMessage {
@@ -75,6 +79,20 @@ export interface BlogDraft {
   category: string;
   tags: string;
   content: string;
+}
+
+export type WritingAssistantMode = "task_list" | "outline" | "draft" | "improve";
+
+export interface WritingAssistantRequest {
+  mode: WritingAssistantMode;
+  instruction: string;
+}
+
+export interface WritingAssistantResult {
+  markdown: string;
+  mode: WritingAssistantMode;
+  model: string;
+  apiKeySource: "dedicated" | "shared";
 }
 
 export interface HeadingItem {

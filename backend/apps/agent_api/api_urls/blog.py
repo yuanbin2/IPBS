@@ -12,6 +12,7 @@ from ..views.blog import (
     BlogCommentCreateView,
     BlogImageUploadView,
     BlogTagListView,
+    BlogWritingAgentView,
 )
 
 urlpatterns = [
@@ -26,4 +27,5 @@ urlpatterns = [
     path("blog/archive/", BlogArchiveView.as_view(), name="blog-archive"),
     path("blog/about/", BlogAboutView.as_view(), name="blog-about"),
     path("blog/agent/chat/", BlogAgentChatView.as_view(), name="blog-agent-chat"),
+    path("blog/writing-agent/generate/", BlogWritingAgentView.as_view(), name="blog-writing-agent-generate"),
 ]

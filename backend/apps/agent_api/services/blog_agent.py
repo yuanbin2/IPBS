@@ -15,7 +15,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
 from ..models import BlogArticle
-from .rag import search_knowledge_base
+from .rag import expand_search_results_with_neighbors, search_knowledge_base, split_text
 
 
 PUBLIC_README_FILES = [
@@ -39,6 +39,8 @@ class BlogAgentSource:
     content: str
     score: float = 0.0
     url: str = ""
+    document_id: int | None = None
+    chunk_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,43 @@ class PublicBlogAgent:
                 token_usage=self._empty_usage(),
             )
 
+        summary_article = self._resolve_full_article_request(question, sources, history)
+        if summary_article is not None:
+            article_sources = self._sources_for_article(summary_article, sources)
+            if self.llm is None:
+                return BlogAgentAnswer(
+                    answer=self._fallback_full_article_summary(summary_article),
+                    sources=article_sources,
+                    trace=[
+                        *trace,
+                        f"full_article_read -> {self._article_chunk_count(summary_article)} ordered chunks",
+                        "generate -> structural fallback",
+                    ],
+                    token_usage=self._empty_usage(),
+                )
+            try:
+                answer, token_usage, chunk_count = self._summarize_full_article(summary_article)
+                return BlogAgentAnswer(
+                    answer=answer,
+                    sources=article_sources,
+                    trace=[
+                        *trace,
+                        f"full_article_read -> {chunk_count} ordered chunks",
+                        "generate -> hierarchical full-article summary",
+                    ],
+                    token_usage=token_usage,
+                )
+            except Exception as exc:
+                return BlogAgentAnswer(
+                    answer=self._fallback_full_article_summary(summary_article),
+                    sources=article_sources,
+                    trace=[
+                        *trace,
+                        f"full_article_read -> fallback because {type(exc).__name__}",
+                    ],
+                    token_usage=self._empty_usage(),
+                )
+
         if self.llm is None:
             return BlogAgentAnswer(
                 answer=self._fallback_answer(question, sources),
@@ -137,14 +176,16 @@ class PublicBlogAgent:
         else:
             sources = [*self._search_public_blog_documents(question), *self._search_articles(question)]
         unique: list[BlogAgentSource] = []
-        seen: set[tuple[str, str]] = set()
+        seen: set[tuple[str, str, int | None, int | None]] = set()
         for source in sources:
-            key = (source.kind, source.title)
+            # Multiple chunks from the same article are intentionally retained.
+            # Their document/chunk identity carries the sequence relationship.
+            key = (source.kind, source.title, source.document_id, source.chunk_index)
             if key in seen:
                 continue
             seen.add(key)
             unique.append(source)
-            if len(unique) >= 5:
+            if len(unique) >= 8:
                 break
         return unique or self._default_public_sources()
 
@@ -158,17 +199,23 @@ class PublicBlogAgent:
         if not public_document_ids:
             return []
 
-        results = search_knowledge_base(question, limit=12)
+        results = search_knowledge_base(question, limit=6)
+        public_results = [result for result in results if result.document_id in public_document_ids]
+        public_results = expand_search_results_with_neighbors(
+            public_results,
+            neighbor_window=1,
+            max_results=12,
+        )
         sources: list[BlogAgentSource] = []
-        for result in results:
-            if result.document_id not in public_document_ids:
-                continue
+        for result in public_results:
             sources.append(
                 BlogAgentSource(
                     title=result.document_title,
                     kind="blog_knowledge",
                     content=result.content,
                     score=result.score,
+                    document_id=result.document_id,
+                    chunk_index=result.chunk_index,
                 )
             )
         return sources
@@ -198,9 +245,202 @@ class PublicBlogAgent:
                     content=f"{article.summary}\n\n{article.content[:700]}".strip(),
                     url=f"/blog/{article.slug}",
                     score=0.5,
+                    document_id=article.knowledge_document_id,
                 )
             )
         return sources
+
+    @staticmethod
+    def _is_full_article_request(question: str) -> bool:
+        normalized = question.lower()
+        return any(
+            phrase in normalized
+            for phrase in [
+                "讲了什么",
+                "主要讲什么",
+                "主要内容",
+                "内容是什么",
+                "介绍了什么",
+                "总结全文",
+                "总结这篇",
+                "概括全文",
+                "概括这篇",
+                "整篇文章",
+                "全文总结",
+                "梳理这篇",
+            ]
+        )
+
+    @staticmethod
+    def _normalize_title(value: str) -> str:
+        return re.sub(r"[^\w\u4e00-\u9fff]+", "", value.lower())
+
+    def _resolve_full_article_request(
+        self,
+        question: str,
+        sources: list[BlogAgentSource],
+        history: list[dict[str, str]],
+    ) -> BlogArticle | None:
+        if not self._is_full_article_request(question):
+            return None
+
+        articles = BlogArticle.objects.filter(status=BlogArticle.Status.PUBLISHED).select_related(
+            "knowledge_document"
+        )
+        normalized_question = self._normalize_title(question)
+        title_matches = [
+            article
+            for article in articles
+            if self._normalize_title(article.title) in normalized_question
+        ]
+        if title_matches:
+            return max(title_matches, key=lambda article: len(self._normalize_title(article.title)))
+
+        # Resolve “这篇文章” from the latest conversation turn when the title
+        # is omitted in a follow-up question.
+        article_list = list(articles)
+        for item in reversed(history[-10:]):
+            normalized_history = self._normalize_title(item.get("content", ""))
+            history_matches = [
+                article
+                for article in article_list
+                if self._normalize_title(article.title) in normalized_history
+            ]
+            if history_matches:
+                return max(history_matches, key=lambda article: len(self._normalize_title(article.title)))
+
+        document_ids = [
+            source.document_id
+            for source in sources
+            if source.kind == "blog_knowledge" and source.document_id is not None
+        ]
+        if document_ids:
+            by_document = {
+                article.knowledge_document_id: article
+                for article in articles.filter(knowledge_document_id__in=document_ids)
+            }
+            for document_id in document_ids:
+                if document_id in by_document:
+                    return by_document[document_id]
+        return None
+
+    def _sources_for_article(
+        self,
+        article: BlogArticle,
+        sources: list[BlogAgentSource],
+    ) -> list[BlogAgentSource]:
+        canonical_source = BlogAgentSource(
+            title=article.title,
+            kind="blog_article",
+            content=(
+                article.summary.strip()
+                or f"完整文章，共 {self._article_chunk_count(article)} 个有序知识片段。"
+            ),
+            url=f"/blog/{article.slug}",
+            score=1.0,
+            document_id=article.knowledge_document_id,
+        )
+        matched_chunks = [
+            source
+            for source in sources
+            if source.kind == "blog_knowledge"
+            and source.document_id == article.knowledge_document_id
+        ]
+        return [canonical_source, *matched_chunks[:7]]
+
+    def _ordered_article_chunks(self, article: BlogArticle) -> list[str]:
+        if article.knowledge_document_id:
+            chunks = list(
+                article.knowledge_document.chunks.order_by("chunk_index").values_list("content", flat=True)
+            )
+            if chunks:
+                return chunks
+        return split_text(article.content)
+
+    def _article_chunk_count(self, article: BlogArticle) -> int:
+        return len(self._ordered_article_chunks(article))
+
+    def _summarize_full_article(self, article: BlogArticle) -> tuple[str, dict[str, int], int]:
+        chunks = self._ordered_article_chunks(article)
+        if not chunks:
+            raise ValueError("article has no readable content")
+
+        batches: list[str] = []
+        current: list[str] = []
+        current_chars = 0
+        for index, chunk in enumerate(chunks, start=1):
+            labeled = f"[片段 {index}/{len(chunks)}]\n{chunk}"
+            if current and current_chars + len(labeled) > 9000:
+                batches.append("\n\n".join(current))
+                current = []
+                current_chars = 0
+            current.append(labeled)
+            current_chars += len(labeled)
+        if current:
+            batches.append("\n\n".join(current))
+
+        map_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    (
+                        "你正在按原文顺序阅读一篇长博客。请完整提取当前部分的主题、关键知识点、"
+                        "步骤、示例和结论；不要只总结开头，不要添加原文没有的信息。"
+                    ),
+                ),
+                ("human", "文章标题：{title}\n\n当前部分：\n{content}\n\n请输出结构化的阶段摘要。"),
+            ]
+        )
+        partial_summaries: list[str] = []
+        usage = self._empty_usage()
+        for batch in batches:
+            message = (map_prompt | self.llm).invoke({"title": article.title, "content": batch})
+            partial_summaries.append(str(message.content))
+            usage = self._merge_usage(usage, self._extract_token_usage(message))
+
+        reduce_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    (
+                        "你已经顺序读完一篇博客的所有部分。请综合所有阶段摘要，回答这篇文章讲了什么。"
+                        "覆盖全文而不是只覆盖相似片段，合并重复内容，按主题组织，并说明文章的最终结论或实践建议。"
+                        "只能依据给定摘要回答，结尾使用 [1] 引用该文章。"
+                    ),
+                ),
+                ("human", "文章标题：{title}\n\n全部阶段摘要：\n{summaries}\n\n请生成完整文章概述。"),
+            ]
+        )
+        final_message = (reduce_prompt | self.llm).invoke(
+            {
+                "title": article.title,
+                "summaries": "\n\n".join(
+                    f"第 {index} 部分：\n{summary}"
+                    for index, summary in enumerate(partial_summaries, start=1)
+                ),
+            }
+        )
+        usage = self._merge_usage(usage, self._extract_token_usage(final_message))
+        return str(final_message.content), usage, len(chunks)
+
+    def _fallback_full_article_summary(self, article: BlogArticle) -> str:
+        headings = []
+        for level, heading in re.findall(r"(?m)^(#{1,6})\s+(.+?)\s*$", article.content):
+            clean_heading = re.sub(r"[`*_]", "", heading).strip()
+            if clean_heading and clean_heading not in headings:
+                headings.append(clean_heading)
+
+        lines = [f"《{article.title}》是一篇完整文章。"]
+        if article.summary.strip():
+            lines.append(article.summary.strip())
+        if headings:
+            lines.append("文章按顺序覆盖这些部分：")
+            lines.extend(f"- {heading}" for heading in headings[:30])
+        lines.append(
+            "当前未配置可用的大模型，因此这里展示的是基于全文标题结构提取的概览；"
+            "已读取整篇文章，而不是只读取开头的检索片段。[1]"
+        )
+        return "\n\n".join(lines)
 
     @staticmethod
     def _is_system_tech_stack_question(question: str) -> bool:
@@ -278,6 +518,7 @@ class PublicBlogAgent:
                     content=f"{article.summary}\n\n{article.content[:500]}".strip(),
                     url=f"/blog/{article.slug}",
                     score=0.2,
+                    document_id=article.knowledge_document_id,
                 )
             )
         return sources
@@ -384,4 +625,12 @@ class PublicBlogAgent:
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0,
+        }
+
+    @staticmethod
+    def _merge_usage(left: dict[str, int], right: dict[str, int]) -> dict[str, int]:
+        return {
+            "prompt_tokens": left.get("prompt_tokens", 0) + right.get("prompt_tokens", 0),
+            "completion_tokens": left.get("completion_tokens", 0) + right.get("completion_tokens", 0),
+            "total_tokens": left.get("total_tokens", 0) + right.get("total_tokens", 0),
         }

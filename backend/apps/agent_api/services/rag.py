@@ -16,6 +16,7 @@ from typing import Iterable
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from langchain_openai import OpenAIEmbeddings
 
 from ..models import Document, DocumentChunk, EmbeddingRecord, KnowledgeBase
@@ -575,6 +576,101 @@ def diversify_search_results(scored: list[SearchResult], limit: int) -> list[Sea
         selected.append(item)
         selected_chunk_ids.add(item.chunk_id)
     return selected
+
+
+def expand_search_results_with_neighbors(
+    results: list[SearchResult],
+    *,
+    neighbor_window: int = 1,
+    max_results: int = 15,
+) -> list[SearchResult]:
+    """Attach adjacent chunks while retaining every original semantic hit.
+
+    Vector search treats chunks as independent records.  Agents need a small
+    parent-document window as well, otherwise a sentence at a chunk boundary
+    loses the explanation immediately before or after it.  Original matches
+    are always retained; neighbor chunks fill the remaining budget and the
+    final result is ordered by document and ``chunk_index`` for coherent
+    reading.
+    """
+    if not results or max_results <= 0:
+        return []
+
+    unique_results: list[SearchResult] = []
+    seen_chunk_ids: set[int] = set()
+    for result in results:
+        if result.chunk_id in seen_chunk_ids:
+            continue
+        seen_chunk_ids.add(result.chunk_id)
+        unique_results.append(result)
+        if len(unique_results) >= max_results:
+            break
+
+    if neighbor_window <= 0:
+        return unique_results
+
+    target_indexes: dict[int, set[int]] = {}
+    document_rank: dict[int, int] = {}
+    for rank, result in enumerate(unique_results):
+        document_rank.setdefault(result.document_id, rank)
+        indexes = target_indexes.setdefault(result.document_id, set())
+        start = max(0, result.chunk_index - neighbor_window)
+        indexes.update(range(start, result.chunk_index + neighbor_window + 1))
+
+    chunk_filter = Q()
+    for document_id, indexes in target_indexes.items():
+        chunk_filter |= Q(document_id=document_id, chunk_index__in=indexes)
+
+    chunks = list(
+        DocumentChunk.objects.select_related("document")
+        .filter(chunk_filter)
+        .order_by("document_id", "chunk_index")
+    )
+    original_by_id = {result.chunk_id: result for result in unique_results}
+    original_by_document: dict[int, list[SearchResult]] = {}
+    for result in unique_results:
+        original_by_document.setdefault(result.document_id, []).append(result)
+
+    neighbor_candidates: list[tuple[int, int, DocumentChunk, float]] = []
+    for chunk in chunks:
+        if chunk.id in original_by_id:
+            continue
+        matches = original_by_document.get(chunk.document_id, [])
+        if not matches:
+            continue
+        nearest = min(matches, key=lambda item: abs(item.chunk_index - chunk.chunk_index))
+        distance = abs(nearest.chunk_index - chunk.chunk_index)
+        neighbor_candidates.append(
+            (
+                distance,
+                document_rank[chunk.document_id],
+                chunk,
+                nearest.score * (0.97**distance),
+            )
+        )
+
+    selected = list(unique_results)
+    for _, _, chunk, score in sorted(
+        neighbor_candidates,
+        key=lambda item: (item[0], item[1], item[2].chunk_index),
+    ):
+        if len(selected) >= max_results:
+            break
+        selected.append(
+            SearchResult(
+                document_id=chunk.document_id,
+                document_title=chunk.document.title,
+                chunk_id=chunk.id,
+                chunk_index=chunk.chunk_index,
+                content=chunk.content,
+                score=score,
+            )
+        )
+
+    return sorted(
+        selected,
+        key=lambda item: (document_rank.get(item.document_id, len(document_rank)), item.chunk_index),
+    )
 
 
 def format_search_results(results: list[SearchResult]) -> str:

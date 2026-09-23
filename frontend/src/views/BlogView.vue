@@ -6,7 +6,6 @@ import {
   Loading,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { type UploadImgEvent } from "md-editor-v3";
 import "md-editor-v3/lib/style.css";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
@@ -21,7 +20,9 @@ import type {
   BlogAgentChatMessage,
   BlogArticle,
   BlogCategory,
-  BlogTag
+  BlogTag,
+  WritingAssistantRequest,
+  WritingAssistantResult
 } from "../features/blog/types";
 import type { ParsedMarkdown } from "../features/blog/utils/parseMarkdownFile";
 
@@ -74,6 +75,14 @@ const activeCategory = ref("");
 const showWriter = ref(false);
 const showMyNotes = ref(false);
 const searchQuery = ref("");
+const writingAssistantLoading = ref(false);
+const writingAssistantError = ref("");
+const writingAssistantResult = ref<WritingAssistantResult | null>(null);
+
+const libraryArticleCount = computed(() => {
+  const categorizedCount = categories.value.reduce((total, item) => total + item.article_count, 0);
+  return Math.max(articles.value.length, categorizedCount);
+});
 
 const draft = ref({
   title: "我的 LangGraph 项目复盘",
@@ -471,6 +480,62 @@ function insertSnippet(snippet: string) {
   draft.value.content = `${draft.value.content.trim()}\n\n${snippet}\n`;
 }
 
+async function generateWithWritingAssistant(request: WritingAssistantRequest) {
+  if (!auth.isAuthenticated) {
+    writingAssistantError.value = "请先登录后再使用写作助手。";
+    return;
+  }
+
+  writingAssistantLoading.value = true;
+  writingAssistantError.value = "";
+  try {
+    const payload = await requestJson("/api/agent/blog/writing-agent/generate/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: request.mode,
+        instruction: request.instruction,
+        draft: draft.value
+      })
+    });
+    writingAssistantResult.value = {
+      markdown: payload.markdown,
+      mode: payload.mode,
+      model: payload.model,
+      apiKeySource: payload.api_key_source
+    };
+  } catch (error) {
+    writingAssistantError.value = error instanceof Error ? error.message : "写作助手暂时不可用。";
+  } finally {
+    writingAssistantLoading.value = false;
+  }
+}
+
+async function applyWritingAssistantResult(strategy: "append" | "replace") {
+  const result = writingAssistantResult.value;
+  if (!result) return;
+
+  if (strategy === "replace" && draft.value.content.trim()) {
+    try {
+      await ElMessageBox.confirm(
+        "替换会覆盖当前正文，但本地自动保存仍会记录替换后的内容。是否继续？",
+        "替换正文",
+        { confirmButtonText: "确认替换", cancelButtonText: "取消", type: "warning" }
+      );
+    } catch {
+      return;
+    }
+  }
+
+  if (strategy === "replace") {
+    draft.value.content = result.markdown;
+  } else {
+    const current = draft.value.content.trimEnd();
+    draft.value.content = current ? `${current}\n\n${result.markdown}\n` : `${result.markdown}\n`;
+  }
+  ElMessage.success(strategy === "replace" ? "已用生成结果替换正文" : "已将生成结果追加到正文");
+}
+
 async function clearDraftCache() {
   try {
     await ElMessageBox.confirm(
@@ -711,7 +776,7 @@ function handleBlogAgentKeydown(event: KeyboardEvent) {
   void sendBlogAgentMessage();
 }
 
-const handleEditorUpload: UploadImgEvent = async (files, callback) => {
+const handleEditorUpload = async (files: File[]): Promise<Array<{ url: string; alt?: string; title?: string }>> => {
   editorError.value = "";
   uploadingImage.value = true;
   try {
@@ -730,9 +795,10 @@ const handleEditorUpload: UploadImgEvent = async (files, callback) => {
         };
       })
     );
-    callback(uploaded);
+    return uploaded;
   } catch (error) {
     editorError.value = error instanceof Error ? error.message : "图片上传失败。";
+    return [];
   } finally {
     uploadingImage.value = false;
   }
@@ -779,12 +845,26 @@ async function requestJson(url: string, options: RequestInit = {}) {
           {{ rightPanelVisible ? "›" : "‹" }}
         </button>
         <main class="blog-main">
+          <section v-if="!currentArticle" class="blog-library-hero">
+            <div class="library-hero-copy">
+              <span class="section-eyebrow">ENGINEERING · ALGORITHMS · AGENTS</span>
+              <h1>技术笔记与项目实践</h1>
+              <p>沉淀可检索、可复用的工程经验。按分类进入主题，按标签定位具体知识点。</p>
+            </div>
+            <dl class="library-hero-stats">
+              <div><dt>{{ libraryArticleCount }}</dt><dd>公开文章</dd></div>
+              <div><dt>{{ categories.length }}</dt><dd>主题分类</dd></div>
+              <div><dt>{{ tags.length }}</dt><dd>知识标签</dd></div>
+            </dl>
+          </section>
+
           <!-- 顶部工具栏：搜索 + 操作按钮 -->
           <section class="blog-toolbar" v-if="!currentArticle">
             <div class="blog-search-bar">
+              <label>检索文章</label>
               <el-input
                 v-model="searchQuery"
-                placeholder="搜索文章标题、摘要、内容..."
+                placeholder="输入算法、框架或项目关键词"
                 size="large"
                 clearable
                 @keyup.enter="searchArticles"
@@ -842,6 +922,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
             <BlogWriter
               :draft="draft"
               :templates="noteTemplates"
+              :categories="categories"
               :stats="editorStats"
               :publishing="publishing"
               :uploading-image="uploadingImage"
@@ -849,6 +930,10 @@ async function requestJson(url: string, options: RequestInit = {}) {
               :upload-handler="handleEditorUpload"
               :editing-article="editingArticle"
               :updating="updatingArticle"
+              :authenticated="auth.isAuthenticated"
+              :writing-assistant-loading="writingAssistantLoading"
+              :writing-assistant-error="writingAssistantError"
+              :writing-assistant-result="writingAssistantResult"
               @publish="publishDraft"
               @update="updatePendingArticle"
               @cancel-edit="closeWriter"
@@ -857,6 +942,9 @@ async function requestJson(url: string, options: RequestInit = {}) {
               @clear-draft="clearDraftCache"
               @import-markdown="importMarkdownFile"
               @upload-cover-image="handleCoverImageUpload"
+              @generate-with-assistant="generateWithWritingAssistant"
+              @apply-assistant-result="applyWritingAssistantResult"
+              @clear-assistant-result="writingAssistantResult = null; writingAssistantError = ''"
             />
           </div>
 
