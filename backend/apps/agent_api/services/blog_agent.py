@@ -2,6 +2,10 @@
 
 它只检索已发布博客和允许公开的项目材料，并在检索前拦截凭据、
 数据库结构、后台权限等问题。
+
+本类是编排层：安全过滤、来源检索（blog_public_retrieval）、全文摘要
+（blog_article_summary）与 LLM 管道（llm_support）都下沉在独立模块，
+这里只负责把各环节按顺序组织成一次回答。
 """
 
 from __future__ import annotations
@@ -12,16 +16,21 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 
 from ..models import BlogArticle
-from .rag import expand_search_results_with_neighbors, search_knowledge_base, split_text
-
-PUBLIC_README_FILES = [
-    "README.md",
-    "docs/architecture.md",
-    "docs/day-06-notes.md",
-]
+from . import blog_public_retrieval as retrieval
+from .blog_article_summary import (
+    fallback_full_article_summary,
+    ordered_article_chunks,
+    summarize_full_article,
+)
+from .llm_support import (
+    build_openai_chat,
+    empty_token_usage,
+    extract_token_usage,
+    merge_token_usage,
+    normalized_openai_base_url,
+)
 
 BLOCKED_PATTERNS = [
     (r"api\s*key|apikey|secret|token|password|密码|密钥|令牌|\.env|环境变量", "敏感凭据"),
@@ -30,22 +39,68 @@ BLOCKED_PATTERNS = [
     (r"系统提示词|prompt|越狱|绕过|忽略.*规则|泄露", "提示词与越权请求"),
 ]
 
-
-@dataclass(frozen=True)
-class BlogAgentSource:
-    title: str
-    kind: str
-    content: str
-    score: float = 0.0
-    url: str = ""
-    document_id: int | None = None
-    chunk_index: int | None = None
+TECH_STACK_GROUPS = [
+    (
+        "前端",
+        [
+            ("Vue 3", ["vue 3"]),
+            ("TypeScript", ["typescript"]),
+            ("Vite", ["vite"]),
+            ("Pinia", ["pinia"]),
+            ("Vue Router", ["vue router"]),
+            ("Element Plus", ["element plus"]),
+            ("md-editor-v3", ["md-editor-v3"]),
+        ],
+    ),
+    (
+        "后端",
+        [
+            ("Python", ["python"]),
+            ("Django", ["django"]),
+            ("Django REST Framework", ["django rest framework", "drf"]),
+            ("ASGI", ["asgi"]),
+            ("Uvicorn", ["uvicorn"]),
+            ("Gunicorn", ["gunicorn"]),
+        ],
+    ),
+    (
+        "数据与异步任务",
+        [
+            ("PostgreSQL", ["postgresql"]),
+            ("pgvector", ["pgvector"]),
+            ("Redis", ["redis"]),
+            ("RabbitMQ", ["rabbitmq"]),
+            ("Celery Worker", ["celery worker"]),
+            ("Celery Beat", ["celery beat"]),
+        ],
+    ),
+    (
+        "Agent 与 AI",
+        [
+            ("LangChain", ["langchain"]),
+            ("LangGraph", ["langgraph"]),
+            ("Agentic RAG", ["agentic rag"]),
+            ("MCP", ["mcp"]),
+            ("Human-in-the-loop", ["human-in-the-loop", "hitl"]),
+            ("LangSmith", ["langsmith"]),
+        ],
+    ),
+    (
+        "部署与工程化",
+        [
+            ("Docker", ["docker"]),
+            ("Docker Compose", ["docker compose"]),
+            ("Nginx", ["nginx"]),
+            ("GitHub Actions", ["github actions"]),
+        ],
+    ),
+]
 
 
 @dataclass(frozen=True)
 class BlogAgentAnswer:
     answer: str
-    sources: list[BlogAgentSource]
+    sources: list[retrieval.BlogAgentSource]
     trace: list[str]
     token_usage: dict[str, int]
     blocked: bool = False
@@ -82,7 +137,7 @@ class PublicBlogAgent:
                 ),
                 sources=[],
                 trace=["security_filter -> blocked"],
-                token_usage=self._empty_usage(),
+                token_usage=empty_token_usage(),
                 blocked=True,
                 block_reason=blocked_reason,
             )
@@ -96,7 +151,7 @@ class PublicBlogAgent:
                 answer=self._grounded_tech_stack_answer(sources),
                 sources=sources,
                 trace=[*trace, "grounded_facts -> deterministic technology-stack answer"],
-                token_usage=self._empty_usage(),
+                token_usage=empty_token_usage(),
             )
 
         summary_article = self._resolve_full_article_request(question, sources, history)
@@ -111,7 +166,7 @@ class PublicBlogAgent:
                         f"full_article_read -> {self._article_chunk_count(summary_article)} ordered chunks",
                         "generate -> structural fallback",
                     ],
-                    token_usage=self._empty_usage(),
+                    token_usage=empty_token_usage(),
                 )
             try:
                 answer, token_usage, chunk_count = self._summarize_full_article(summary_article)
@@ -133,7 +188,7 @@ class PublicBlogAgent:
                         *trace,
                         f"full_article_read -> fallback because {type(exc).__name__}",
                     ],
-                    token_usage=self._empty_usage(),
+                    token_usage=empty_token_usage(),
                 )
 
         if self.llm is None:
@@ -141,7 +196,7 @@ class PublicBlogAgent:
                 answer=self._fallback_answer(question, sources),
                 sources=sources,
                 trace=[*trace, "generate -> local fallback"],
-                token_usage=self._empty_usage(),
+                token_usage=empty_token_usage(),
             )
 
         try:
@@ -150,14 +205,14 @@ class PublicBlogAgent:
                 answer=str(message.content),
                 sources=sources,
                 trace=[*trace, "generate -> llm"],
-                token_usage=self._extract_token_usage(message),
+                token_usage=extract_token_usage(message),
             )
         except Exception as exc:
             return BlogAgentAnswer(
                 answer=self._fallback_answer(question, sources),
                 sources=sources,
                 trace=[*trace, f"generate -> fallback because {exc}"],
-                token_usage=self._empty_usage(),
+                token_usage=empty_token_usage(),
             )
 
     def block_reason(self, question: str) -> str:
@@ -167,87 +222,8 @@ class PublicBlogAgent:
                 return reason
         return ""
 
-    def retrieve_public_sources(self, question: str) -> list[BlogAgentSource]:
-        # Retrieval mode is intentionally limited to published blog content.
-        # README and general project documents must not silently become sources.
-        if self._is_system_tech_stack_question(question):
-            sources = self._search_articles(question)
-        else:
-            sources = [*self._search_public_blog_documents(question), *self._search_articles(question)]
-        unique: list[BlogAgentSource] = []
-        seen: set[tuple[str, str, int | None, int | None]] = set()
-        for source in sources:
-            # Multiple chunks from the same article are intentionally retained.
-            # Their document/chunk identity carries the sequence relationship.
-            key = (source.kind, source.title, source.document_id, source.chunk_index)
-            if key in seen:
-                continue
-            seen.add(key)
-            unique.append(source)
-            if len(unique) >= 8:
-                break
-        return unique or self._default_public_sources()
-
-    def _search_public_blog_documents(self, question: str) -> list[BlogAgentSource]:
-        public_document_ids = set(
-            BlogArticle.objects.filter(
-                status=BlogArticle.Status.PUBLISHED,
-                knowledge_document_id__isnull=False,
-            ).values_list("knowledge_document_id", flat=True)
-        )
-        if not public_document_ids:
-            return []
-
-        results = search_knowledge_base(question, limit=6)
-        public_results = [result for result in results if result.document_id in public_document_ids]
-        public_results = expand_search_results_with_neighbors(
-            public_results,
-            neighbor_window=1,
-            max_results=12,
-        )
-        sources: list[BlogAgentSource] = []
-        for result in public_results:
-            sources.append(
-                BlogAgentSource(
-                    title=result.document_title,
-                    kind="blog_knowledge",
-                    content=result.content,
-                    score=result.score,
-                    document_id=result.document_id,
-                    chunk_index=result.chunk_index,
-                )
-            )
-        return sources
-
-    def _search_articles(self, question: str) -> list[BlogAgentSource]:
-        query = question.strip()
-        terms = [term for term in re.split(r"[\s，。？！,.!?、]+", query) if len(term) >= 2]
-        if self._is_system_tech_stack_question(question):
-            terms = ["技术栈", "系统架构", "Vue", "Django"]
-        articles = BlogArticle.objects.filter(status=BlogArticle.Status.PUBLISHED)
-        if terms:
-            from django.db.models import Q
-
-            condition = Q()
-            for term in terms[:5]:
-                condition |= Q(title__icontains=term) | Q(summary__icontains=term) | Q(content__icontains=term)
-            articles = articles.filter(condition)
-        else:
-            articles = articles[:3]
-
-        sources = []
-        for article in articles.distinct()[:3]:
-            sources.append(
-                BlogAgentSource(
-                    title=article.title,
-                    kind="blog_article",
-                    content=f"{article.summary}\n\n{article.content[:700]}".strip(),
-                    url=f"/blog/{article.slug}",
-                    score=0.5,
-                    document_id=article.knowledge_document_id,
-                )
-            )
-        return sources
+    def retrieve_public_sources(self, question: str) -> list[retrieval.BlogAgentSource]:
+        return retrieval.retrieve_public_sources(question)
 
     @staticmethod
     def _is_full_article_request(question: str) -> bool:
@@ -277,7 +253,7 @@ class PublicBlogAgent:
     def _resolve_full_article_request(
         self,
         question: str,
-        sources: list[BlogAgentSource],
+        sources: list[retrieval.BlogAgentSource],
         history: list[dict[str, str]],
     ) -> BlogArticle | None:
         if not self._is_full_article_request(question):
@@ -318,9 +294,9 @@ class PublicBlogAgent:
     def _sources_for_article(
         self,
         article: BlogArticle,
-        sources: list[BlogAgentSource],
-    ) -> list[BlogAgentSource]:
-        canonical_source = BlogAgentSource(
+        sources: list[retrieval.BlogAgentSource],
+    ) -> list[retrieval.BlogAgentSource]:
+        canonical_source = retrieval.BlogAgentSource(
             title=article.title,
             kind="blog_article",
             content=(article.summary.strip() or f"完整文章，共 {self._article_chunk_count(article)} 个有序知识片段。"),
@@ -335,223 +311,36 @@ class PublicBlogAgent:
         ]
         return [canonical_source, *matched_chunks[:7]]
 
-    def _ordered_article_chunks(self, article: BlogArticle) -> list[str]:
-        if article.knowledge_document_id:
-            chunks = list(article.knowledge_document.chunks.order_by("chunk_index").values_list("content", flat=True))
-            if chunks:
-                return chunks
-        return split_text(article.content)
-
     def _article_chunk_count(self, article: BlogArticle) -> int:
-        return len(self._ordered_article_chunks(article))
+        return len(ordered_article_chunks(article))
 
     def _summarize_full_article(self, article: BlogArticle) -> tuple[str, dict[str, int], int]:
-        chunks = self._ordered_article_chunks(article)
-        if not chunks:
-            raise ValueError("article has no readable content")
-
-        batches: list[str] = []
-        current: list[str] = []
-        current_chars = 0
-        for index, chunk in enumerate(chunks, start=1):
-            labeled = f"[片段 {index}/{len(chunks)}]\n{chunk}"
-            if current and current_chars + len(labeled) > 9000:
-                batches.append("\n\n".join(current))
-                current = []
-                current_chars = 0
-            current.append(labeled)
-            current_chars += len(labeled)
-        if current:
-            batches.append("\n\n".join(current))
-
-        map_prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    (
-                        "你正在按原文顺序阅读一篇长博客。请完整提取当前部分的主题、关键知识点、"
-                        "步骤、示例和结论；不要只总结开头，不要添加原文没有的信息。"
-                    ),
-                ),
-                ("human", "文章标题：{title}\n\n当前部分：\n{content}\n\n请输出结构化的阶段摘要。"),
-            ]
-        )
-        partial_summaries: list[str] = []
-        usage = self._empty_usage()
-        for batch in batches:
-            message = (map_prompt | self.llm).invoke({"title": article.title, "content": batch})
-            partial_summaries.append(str(message.content))
-            usage = self._merge_usage(usage, self._extract_token_usage(message))
-
-        reduce_prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    (
-                        "你已经顺序读完一篇博客的所有部分。请综合所有阶段摘要，回答这篇文章讲了什么。"
-                        "覆盖全文而不是只覆盖相似片段，合并重复内容，按主题组织，并说明文章的最终结论或实践建议。"
-                        "只能依据给定摘要回答，结尾使用 [1] 引用该文章。"
-                    ),
-                ),
-                ("human", "文章标题：{title}\n\n全部阶段摘要：\n{summaries}\n\n请生成完整文章概述。"),
-            ]
-        )
-        final_message = (reduce_prompt | self.llm).invoke(
-            {
-                "title": article.title,
-                "summaries": "\n\n".join(
-                    f"第 {index} 部分：\n{summary}" for index, summary in enumerate(partial_summaries, start=1)
-                ),
-            }
-        )
-        usage = self._merge_usage(usage, self._extract_token_usage(final_message))
-        return str(final_message.content), usage, len(chunks)
+        return summarize_full_article(self.llm, article)
 
     def _fallback_full_article_summary(self, article: BlogArticle) -> str:
-        headings = []
-        for heading in re.findall(r"(?m)^#{1,6}\s+(.+?)\s*$", article.content):
-            clean_heading = re.sub(r"[`*_]", "", heading).strip()
-            if clean_heading and clean_heading not in headings:
-                headings.append(clean_heading)
-
-        lines = [f"《{article.title}》是一篇完整文章。"]
-        if article.summary.strip():
-            lines.append(article.summary.strip())
-        if headings:
-            lines.append("文章按顺序覆盖这些部分：")
-            lines.extend(f"- {heading}" for heading in headings[:30])
-        lines.append(
-            "当前未配置可用的大模型，因此这里展示的是基于全文标题结构提取的概览；"
-            "已读取整篇文章，而不是只读取开头的检索片段。[1]"
-        )
-        return "\n\n".join(lines)
+        return fallback_full_article_summary(article)
 
     @staticmethod
     def _is_system_tech_stack_question(question: str) -> bool:
-        lowered = question.lower()
-        has_subject = any(
-            keyword in lowered for keyword in ["本系统", "本项目", "本博客", "博客系统", "这个项目", "技术栈"]
-        )
-        has_stack = any(keyword in lowered for keyword in ["技术栈", "使用了什么技术", "用了哪些技术", "系统架构"])
-        return has_subject and has_stack
+        return retrieval.is_system_tech_stack_question(question)
 
-    def _grounded_tech_stack_answer(self, sources: list[BlogAgentSource]) -> str:
+    def _grounded_tech_stack_answer(self, sources: list[retrieval.BlogAgentSource]) -> str:
         if not sources:
             return "当前已发布博客中没有检索到本系统技术栈资料，因此无法给出可靠答案。"
 
         evidence = "\n".join(source.content for source in sources).lower()
-        groups = [
-            (
-                "前端",
-                [
-                    ("Vue 3", ["vue 3"]),
-                    ("TypeScript", ["typescript"]),
-                    ("Vite", ["vite"]),
-                    ("Pinia", ["pinia"]),
-                    ("Vue Router", ["vue router"]),
-                    ("Element Plus", ["element plus"]),
-                    ("md-editor-v3", ["md-editor-v3"]),
-                ],
-            ),
-            (
-                "后端",
-                [
-                    ("Python", ["python"]),
-                    ("Django", ["django"]),
-                    ("Django REST Framework", ["django rest framework", "drf"]),
-                    ("ASGI", ["asgi"]),
-                    ("Uvicorn", ["uvicorn"]),
-                    ("Gunicorn", ["gunicorn"]),
-                ],
-            ),
-            (
-                "数据与异步任务",
-                [
-                    ("PostgreSQL", ["postgresql"]),
-                    ("pgvector", ["pgvector"]),
-                    ("Redis", ["redis"]),
-                    ("RabbitMQ", ["rabbitmq"]),
-                    ("Celery Worker", ["celery worker"]),
-                    ("Celery Beat", ["celery beat"]),
-                ],
-            ),
-            (
-                "Agent 与 AI",
-                [
-                    ("LangChain", ["langchain"]),
-                    ("LangGraph", ["langgraph"]),
-                    ("Agentic RAG", ["agentic rag"]),
-                    ("MCP", ["mcp"]),
-                    ("Human-in-the-loop", ["human-in-the-loop", "hitl"]),
-                    ("LangSmith", ["langsmith"]),
-                ],
-            ),
-            (
-                "部署与工程化",
-                [
-                    ("Docker", ["docker"]),
-                    ("Docker Compose", ["docker compose"]),
-                    ("Nginx", ["nginx"]),
-                    ("GitHub Actions", ["github actions"]),
-                ],
-            ),
-        ]
-
         lines = ["根据已发布博客中的系统技术栈说明，本系统实际使用："]
-        for label, candidates in groups:
+        for label, candidates in TECH_STACK_GROUPS:
             technologies = [name for name, aliases in candidates if any(alias in evidence for alias in aliases)]
             if technologies:
                 lines.append(f"- {label}：{'、'.join(technologies)}。")
         lines.append("\n以上技术均来自本次检索到的已发布博客内容。[1]")
         return "\n".join(lines)
 
-    def _search_readme(self, question: str) -> list[BlogAgentSource]:
-        terms = [term.lower() for term in re.split(r"[\s，。？！,.!?、]+", question) if len(term) >= 2]
-        sources: list[BlogAgentSource] = []
-        for relative_path in PUBLIC_README_FILES:
-            path = self.project_root / relative_path
-            if not path.exists():
-                continue
-            text = path.read_text(encoding="utf-8", errors="ignore")
-            paragraphs = [paragraph.strip() for paragraph in re.split(r"\n{2,}", text) if paragraph.strip()]
-            matched = []
-            for paragraph in paragraphs:
-                lowered = paragraph.lower()
-                if not terms or any(term in lowered for term in terms):
-                    matched.append(paragraph)
-                if len(matched) >= 2:
-                    break
-            if matched:
-                sources.append(
-                    BlogAgentSource(
-                        title=relative_path,
-                        kind="readme",
-                        content="\n\n".join(matched)[:900],
-                        score=0.35,
-                    )
-                )
-        return sources
-
-    def _default_public_sources(self) -> list[BlogAgentSource]:
-        sources: list[BlogAgentSource] = []
-        latest_articles = BlogArticle.objects.filter(status=BlogArticle.Status.PUBLISHED)[:2]
-        for article in latest_articles:
-            sources.append(
-                BlogAgentSource(
-                    title=article.title,
-                    kind="blog_article",
-                    content=f"{article.summary}\n\n{article.content[:500]}".strip(),
-                    url=f"/blog/{article.slug}",
-                    score=0.2,
-                    document_id=article.knowledge_document_id,
-                )
-            )
-        return sources
-
     def _invoke_llm(
         self,
         question: str,
-        sources: list[BlogAgentSource],
+        sources: list[retrieval.BlogAgentSource],
         history: list[dict[str, str]],
     ):
         prompt = ChatPromptTemplate.from_messages(
@@ -588,7 +377,7 @@ class PublicBlogAgent:
             for item in history[-10:]
         )
 
-    def _fallback_answer(self, question: str, sources: list[BlogAgentSource]) -> str:
+    def _fallback_answer(self, question: str, sources: list[retrieval.BlogAgentSource]) -> str:
         if not sources:
             return (
                 "我目前只使用已发布博客文章中的内容。这个问题在博客里没有找到足够依据，"
@@ -602,7 +391,7 @@ class PublicBlogAgent:
         lines.append("如果你想更具体，可以继续问某篇文章、某个模块或某项技术取舍。")
         return "\n\n".join(lines)
 
-    def _format_sources(self, sources: list[BlogAgentSource]) -> str:
+    def _format_sources(self, sources: list[retrieval.BlogAgentSource]) -> str:
         if not sources:
             return "没有检索到公开来源。"
         return "\n\n".join(
@@ -610,52 +399,26 @@ class PublicBlogAgent:
             for index, source in enumerate(sources, start=1)
         )
 
-    def _build_llm(self) -> ChatOpenAI | None:
+    def _build_llm(self):
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             return None
-        return ChatOpenAI(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        return build_openai_chat(
             api_key=api_key,
-            base_url=self._normalized_openai_base_url(),
+            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            base_url=normalized_openai_base_url("https://poloai.top/v1/"),
             temperature=0,
         )
 
     def _normalized_openai_base_url(self) -> str:
-        base_url = os.getenv("OPENAI_BASE_URL", "https://poloai.top/v1/")
-        if base_url.startswith("https//"):
-            return base_url.replace("https//", "https://", 1)
-        if base_url.startswith("http//"):
-            return base_url.replace("http//", "http://", 1)
-        return base_url
+        return normalized_openai_base_url("https://poloai.top/v1/")
 
     def _extract_token_usage(self, message) -> dict[str, int]:
-        usage = getattr(message, "usage_metadata", None)
-        if usage:
-            return {
-                "prompt_tokens": int(usage.get("input_tokens", 0)),
-                "completion_tokens": int(usage.get("output_tokens", 0)),
-                "total_tokens": int(usage.get("total_tokens", 0)),
-            }
-        response_metadata = getattr(message, "response_metadata", {}) or {}
-        token_usage = response_metadata.get("token_usage") or {}
-        return {
-            "prompt_tokens": int(token_usage.get("prompt_tokens", 0)),
-            "completion_tokens": int(token_usage.get("completion_tokens", 0)),
-            "total_tokens": int(token_usage.get("total_tokens", 0)),
-        }
+        return extract_token_usage(message)
 
     def _empty_usage(self) -> dict[str, int]:
-        return {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-        }
+        return empty_token_usage()
 
     @staticmethod
     def _merge_usage(left: dict[str, int], right: dict[str, int]) -> dict[str, int]:
-        return {
-            "prompt_tokens": left.get("prompt_tokens", 0) + right.get("prompt_tokens", 0),
-            "completion_tokens": left.get("completion_tokens", 0) + right.get("completion_tokens", 0),
-            "total_tokens": left.get("total_tokens", 0) + right.get("total_tokens", 0),
-        }
+        return merge_token_usage(left, right)
