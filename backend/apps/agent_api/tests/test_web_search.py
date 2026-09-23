@@ -13,7 +13,7 @@ from ..models import MCPTool
 
 class WebSearchTests(TestCase):
 
-    @patch("agent.mcp_tools.urlopen")
+    @patch("agent.web_search.urlopen")
     def test_web_search_returns_external_results(self, mocked_urlopen):
         class FakeResponse:
             def __enter__(self):
@@ -56,7 +56,7 @@ class WebSearchTests(TestCase):
         self.assertIn("Django official documentation", response.json()["output"])
         self.assertIn("provider=duckduckgo", response.json()["output"])
 
-    @patch("agent.mcp_tools.urlopen", side_effect=URLError("network blocked"))
+    @patch("agent.web_search.urlopen", side_effect=URLError("network blocked"))
     def test_web_search_reports_network_failure_instead_of_empty_results(self, _mocked_urlopen):
         tool, _ = MCPTool.objects.update_or_create(
             name="web_search",
@@ -79,7 +79,7 @@ class WebSearchTests(TestCase):
         self.assertIn("网页搜索失败", response.json()["output"])
         self.assertIn("network blocked", response.json()["output"])
 
-    @patch("agent.mcp_tools.urlopen")
+    @patch("agent.web_search.urlopen")
     def test_web_search_falls_back_to_bing_when_duckduckgo_fails(self, mocked_urlopen):
         class FakeResponse:
             def __init__(self, body: str):
