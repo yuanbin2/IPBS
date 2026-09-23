@@ -349,6 +349,20 @@ class BlogArticlePublishView(APIView):
 
 **执行纪律**：每项单独一个 commit，message 带编号（如 `refactor: C3 replace star imports in views with explicit imports`），完成后在蓝图更新日志登记一行。
 
+### 轻量化补课（2026-09-23，C1–C8 之后）
+
+针对 §2.2 行数红线的复查，处置了两类遗留，每项一个 commit：
+
+| 处置 | 结果 |
+| --- | --- |
+| 删除 `services/blog.py` 中手写的 `serialize_category/serialize_tag/serialize_article`（与 `serializers/blog.py` 的 DRF 实现重复且无外部引用） | 206 → 156 行 |
+| `views/blog.py`（645）按域拆为 `blog_articles`（文章资源）/ `blog_writing` / `blog_public` / `blog_agent` | 最大 362 行 |
+| `views/agent.py`（621）拆为 `chat` / `conversations` / `observability`；两个 chat 视图中逐字节重复的 `_get_or_create_conversation` 提取为 `common.get_or_create_conversation()` | 最大 350 行 |
+| `services/rag.py`（682）拆为 `rag/` 包：`text`（纯工具）/ `ingest`（入库）/ `search`（检索），`__init__` 全量再导出保持导入路径不变；顺带把旧的循环依赖变为 `text ← ingest ← search` 单向 | 最大 426 行 |
+| `services/blog_agent.py`（661）提取 `llm_support`（token 管道）/ `blog_article_summary`（全文 map-reduce）/ `blog_public_retrieval`（公开来源检索），本类只留编排 | 661 → 424 行 |
+
+**剩余超 500 行的文件**（下一批候选，未在本次范围）：`backend/agent/simple_agent.py`（996）、`backend/agent/multi_agent.py`（837）、`backend/agent/mcp_tools.py`（686），以及测试文件 `tests/test_agent.py`（607）、`tests/test_knowledge_rag.py`（543）。
+
 ### C9 决策：响应 envelope（2026-09-23）
 
 - **新 API**：对象型用 `{"data": ..., "meta": {...}}`，列表型用 `{"data": [...], "meta": {"has_more", "next_cursor"}}`。
