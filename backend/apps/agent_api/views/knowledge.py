@@ -1,4 +1,19 @@
-from .common import *
+from pathlib import Path
+
+from celery.result import AsyncResult
+from django.conf import settings
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from rest_framework import status
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from ..models import ApprovalRequest, Document, KnowledgeBase, UserProfile
+from ..serializers import serialize_document, serialize_knowledge_base
+from ..services.rag import get_default_knowledge_base, search_knowledge_base
+from ..tasks import ingest_document_task
+from .common import approval_required_response, get_workspace_key, require_roles
 
 
 def dispatch_ingestion_task(document: Document):
@@ -44,8 +59,8 @@ class KnowledgeBaseListView(APIView):
         search = request.query_params.get("search")
         if search:
             knowledge_bases = knowledge_bases.filter(
-                models.Q(name__icontains=search) |
-                models.Q(description__icontains=search)
+                Q(name__icontains=search) |
+                Q(description__icontains=search)
             )
 
         # 是否包含归档

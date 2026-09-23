@@ -1,127 +1,43 @@
 import hashlib
-
-
 import os
-
-
 import re
-
-
-import time
-
-
-from datetime import timedelta
-
-
 from pathlib import Path
 
-
-from uuid import uuid4
-
-
 from django.conf import settings
-
-
-from django.contrib.auth import authenticate, get_user_model, login
-
-
-from django.core.files.storage import default_storage
-
-
-from django.core.files.base import ContentFile
-
-
-from django.db import transaction
-
-
-from django.db.models import Q
-
-
 from django.shortcuts import get_object_or_404
-
-
 from django.utils import timezone
-from celery.result import AsyncResult
-
-
 from rest_framework import status
-
-
-from rest_framework.parsers import FormParser, MultiPartParser
-
-
 from rest_framework.response import Response
 
-
-from rest_framework.views import APIView
-
-
 try:
+    # agent 模块缺失时的部署降级：只兜底 common 自身需要的名字，
+    # 其他模块按约定直接从 agent.* 导入。
     from agent.multi_agent import MultiAgentSupervisor
     from agent.security import (
         context_from_request,
-        detect_sensitive_input,
-        issue_jwt_pair,
-        normalize_workspace_key,
-        redact_sensitive_output,
         role_allowed,
         security_enforced,
     )
 except ImportError:
-    # Fallback for deployment without agent module
     MultiAgentSupervisor = None
     context_from_request = None
-    detect_sensitive_input = None
-    issue_jwt_pair = None
-    normalize_workspace_key = None
-    redact_sensitive_output = None
     role_allowed = None
     security_enforced = None
 
-
-from ..services.blog import (
-    get_or_create_category,
-    publish_article_to_knowledge_base,
-    set_article_tags,
-    unique_slug,
-)
-
-
-from ..services.blog_agent import PublicBlogAgent
-
-
 from ..models import (
-    AgentRun,
     AgentObservation,
+    AgentRun,
     ApprovalRequest,
-    ArticleCategory,
-    ArticleTag,
-    BlogAgentMessage,
-    BlogAgentSecurityEvent,
-    BlogAgentSession,
     BlogArticle,
-    BlogComment,
     Conversation,
     Document,
     EvaluationCase,
-    EvaluationRun,
     KnowledgeBase,
     MCPTool,
-    Message,
     SecurityAuditEvent,
-    UserProfile,
 )
-
-
-from ..services.rag import get_default_knowledge_base, search_knowledge_base
-from ..tasks import ingest_document_task
-from ..serializers import *
-
-
-
-
-
-
+from ..serializers import serialize_approval_request
+from ..services.blog import publish_article_to_knowledge_base
 
 
 DEFAULT_MESSAGE_LIMIT = 30
@@ -206,10 +122,6 @@ def request_ip_hash(request) -> str:
     return hashlib.sha256(f"{settings.SECRET_KEY}:{ip}".encode("utf-8")).hexdigest()
 
 
-
-
-
-
 DEFAULT_MCP_TOOLS = [
     {
         "name": "local_file_search",
@@ -257,12 +169,6 @@ def ensure_default_mcp_tools() -> None:
     MCPTool.objects.filter(name="web_search", is_enabled=False).update(is_enabled=True)
 
 
-
-
-
-
-
-
 def env_file_is_git_tracked() -> bool:
     env_path = Path(settings.BASE_DIR).parent / ".env"
     git_index = Path(settings.BASE_DIR).parent / ".git" / "index"
@@ -298,12 +204,6 @@ def calculate_tool_success_rate(tool_calls: list[dict]) -> float:
         if output and not any(marker in output for marker in ["error", "failed", "异常", "失败"]):
             successful += 1
     return round(successful / len(tool_calls), 2)
-
-
-
-
-
-
 
 
 def evaluate_answer(case: EvaluationCase, response_data: dict, observation: AgentObservation) -> dict:
@@ -402,8 +302,6 @@ def approval_required_response(approval: ApprovalRequest) -> Response:
         },
         status=status.HTTP_202_ACCEPTED,
     )
-
-
 
 
 def extract_blog_delete_target(message: str) -> str:

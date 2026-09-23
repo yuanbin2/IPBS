@@ -1,4 +1,21 @@
-from .common import *
+from pathlib import Path
+
+from django.conf import settings
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from ..models import ApprovalRequest, BlogArticle, MCPTool, UserProfile
+from ..serializers import serialize_approval_request, serialize_mcp_tool
+from .common import (
+    approval_required_response,
+    ensure_default_mcp_tools,
+    execute_approval_request,
+    get_workspace_key,
+    require_roles,
+)
 
 
 class ApprovalRequestListView(APIView):
@@ -50,7 +67,6 @@ class ApprovalRequestDetailView(APIView):
             if approval.action == ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE:
                 article_slug = approval.payload.get("article_slug")
                 if article_slug:
-                    from ..models import BlogArticle
                     BlogArticle.objects.filter(
                         slug=article_slug,
                         workspace_key=get_workspace_key(request)
