@@ -5,7 +5,6 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -33,7 +32,14 @@ from ..serializers import (
     serialize_category,
     serialize_tag,
 )
-from ..services.blog import get_or_create_category, set_article_tags, unique_slug
+from ..services.blog import (
+    ArticleAccessError,
+    ArticleListFilters,
+    get_or_create_category,
+    list_articles,
+    set_article_tags,
+    unique_slug,
+)
 from ..services.blog_agent import PublicBlogAgent
 from ..services.writing_agent import (
     BlogWritingAgent,
@@ -55,47 +61,26 @@ class BlogArticleListCreateView(APIView):
     permission_classes = []
 
     def get(self, request):
-        articles = BlogArticle.objects.select_related("category", "knowledge_document").prefetch_related("tags").filter(
-            workspace_key=get_workspace_key(request)
-        )
-        status_filter = request.query_params.get("status", BlogArticle.Status.PUBLISHED)
-        if status_filter != "all":
-            articles = articles.filter(status=status_filter)
-
-        category = request.query_params.get("category")
-        tag = request.query_params.get("tag")
-        query = str(request.query_params.get("q", "")).strip()
-
-        # 权限检查
         context = context_from_request(request)
-        is_admin = context.authenticated and context.role in {UserProfile.Role.ADMIN, UserProfile.Role.OPERATOR}
-
-        # 对于草稿和拒绝状态的文章，必须登录且只能看到自己的
-        if status_filter in {BlogArticle.Status.DRAFT, BlogArticle.Status.REJECTED}:
-            if not context.authenticated:
-                return Response({"detail": "请先登录"}, status=status.HTTP_401_UNAUTHORIZED)
-            if not is_admin:
-                # 普通用户只能看到自己提交的（忽略大小写）
-                articles = articles.filter(author_name__iexact=context.actor)
-        else:
-            # 已发布文章，支持按 author_name 过滤（忽略大小写）
-            author_name = str(request.query_params.get("author_name", "")).strip()
-            if author_name:
-                articles = articles.filter(author_name__iexact=author_name)
-            # 已登录非管理员用户查看已发布文章时，如果没指定 author_name，自动过滤为自己的
-            elif context.authenticated and not is_admin:
-                my_only = str(request.query_params.get("my", "")).strip()
-                if my_only == "1":
-                    articles = articles.filter(author_name__iexact=context.actor)
-
-        if category:
-            articles = articles.filter(category__slug=category)
-        if tag:
-            articles = articles.filter(tags__slug=tag)
-        if query:
-            articles = articles.filter(Q(title__icontains=query) | Q(summary__icontains=query) | Q(content__icontains=query))
-
-        return Response([serialize_article(article) for article in articles.distinct()[:50]])
+        filters = ArticleListFilters(
+            status=request.query_params.get("status", BlogArticle.Status.PUBLISHED),
+            category_slug=str(request.query_params.get("category", "")).strip(),
+            tag_slug=str(request.query_params.get("tag", "")).strip(),
+            query=str(request.query_params.get("q", "")).strip(),
+            author_name=str(request.query_params.get("author_name", "")).strip(),
+            my_only=str(request.query_params.get("my", "")).strip() == "1",
+        )
+        try:
+            articles = list_articles(
+                filters,
+                workspace_key=get_workspace_key(request),
+                actor=context.actor,
+                authenticated=context.authenticated,
+                is_admin=context.authenticated and context.role in {UserProfile.Role.ADMIN, UserProfile.Role.OPERATOR},
+            )
+        except ArticleAccessError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response([serialize_article(article) for article in articles])
 
     def post(self, request):
         title = str(request.data.get("title", "")).strip()

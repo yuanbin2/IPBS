@@ -1,10 +1,74 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import slugify
 
 from ..models import ArticleCategory, ArticleTag, BlogArticle, Document
 from .rag import get_default_knowledge_base, ingest_document
+
+
+ARTICLE_LIST_LIMIT = 50
+
+
+class ArticleAccessError(Exception):
+    """调用方无权以当前身份查看请求的文章列表（如未登录查看草稿）。"""
+
+
+@dataclass
+class ArticleListFilters:
+    """博客列表的查询参数白名单，由 View 从 query_params 解析后传入。"""
+
+    status: str = BlogArticle.Status.PUBLISHED
+    category_slug: str = ""
+    tag_slug: str = ""
+    query: str = ""
+    author_name: str = ""
+    my_only: bool = False
+
+
+def list_articles(
+    filters: ArticleListFilters,
+    *,
+    workspace_key: str,
+    actor: str,
+    authenticated: bool,
+    is_admin: bool,
+) -> list[BlogArticle]:
+    """按过滤器返回文章列表：草稿/拒绝态仅登录可见，非管理员只能看自己的。"""
+    articles = (
+        BlogArticle.objects.select_related("category", "knowledge_document")
+        .prefetch_related("tags")
+        .filter(workspace_key=workspace_key)
+    )
+    if filters.status != "all":
+        articles = articles.filter(status=filters.status)
+
+    if filters.status in {BlogArticle.Status.DRAFT, BlogArticle.Status.REJECTED}:
+        if not authenticated:
+            raise ArticleAccessError("请先登录")
+        if not is_admin:
+            # 普通用户只能看到自己提交的（忽略大小写）
+            articles = articles.filter(author_name__iexact=actor)
+    else:
+        # 已发布文章，支持按 author_name 过滤（忽略大小写）
+        if filters.author_name:
+            articles = articles.filter(author_name__iexact=filters.author_name)
+        elif authenticated and not is_admin and filters.my_only:
+            articles = articles.filter(author_name__iexact=actor)
+
+    if filters.category_slug:
+        articles = articles.filter(category__slug=filters.category_slug)
+    if filters.tag_slug:
+        articles = articles.filter(tags__slug=filters.tag_slug)
+    if filters.query:
+        articles = articles.filter(
+            Q(title__icontains=filters.query) | Q(summary__icontains=filters.query) | Q(content__icontains=filters.query)
+        )
+
+    return list(articles.distinct()[:ARTICLE_LIST_LIMIT])
 
 
 def unique_slug(model, value: str, instance_id: int | None = None, max_length: int = 180) -> str:

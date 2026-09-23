@@ -42,6 +42,7 @@ from .services.rag import (
     keyword_similarity,
     search_knowledge_base,
 )
+from .services.blog import ArticleAccessError, ArticleListFilters, list_articles
 from .services.blog_agent import PublicBlogAgent
 from .services.vector_store import VectorMatch, vector_literal
 
@@ -1880,3 +1881,92 @@ class BlogWritingAgentTests(TestCase):
         cleaned = BlogWritingAgent._clean_markdown("```markdown\n## 标题\n\n正文\n```")
 
         self.assertEqual(cleaned, "## 标题\n\n正文")
+
+
+class BlogArticleListTests(TestCase):
+    """list_articles 服务的过滤与可见性规则（对应 views/blog.py 列表接口）。"""
+
+    def setUp(self):
+        self.mine = BlogArticle.objects.create(
+            title="我的草稿",
+            workspace_key="default",
+            slug="my-draft",
+            author_name="alice",
+            content="草稿正文",
+            status=BlogArticle.Status.DRAFT,
+        )
+        self.other = BlogArticle.objects.create(
+            title="别人的草稿",
+            workspace_key="default",
+            slug="other-draft",
+            author_name="bob",
+            content="别人的草稿正文",
+            status=BlogArticle.Status.DRAFT,
+        )
+        self.published = BlogArticle.objects.create(
+            title="已发布文章",
+            workspace_key="default",
+            slug="published-article",
+            author_name="bob",
+            content="公开正文",
+            status=BlogArticle.Status.PUBLISHED,
+        )
+
+    def _list(self, **filters):
+        return list_articles(
+            ArticleListFilters(**filters),
+            workspace_key="default",
+            actor="alice",
+            authenticated=False,
+            is_admin=False,
+        )
+
+    def test_anonymous_requesting_drafts_raises_access_error(self):
+        with self.assertRaises(ArticleAccessError):
+            self._list(status=BlogArticle.Status.DRAFT)
+
+    def test_non_admin_only_sees_own_drafts(self):
+        articles = list_articles(
+            ArticleListFilters(status=BlogArticle.Status.DRAFT),
+            workspace_key="default",
+            actor="alice",
+            authenticated=True,
+            is_admin=False,
+        )
+
+        self.assertEqual([article.slug for article in articles], ["my-draft"])
+
+    def test_admin_sees_all_drafts(self):
+        articles = list_articles(
+            ArticleListFilters(status=BlogArticle.Status.DRAFT),
+            workspace_key="default",
+            actor="alice",
+            authenticated=True,
+            is_admin=True,
+        )
+
+        self.assertEqual(sorted(article.slug for article in articles), ["my-draft", "other-draft"])
+
+    def test_published_list_defaults_to_published_only(self):
+        slugs = [article.slug for article in self._list()]
+
+        # 库里还有 seed 迁移预置的已发布文章，只断言可见性规则
+        self.assertIn("published-article", slugs)
+        self.assertNotIn("my-draft", slugs)
+        self.assertNotIn("other-draft", slugs)
+
+    def test_query_matches_title_summary_and_content(self):
+        articles = self._list(query="公开正文")
+
+        self.assertEqual([article.slug for article in articles], ["published-article"])
+
+    def test_my_only_filters_published_articles_to_actor(self):
+        articles = list_articles(
+            ArticleListFilters(my_only=True),
+            workspace_key="default",
+            actor="alice",
+            authenticated=True,
+            is_admin=False,
+        )
+
+        self.assertEqual(articles, [])
