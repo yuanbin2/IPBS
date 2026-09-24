@@ -1,4 +1,4 @@
-from .agent import AgentRun, Conversation, Message
+from .agent import AgentRun, Conversation, ConversationProject, Message
 from .auth import SecurityAuditEvent, UserProfile
 from .blog import (
     ArticleCategory,
@@ -25,6 +25,7 @@ __all__ = [
     "BlogArticle",
     "BlogComment",
     "Conversation",
+    "ConversationProject",
     "Document",
     "DocumentChunk",
     "EmbeddingRecord",

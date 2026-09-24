@@ -3,8 +3,38 @@ from django.db import models
 from .constants import DEFAULT_WORKSPACE_KEY
 
 
+class ConversationProject(models.Model):
+    """对话项目：把会话按主题分组，替代一长条平铺的会话列表。"""
+
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    color = models.CharField(max_length=20, default="teal")
+    workspace_key = models.CharField(max_length=80, default=DEFAULT_WORKSPACE_KEY, db_index=True)
+    owner_username = models.CharField(max_length=150, default="anonymous", db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workspace_key", "owner_username", "name"], name="uniq_project_name_per_owner"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Conversation(models.Model):
     title = models.CharField(max_length=160, blank=True)
+    project = models.ForeignKey(
+        ConversationProject,
+        related_name="conversations",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
     workspace_key = models.CharField(max_length=80, default=DEFAULT_WORKSPACE_KEY, db_index=True)
     owner_username = models.CharField(max_length=150, default="anonymous", db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)

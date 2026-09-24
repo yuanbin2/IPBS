@@ -6,11 +6,13 @@ Star exports are intentionally avoided so the public surface stays traceable.
 
 from .agent import (
     AgentObservationSerializer,
+    ConversationProjectSerializer,
     ConversationSerializer,
     MessageSerializer,
     serialize_agent_observation,
     serialize_conversation,
     serialize_message,
+    serialize_project,
 )
 from .auth import (
     SecurityAuditEventSerializer,
@@ -50,6 +52,7 @@ from .knowledge import (
 
 __all__ = [
     "AgentObservationSerializer",
+    "ConversationProjectSerializer",
     "ApprovalRequestSerializer",
     "ArticleCategorySerializer",
     "ArticleTagSerializer",
@@ -71,6 +74,7 @@ __all__ = [
     "serialize_blog_agent_message",
     "serialize_category",
     "serialize_conversation",
+    "serialize_project",
     "serialize_document",
     "serialize_evaluation_case",
     "serialize_evaluation_run",

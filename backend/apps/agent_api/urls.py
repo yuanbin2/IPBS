@@ -11,4 +11,5 @@ urlpatterns = [
     path("", include("apps.agent_api.api_urls.knowledge")),
     path("", include("apps.agent_api.api_urls.governance")),
     path("", include("apps.agent_api.api_urls.blog")),
+    path("", include("apps.agent_api.api_urls.projects")),
 ]

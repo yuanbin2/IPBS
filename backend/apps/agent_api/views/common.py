@@ -31,6 +31,7 @@ from ..models import (
     ApprovalRequest,
     BlogArticle,
     Conversation,
+    ConversationProject,
     Document,
     EvaluationCase,
     KnowledgeBase,
@@ -61,8 +62,18 @@ def get_conversation_owner(request) -> str:
     return context_from_request(request).actor or "anonymous"
 
 
-def get_or_create_conversation(conversation_id, message: str, workspace_key: str, owner_username: str) -> Conversation:
-    """按 id 取会话（带 workspace/owner 校验，不能跨用户复用），缺省则创建。"""
+def get_or_create_conversation(
+    conversation_id,
+    message: str,
+    workspace_key: str,
+    owner_username: str,
+    project_id=None,
+) -> Conversation:
+    """按 id 取会话（带 workspace/owner 校验，不能跨用户复用），缺省则创建。
+
+    新建时可指定 project_id，让对话直接落入所选项目；项目校验失败时
+    退化为未分组，不影响对话本身。
+    """
     if conversation_id:
         return get_object_or_404(
             Conversation,
@@ -74,10 +85,18 @@ def get_or_create_conversation(conversation_id, message: str, workspace_key: str
     title = message[:40]
     if len(message) > 40:
         title = f"{title}..."
+    project = None
+    if project_id:
+        project = ConversationProject.objects.filter(
+            pk=project_id,
+            workspace_key=workspace_key,
+            owner_username=owner_username,
+        ).first()
     return Conversation.objects.create(
         title=title,
         workspace_key=workspace_key,
         owner_username=owner_username,
+        project=project,
     )
 
 

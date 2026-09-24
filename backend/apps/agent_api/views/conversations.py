@@ -16,10 +16,16 @@ class ConversationListView(APIView):
 
     def get(self, request):
         query = str(request.query_params.get("q", "")).strip()
+        project_filter = request.query_params.get("project")
         conversations = Conversation.objects.filter(
             workspace_key=get_workspace_key(request),
             owner_username=get_conversation_owner(request),
         )
+        # project=none 表示只看未分组对话；project=<id> 只看该项目
+        if project_filter == "none":
+            conversations = conversations.filter(project__isnull=True)
+        elif project_filter:
+            conversations = conversations.filter(project_id=project_filter)
         if query:
             conversations = conversations.filter(
                 Q(title__icontains=query) | Q(messages__content__icontains=query)

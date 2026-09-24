@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from ..models import AgentObservation, Conversation, Message
+from ..models import AgentObservation, Conversation, ConversationProject, Message
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -51,11 +51,13 @@ class ConversationSerializer(serializers.ModelSerializer):
     has_more_before = serializers.SerializerMethodField()
     has_more_after = serializers.SerializerMethodField()
     matched_message_id = serializers.SerializerMethodField()
+    project_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
         fields = [
             "id",
+            "project_id",
             "title",
             "created_at",
             "updated_at",
@@ -64,6 +66,9 @@ class ConversationSerializer(serializers.ModelSerializer):
             "has_more_before",
             "has_more_after",
         ]
+
+    def get_project_id(self, instance):
+        return instance.project_id
 
     def get_messages(self, instance):
         if not self.context.get("include_messages"):
@@ -118,3 +123,26 @@ def serialize_conversation(
             "matched_message_id": matched_message_id,
         },
     ).data
+
+
+class ConversationProjectSerializer(serializers.ModelSerializer):
+    conversation_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ConversationProject
+        fields = [
+            "id",
+            "name",
+            "description",
+            "color",
+            "conversation_count",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_conversation_count(self, instance) -> int:
+        return instance.conversations.count()
+
+
+def serialize_project(instance) -> dict:
+    return ConversationProjectSerializer(instance).data

@@ -52,6 +52,7 @@ class AgentChatView(APIView):
             message,
             workspace_key,
             get_conversation_owner(request),
+            project_id=request.data.get("project_id"),
         )
         # 只把最近十条消息送入 Agent，既保留追问上下文，也控制 prompt 长度。
         history = [
@@ -227,6 +228,7 @@ class AgentChatStreamView(APIView):
             message,
             workspace_key,
             get_conversation_owner(request),
+            project_id=request.data.get("project_id"),
         )
         history = [
             {"role": item.role, "content": item.content} for item in conversation.messages.order_by("-id")[:10][::-1]
