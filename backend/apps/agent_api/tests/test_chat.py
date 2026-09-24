@@ -314,3 +314,36 @@ class SupervisorRoutingTests(TestCase):
     def test_is_system_stack_question_detects_self_reference(self):
         self.assertTrue(MultiAgentSupervisor.is_system_stack_question("本系统用了什么技术栈"))
         self.assertFalse(MultiAgentSupervisor.is_system_stack_question("今天天气怎么样"))
+
+
+class ToolSuccessTests(TestCase):
+    """工具成功率判定：显式 ok 标志优先，正文含「失败」等词不误判。"""
+
+    def test_explicit_ok_flag_wins_over_output_keywords(self):
+        from ..views.common import tool_call_succeeded
+
+        # 检索正文恰好包含「异常/失败」字样，但 ok=True 应判成功
+        call = {"name": "knowledge_search", "output": "片段：异常处理与失败重试机制", "ok": True}
+        self.assertTrue(tool_call_succeeded(call))
+
+        failed = {"name": "knowledge_search", "output": "检索成功 12 条", "ok": False}
+        self.assertFalse(tool_call_succeeded(failed))
+
+    def test_legacy_calls_without_ok_fall_back_to_keywords(self):
+        from ..views.common import tool_call_succeeded
+
+        self.assertTrue(tool_call_succeeded({"name": "calculator", "output": "结果是 8"}))
+        self.assertFalse(tool_call_succeeded({"name": "web_search", "output": "网页搜索失败：网络错误"}))
+
+    def test_chat_response_carries_explicit_ok_flag(self):
+        from ..views.common import tool_call_succeeded
+
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "帮我计算 2 + 3"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        calls = response.json()["tool_calls"]
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(tool_call_succeeded(calls[0]))

@@ -18,6 +18,9 @@ class ToolResult:
     name: str
     input: str
     output: str
+    # 显式成功标记：检索正文可能恰好含「失败/error」等词，不能用输出内容
+    # 做关键词猜测；失败路径必须显式置 False。
+    ok: bool = True
 
 
 class SafeCalculator:

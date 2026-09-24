@@ -196,6 +196,7 @@ class AgentChatView(APIView):
         return Response(
             {
                 **response_data,
+                "latency_ms": round((time.perf_counter() - started_at) * 1000),
                 "conversation": serialize_conversation(conversation),
                 "observation": serialize_agent_observation(observation),
             }
@@ -307,6 +308,8 @@ class AgentChatStreamView(APIView):
                     history=history,
                 ):
                     if event["type"] == "response":
+                        # response 是流式最后一个事件，此时端到端延迟已可测量
+                        event = {**event, "latency_ms": round((time.perf_counter() - started_at) * 1000)}
                         collected_response = event
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             except Exception as exc:

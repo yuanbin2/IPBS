@@ -2,7 +2,7 @@
 import { Cpu, Delete, EditPen, FolderOpened, Plus, Refresh, Search } from "@element-plus/icons-vue";
 import { ElMessageBox } from "element-plus";
 import { ref } from "vue";
-import type { Conversation, ConversationProject, TokenUsage } from "../types";
+import type { Conversation, ConversationProject, TurnMetrics } from "../types";
 
 const props = defineProps<{
   historySearch: string;
@@ -10,9 +10,7 @@ const props = defineProps<{
   currentConversationId: number | null;
   conversationsLoading: boolean;
   chatLoading: boolean;
-  latestTokenUsage: TokenUsage | null;
-  agents: Array<{ name: string; detail: string }>;
-  suggestions: string[];
+  latestMetrics: TurnMetrics | null;
   projects: ConversationProject[];
   /** "all" 全部对话 | "none" 未分组 | 项目 id（字符串） */
   activeProject: string;
@@ -23,7 +21,6 @@ const emit = defineEmits<{
   refresh: [];
   create: [];
   select: [conversation: Conversation];
-  suggest: [value: string];
   "select-project": [projectId: string];
   "create-project": [name: string];
   "rename-project": [project: ConversationProject, name: string];
@@ -83,6 +80,7 @@ function projectFilterLabel() {
   if (props.activeProject === "none") return "未分组";
   return props.projects.find((item) => String(item.id) === props.activeProject)?.name ?? "全部对话";
 }
+
 </script>
 
 <template>
@@ -162,22 +160,34 @@ function projectFilterLabel() {
       @clear="emit('refresh')"
     />
 
-    <section class="token-card">
-      <span>本轮 Token</span>
-      <strong v-if="latestTokenUsage">{{ latestTokenUsage.total_tokens }}</strong>
-      <strong v-else-if="chatLoading">统计中</strong>
-      <strong v-else>0</strong>
-      <small v-if="latestTokenUsage">
-        prompt {{ latestTokenUsage.prompt_tokens }} / completion {{ latestTokenUsage.completion_tokens }}
-      </small>
-      <small v-else>等待下一次回答</small>
-    </section>
-
-    <section class="agent-roster">
-      <h3>Multi-Agent</h3>
-      <article v-for="agent in agents" :key="agent.name">
-        <strong>{{ agent.name }}</strong><span>{{ agent.detail }}</span>
-      </article>
+    <section class="metric-card">
+      <header>
+        <span>本轮指标</span>
+        <small v-if="chatLoading">统计中</small>
+      </header>
+      <div v-if="latestMetrics" class="metric-grid">
+        <div class="metric">
+          <small>Token</small>
+          <strong>{{ latestMetrics.tokenUsage.total_tokens }}</strong>
+          <small>prompt {{ latestMetrics.tokenUsage.prompt_tokens }} / completion {{ latestMetrics.tokenUsage.completion_tokens }}</small>
+        </div>
+        <div class="metric">
+          <small>延迟</small>
+          <strong>{{ latestMetrics.latencyMs !== null ? `${latestMetrics.latencyMs} ms` : "—" }}</strong>
+          <small>端到端耗时</small>
+        </div>
+        <div class="metric">
+          <small>工具</small>
+          <strong>{{ latestMetrics.toolTotal ? `${latestMetrics.toolSucceeded}/${latestMetrics.toolTotal}` : "0" }}</strong>
+          <small>成功 / 调用</small>
+        </div>
+        <div class="metric">
+          <small>检索命中</small>
+          <strong>{{ latestMetrics.sourceCount }}</strong>
+          <small>引用片段数</small>
+        </div>
+      </div>
+      <p v-else class="metric-empty">发送一条消息后显示 Token、延迟、工具与检索指标</p>
     </section>
 
     <div class="history-list">
@@ -207,17 +217,6 @@ function projectFilterLabel() {
         </el-dropdown>
       </div>
       <p v-if="!conversations.length && !conversationsLoading" class="history-empty">还没有对话，点右上角 + 开始</p>
-    </div>
-
-    <ol class="graph-flow">
-      <li>query_analyzer</li><li>retrieve</li><li>grade_documents</li>
-      <li>rewrite_query</li><li>generate</li><li>cite_sources</li>
-    </ol>
-
-    <div class="suggestions">
-      <button v-for="item in suggestions" :key="item" type="button" @click="emit('suggest', item)">
-        {{ item }}
-      </button>
     </div>
   </aside>
 </template>

@@ -20,6 +20,14 @@ from .tools import ToolResult
 
 _EMPTY_USAGE: TokenUsage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
+# runner 对失败只生成这些固定前缀的消息；正文内容不参与判定，
+# 否则检索/执行输出里恰好出现的「失败/error」等词会造成误判。
+MCP_FAILURE_PREFIXES = ("网页搜索失败：", "网页搜索没有返回可用结果。", "工具执行失败")
+
+
+def mcp_execution_ok(output: str) -> bool:
+    return not output.startswith(MCP_FAILURE_PREFIXES)
+
 
 def plain_response(
     answer: str,
@@ -145,7 +153,7 @@ def run_mcp_tool_agent(project_root, workspace_key: str, message: str) -> MultiA
     except MCPTool.DoesNotExist:
         return plain_response(
             answer=f"MCP Tool Agent 没有找到注册工具：{selected_tool}",
-            tool_call=ToolResult("mcp_registry_lookup", selected_tool, "tool not registered"),
+            tool_call=ToolResult("mcp_registry_lookup", selected_tool, "tool not registered", ok=False),
             trace=["mcp_tool_agent -> registry lookup failed"],
             route="mcp_tool_agent",
             supervisor_decision=decision("mcp_tool_agent", "MCP Tool Agent", "registry lookup", 1.0),
@@ -154,7 +162,7 @@ def run_mcp_tool_agent(project_root, workspace_key: str, message: str) -> MultiA
     if not registry_item.is_enabled:
         return plain_response(
             answer=f"MCP 工具「{registry_item.display_name}」当前已禁用，需要管理员在工具注册表中启用后才能调用。",
-            tool_call=ToolResult("mcp_registry_lookup", selected_tool, "tool disabled"),
+            tool_call=ToolResult("mcp_registry_lookup", selected_tool, "tool disabled", ok=False),
             trace=["mcp_tool_agent -> tool disabled"],
             route="mcp_tool_agent",
             supervisor_decision=decision("mcp_tool_agent", "MCP Tool Agent", "tool disabled", 1.0),
@@ -179,7 +187,7 @@ def run_mcp_tool_agent(project_root, workspace_key: str, message: str) -> MultiA
     )
     return plain_response(
         answer=answer,
-        tool_call=ToolResult(f"mcp:{selected_tool}", message, execution.output),
+        tool_call=ToolResult(f"mcp:{selected_tool}", message, execution.output, ok=mcp_execution_ok(execution.output)),
         trace=[f"mcp_tool_agent -> {selected_tool}"],
         route="mcp_tool_agent",
         supervisor_decision=decision("mcp_tool_agent", "MCP Tool Agent", "tool execution", 1.0),
@@ -228,7 +236,7 @@ def run_internet_agent(
     except MCPTool.DoesNotExist:
         return plain_response(
             answer="联网搜索工具未注册，已停止联网回答。",
-            tool_call=ToolResult("mcp_registry_lookup", "web_search", "tool not registered"),
+            tool_call=ToolResult("mcp_registry_lookup", "web_search", "tool not registered", ok=False),
             trace=[*trace, "internet_search -> tool not registered"],
             route="internet",
             supervisor_decision=internet_decision,
@@ -236,7 +244,7 @@ def run_internet_agent(
     if not tool.is_enabled:
         return plain_response(
             answer="联网搜索当前已关闭，请管理员先启用网页搜索工具。",
-            tool_call=ToolResult("mcp_registry_lookup", "web_search", "tool disabled"),
+            tool_call=ToolResult("mcp_registry_lookup", "web_search", "tool disabled", ok=False),
             trace=[*trace, "internet_search -> tool disabled"],
             route="internet",
             supervisor_decision=internet_decision,
@@ -256,7 +264,9 @@ def run_internet_agent(
     if web_search_output_unusable(execution.output):
         return plain_response(
             answer=execution.output,
-            tool_call=ToolResult("mcp:web_search", search_query, execution.output),
+            tool_call=ToolResult(
+                "mcp:web_search", search_query, execution.output, ok=mcp_execution_ok(execution.output)
+            ),
             trace=[*trace, f"internet_query_rewrite -> {search_query}", "internet_search -> unavailable"],
             route="internet",
             supervisor_decision=internet_decision,
@@ -264,7 +274,7 @@ def run_internet_agent(
     response = rag_agent.answer_with_external_context(
         message,
         execution.output,
-        ToolResult("mcp:web_search", search_query, execution.output),
+        ToolResult("mcp:web_search", search_query, execution.output, ok=mcp_execution_ok(execution.output)),
         history=history or [],
     )
     response_with_query_trace = AgentResponse(

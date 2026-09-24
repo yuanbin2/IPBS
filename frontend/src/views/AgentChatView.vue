@@ -14,7 +14,9 @@ import type {
   ConversationDetail,
   ConversationProject,
   SupervisorDecision,
-  TokenUsage
+  TokenUsage,
+  ToolCall,
+  TurnMetrics
 } from "../features/chat/types";
 
 const MESSAGE_PAGE_SIZE = 20;
@@ -43,7 +45,7 @@ const hasMoreBefore = ref(false);
 const currentConversationId = ref<number | null>(null);
 const conversations = ref<Conversation[]>([]);
 const messages = ref<ChatMessage[]>([welcomeMessage]);
-const latestTokenUsage = ref<TokenUsage | null>(null);
+const latestMetrics = ref<TurnMetrics | null>(null);
 const projects = ref<ConversationProject[]>([]);
 /** "all" 全部对话 | "none" 未分组 | 项目 id（字符串） */
 const activeProject = ref("all");
@@ -54,22 +56,6 @@ const reviewingApproval = ref(false);
 const reviewer = ref("admin");
 const reviewNote = ref("");
 
-const suggestions = [
-  "MCP 搜索本地文件中的 LangGraph",
-  "用 MCP 查看 Git 仓库状态",
-  "网页搜索 Django REST Framework 官方文档",
-  "用 MCP 统计系统数据"
-];
-const agentRoster = [
-  { name: "Supervisor", detail: "路由与任务拆分" },
-  { name: "RAG Agent", detail: "知识库检索问答" },
-  { name: "Blog Agent", detail: "博客与项目经历" },
-  { name: "SQL Analysis", detail: "安全统计分析" },
-  { name: "MCP Tool Agent", detail: "文件、Git、网页与数据库工具" },
-  { name: "Writing", detail: "写作与总结" },
-  { name: "Review", detail: "质量与引用检查" },
-  { name: "Admin Approval", detail: "高风险操作审批" }
-];
 const canSend = computed(() => input.value.trim().length > 0 && !loading.value);
 
 onMounted(() => {
@@ -189,7 +175,10 @@ async function loadConversation(conversation: Conversation) {
   currentConversationId.value = detail.id;
   messages.value = detail.messages.map(mapApiMessage);
   hasMoreBefore.value = detail.has_more_before;
-  latestTokenUsage.value = [...messages.value].reverse().find((message) => message.tokenUsage)?.tokenUsage ?? null;
+  const lastWithUsage = [...messages.value].reverse().find((message) => message.tokenUsage);
+  latestMetrics.value = lastWithUsage?.tokenUsage
+    ? metricsFromMessage(lastWithUsage.tokenUsage, lastWithUsage.toolCalls, lastWithUsage.sources)
+    : null;
   await nextTick();
   if (conversation.matched_message_id) {
     scrollToMessage(conversation.matched_message_id);
@@ -246,6 +235,48 @@ function mapApiMessage(message: ConversationDetail["messages"][number]): ChatMes
   };
 }
 
+/** 单次工具调用是否成功：优先读后端显式 ok 标志，历史数据回退关键词判断。 */
+function toolCallSucceeded(call: ToolCall): boolean {
+  if (typeof call.ok === "boolean") return call.ok;
+  const output = (call.output ?? "").toLowerCase();
+  return !!output && !["error", "failed", "异常", "失败"].some((marker) => output.includes(marker));
+}
+
+/** 从流式 response 事件构建本轮指标。 */
+function metricsFromEvent(event: {
+  token_usage?: TokenUsage;
+  tool_calls?: ChatMessage["toolCalls"];
+  sources?: ChatMessage["sources"];
+  latency_ms?: number;
+}): TurnMetrics {
+  const toolCalls = event.tool_calls ?? [];
+  const succeeded = toolCalls.filter((call) => toolCallSucceeded(call)).length;
+  return {
+    tokenUsage: event.token_usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    latencyMs: event.latency_ms ?? null,
+    toolTotal: toolCalls.length,
+    toolSucceeded: succeeded,
+    sourceCount: event.sources?.length ?? 0
+  };
+}
+
+/** 从历史消息重建指标（延迟未知，置空）。 */
+function metricsFromMessage(
+  tokenUsage: TokenUsage,
+  toolCalls?: ChatMessage["toolCalls"],
+  sources?: ChatMessage["sources"]
+): TurnMetrics {
+  const calls = toolCalls ?? [];
+  const succeeded = calls.filter((call) => toolCallSucceeded(call)).length;
+  return {
+    tokenUsage,
+    latencyMs: null,
+    toolTotal: calls.length,
+    toolSucceeded: succeeded,
+    sourceCount: sources?.length ?? 0
+  };
+}
+
 function scrollToBottom() {
   const scroller = getConversationScroller();
   if (scroller) {
@@ -262,7 +293,7 @@ function startNewConversation() {
   currentConversationId.value = null;
   hasMoreBefore.value = false;
   messages.value = [welcomeMessage];
-  latestTokenUsage.value = null;
+  latestMetrics.value = null;
   input.value = "";
 }
 
@@ -280,7 +311,7 @@ async function sendMessage(prompt?: string) {
     thinkingExpanded: true
   });
   messages.value.push(pendingMessage);
-  latestTokenUsage.value = null;
+  latestMetrics.value = null;
   input.value = "";
   loading.value = true;
   await nextTick();
@@ -341,7 +372,7 @@ async function sendMessage(prompt?: string) {
               supervisor: event.supervisor,
               pending: false
             });
-            latestTokenUsage.value = event.token_usage ?? null;
+            latestMetrics.value = metricsFromEvent(event);
             if (event.approval_required && event.approval && auth.session.role === "admin") {
               pendingApproval.value = event.approval;
               approvalDialogOpen.value = true;
@@ -470,9 +501,7 @@ function formatAgentName(agentName: string) {
           :current-conversation-id="currentConversationId"
           :conversations-loading="conversationsLoading"
           :chat-loading="loading"
-          :latest-token-usage="latestTokenUsage"
-          :agents="agentRoster"
-          :suggestions="suggestions"
+          :latest-metrics="latestMetrics"
           :projects="projects"
           :active-project="activeProject"
           @refresh="loadConversations"

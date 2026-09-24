@@ -70,4 +70,4 @@ def search_sources(query: str, *, workspace_key: str, project_root) -> tuple[Too
         return ToolResult("knowledge_search", query, format_search_results(results)), sources
     except Exception as exc:
         output = search_knowledge(query, project_root)
-        return ToolResult("knowledge_search", query, f"知识库检索暂时不可用：{exc}\n\n{output}"), []
+        return ToolResult("knowledge_search", query, f"知识库检索暂时不可用：{exc}\n\n{output}", ok=False), []

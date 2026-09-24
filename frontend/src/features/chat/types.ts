@@ -2,6 +2,8 @@ export interface ToolCall {
   name: string;
   input: string;
   output: string;
+  /** 显式成功标记（后端 ToolResult.ok）；历史数据可能缺失 */
+  ok?: boolean;
 }
 
 export interface SourceCitation {
@@ -54,7 +56,17 @@ export interface StreamEvent {
   token_usage?: TokenUsage;
   supervisor?: SupervisorDecision;
   conversation_id?: number;
+  latency_ms?: number;
   detail?: string;
+}
+
+/** 本轮回答的实时指标（侧边栏指标卡） */
+export interface TurnMetrics {
+  tokenUsage: TokenUsage;
+  latencyMs: number | null;
+  toolTotal: number;
+  toolSucceeded: number;
+  sourceCount: number;
 }
 
 export interface Conversation {

@@ -238,14 +238,22 @@ def selected_agent_from_response(response_data: dict) -> str:
     return str(supervisor.get("selected_agent") or "")
 
 
+def tool_call_succeeded(call: dict) -> bool:
+    """判断单次工具调用是否成功。
+
+    优先读 ToolResult 序列化出的显式 `ok` 标志；历史数据没有该字段时
+    回退到输出关键词判断（旧数据的近似值）。
+    """
+    if "ok" in call:
+        return bool(call["ok"])
+    output = str(call.get("output", "")).lower()
+    return bool(output) and not any(marker in output for marker in ["error", "failed", "异常", "失败"])
+
+
 def calculate_tool_success_rate(tool_calls: list[dict]) -> float:
     if not tool_calls:
         return 1.0
-    successful = 0
-    for call in tool_calls:
-        output = str(call.get("output", "")).lower()
-        if output and not any(marker in output for marker in ["error", "failed", "异常", "失败"]):
-            successful += 1
+    successful = sum(1 for call in tool_calls if tool_call_succeeded(call))
     return round(successful / len(tool_calls), 2)
 
 
