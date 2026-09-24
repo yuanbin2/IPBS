@@ -1576,6 +1576,55 @@ img {
   background: var(--color-primary);
   color: #ffffff;
   border-color: var(--color-primary);
+  --answer-fade: var(--color-primary);
+}
+
+.message.agent .message-body {
+  --answer-fade: var(--color-bg-surface);
+}
+
+/* 长回答固定高度窗口：默认收起，点「展开全文」看全貌 */
+.answer-window {
+  position: relative;
+  min-width: 0;
+}
+
+.answer-window.clamped {
+  max-height: 380px;
+  overflow: hidden;
+}
+
+.answer-window.clamped::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 64px;
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0), var(--answer-fade, var(--color-bg-surface)));
+  pointer-events: none;
+}
+
+.answer-toggle {
+  margin-top: var(--space-2);
+  padding: 2px 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-primary);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.message.user .message-body .answer-toggle {
+  color: #ffffff;
+  border-color: rgb(255 255 255 / 0.5);
+}
+
+.answer-toggle:hover {
+  border-color: var(--color-primary);
 }
 
 .message-copy {
