@@ -59,10 +59,22 @@ export interface StreamEvent {
 
 export interface Conversation {
   id: number;
+  project_id: number | null;
   title: string;
   created_at: string;
   updated_at: string;
   matched_message_id?: number;
+}
+
+/** 对话项目：把会话按主题分组（"all" 表示全部，"none" 表示未分组） */
+export interface ConversationProject {
+  id: number;
+  name: string;
+  description: string;
+  color: string;
+  conversation_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ConversationDetail extends Conversation {

@@ -12,6 +12,7 @@ import type {
   ChatMessage,
   Conversation,
   ConversationDetail,
+  ConversationProject,
   SupervisorDecision,
   TokenUsage
 } from "../features/chat/types";
@@ -43,6 +44,9 @@ const currentConversationId = ref<number | null>(null);
 const conversations = ref<Conversation[]>([]);
 const messages = ref<ChatMessage[]>([welcomeMessage]);
 const latestTokenUsage = ref<TokenUsage | null>(null);
+const projects = ref<ConversationProject[]>([]);
+/** "all" 全部对话 | "none" 未分组 | 项目 id（字符串） */
+const activeProject = ref("all");
 const getConversationScroller = () => document.querySelector<HTMLElement>(".conversation");
 const approvalDialogOpen = ref(false);
 const pendingApproval = ref<ApprovalRequest | null>(null);
@@ -74,8 +78,20 @@ onMounted(() => {
     input.value = pendingQuestion;
     localStorage.removeItem("pendingAgentQuestion");
   }
+  void loadProjects();
   void loadConversations();
 });
+
+async function loadProjects() {
+  const response = await fetch("/api/agent/projects/");
+  if (!response.ok) return;
+  projects.value = await response.json();
+  // 当前选中的项目被删掉时，回退到全部对话
+  if (activeProject.value !== "all" && activeProject.value !== "none") {
+    const stillExists = projects.value.some((project) => String(project.id) === activeProject.value);
+    if (!stillExists) activeProject.value = "all";
+  }
+}
 
 async function loadConversations() {
   conversationsLoading.value = true;
@@ -83,6 +99,9 @@ async function loadConversations() {
     const params = new URLSearchParams();
     if (historySearch.value.trim()) {
       params.set("q", historySearch.value.trim());
+    }
+    if (activeProject.value !== "all") {
+      params.set("project", activeProject.value);
     }
     const query = params.toString();
     const response = await fetch(`/api/agent/conversations/${query ? `?${query}` : ""}`);
@@ -93,6 +112,71 @@ async function loadConversations() {
   } finally {
     conversationsLoading.value = false;
   }
+}
+
+function selectProject(projectId: string) {
+  if (activeProject.value === projectId) return;
+  activeProject.value = projectId;
+  void loadConversations();
+}
+
+async function createProject(name: string) {
+  const response = await fetch("/api/agent/projects/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name })
+  });
+  if (!response.ok) {
+    ElMessage.error(response.status === 409 ? "项目名已存在" : "创建项目失败");
+    return;
+  }
+  const project = await response.json();
+  projects.value = [...projects.value, project];
+  activeProject.value = String(project.id);
+  await loadConversations();
+  ElMessage.success(`已创建项目「${project.name}」`);
+}
+
+async function renameProject(project: ConversationProject, name: string) {
+  const response = await fetch(`/api/agent/projects/${project.id}/`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name })
+  });
+  if (!response.ok) {
+    ElMessage.error("重命名失败");
+    return;
+  }
+  const updated = await response.json();
+  projects.value = projects.value.map((item) => (item.id === updated.id ? updated : item));
+}
+
+async function deleteProject(project: ConversationProject) {
+  const response = await fetch(`/api/agent/projects/${project.id}/`, { method: "DELETE" });
+  if (!response.ok) {
+    ElMessage.error("删除项目失败");
+    return;
+  }
+  projects.value = projects.value.filter((item) => item.id !== project.id);
+  if (activeProject.value === String(project.id)) {
+    activeProject.value = "all";
+  }
+  await loadConversations();
+  ElMessage.success("项目已删除，对话移回未分组");
+}
+
+async function moveConversation(conversation: Conversation, projectId: number | null) {
+  const response = await fetch(`/api/agent/conversations/${conversation.id}/move/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: projectId })
+  });
+  if (!response.ok) {
+    ElMessage.error("移动对话失败");
+    return;
+  }
+  ElMessage.success(projectId === null ? "已移出项目" : "已移动对话");
+  await Promise.all([loadConversations(), loadProjects()]);
 }
 
 async function loadConversation(conversation: Conversation) {
@@ -210,7 +294,12 @@ async function sendMessage(prompt?: string) {
       body: JSON.stringify({
         message,
         conversation_id: currentConversationId.value,
-        internet_enabled: internetEnabled.value
+        internet_enabled: internetEnabled.value,
+        // 新对话直接落入侧边栏当前选中的项目（"all"/"none" 不传，保持未分组）
+        project_id:
+          activeProject.value !== "all" && activeProject.value !== "none"
+            ? Number(activeProject.value)
+            : undefined
       })
     });
 
@@ -259,7 +348,7 @@ async function sendMessage(prompt?: string) {
             }
           } else if (event.type === "done") {
             currentConversationId.value = event.conversation_id;
-            await loadConversations();
+            await Promise.all([loadConversations(), loadProjects()]);
           } else if (event.type === "error") {
             throw new Error(event.detail ?? "Unknown stream error");
           }
@@ -384,10 +473,17 @@ function formatAgentName(agentName: string) {
           :latest-token-usage="latestTokenUsage"
           :agents="agentRoster"
           :suggestions="suggestions"
+          :projects="projects"
+          :active-project="activeProject"
           @refresh="loadConversations"
           @create="startNewConversation"
           @select="loadConversation"
           @suggest="sendMessage"
+          @select-project="selectProject"
+          @create-project="createProject"
+          @rename-project="renameProject"
+          @delete-project="deleteProject"
+          @move-conversation="(conversation, projectId) => moveConversation(conversation, projectId)"
         />
       </section>
 

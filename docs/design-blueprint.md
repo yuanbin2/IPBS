@@ -202,6 +202,8 @@
 | DAE | 对话历史持久化 | 已实现 |
 | DAF | AgentRun 记录 | 已实现 |
 | DAG | Supervisor 路由单测 | 待补 |
+| DAH | 对话项目（创建/重命名/删除/按项目过滤） | 已实现 |
+| DAI | 对话归属项目与移动（新对话落入当前项目） | 已实现 |
 
 #### E 治理与工具
 
@@ -262,6 +264,12 @@
 ```
 
 #### 日志
+
+## 2026.9.24
+- 新增对话项目分组（DAH/DAI）：`ConversationProject` 模型 + `Conversation.project`（SET_NULL），项目 CRUD 与对话移动 API（`api.md` 已同步），侧边栏项目切换/新建/重命名/删除，新对话落入当前选中项目
+  - 涉及文件 / 模块：backend/apps/agent_api/{models/agent.py, views/projects.py, api_urls/projects.py, serializers/agent.py, migrations/0027_*}、frontend/src/{views/AgentChatView.vue, features/chat/components/ConversationSidebar.vue, features/chat/types.ts, style.css}
+  - 影响的数据空间：对象 4（对话与编排）新增 `ConversationProject` 表
+  - 测试：新增 `tests/test_projects.py` 10 例，全量 102 例通过（5 个环境依赖既有失败不变）
 
 ## 2026.9.23（二）
 - 执行 `coding-conventions.md` §9 代码层迁移 C1–C8（分支 `refactor/code-conventions-migration`，每项一个 commit）

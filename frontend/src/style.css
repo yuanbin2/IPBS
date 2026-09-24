@@ -2089,11 +2089,163 @@ img {
   gap: var(--space-2);
 }
 
+/* 项目分组（侧边栏顶部） */
+.project-section {
+  margin-bottom: var(--space-5);
+}
+
+.project-section .panel-actions h2 {
+  font-size: var(--font-size-sm);
+}
+
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.project-list > button,
+.project-item > button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--font-size-sm);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.project-list > button:hover,
+.project-item > button:hover {
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.project-list > button.active,
+.project-item > button.active {
+  border-color: var(--color-primary);
+  background: var(--color-bg-surface);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.project-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.project-item > button {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-count {
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--color-bg-page);
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.project-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.project-item:hover .project-actions,
+.project-item:focus-within .project-actions {
+  opacity: 1;
+}
+
+.project-rename {
+  width: 100%;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.project-filter-hint {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
 .history-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   margin-bottom: var(--space-5);
+}
+
+.history-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  padding: var(--space-3);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--font-size-sm);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.history-item .history-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item.active,
+.history-item:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.history-item .el-dropdown {
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.history-item:hover .el-dropdown,
+.history-item:focus-within .el-dropdown {
+  opacity: 1;
+}
+
+.history-empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
 }
 
 .history-search {
@@ -2160,28 +2312,6 @@ img {
 .agent-roster span {
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
-}
-
-.history-list button {
-  width: 100%;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-surface);
-  padding: var(--space-3);
-  color: var(--color-text-primary);
-  cursor: pointer;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--font-size-sm);
-  transition: border-color var(--transition-fast), color var(--transition-fast);
-}
-
-.history-list button.active,
-.history-list button:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
 }
 
 .graph-flow {

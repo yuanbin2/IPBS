@@ -309,18 +309,35 @@ lark 用 `pv_std_status_15min`（对象_类型_粒度）。Django 表名由 `app
 
 ### 对象 4：对话与编排（`models/agent.py`）
 
-#### 4.1 `Conversation` 会话
+#### 4.1 `ConversationProject` 对话项目
+
+表名 `agent_api_conversationproject` ｜ 责任：Agent 编排
+
+| 字段 | 类型 | 说明 | 默认/约束 |
+| --- | --- | --- | --- |
+| `name` | CharField(120) | 项目名 | 必填 |
+| `description` | TextField | 描述 | blank |
+| `color` | CharField(20) | 主题色标识 | 默认 `teal` |
+| `workspace_key` | CharField(80) | 隔离键 | db_index |
+| `owner_username` | CharField(150) | 所有者 | 默认 `anonymous`，db_index |
+| `created_at` / `updated_at` | DateTimeField | 时间戳 | auto |
+
+- 约束：`unique(workspace_key, owner_username, name)`（同一所有者的项目名不重复）
+- 索引：`workspace_key`、`owner_username`，排序 `-updated_at`
+
+#### 4.2 `Conversation` 会话
 
 表名 `agent_api_conversation` ｜ 责任：Agent 编排
 
 | 字段 | 类型 | 说明 | 默认/约束 |
 | --- | --- | --- | --- |
 | `title` | CharField(160) | 标题 | blank |
+| `project` | FK → `ConversationProject` | 所属项目 | SET_NULL，可空 |
 | `workspace_key` | CharField(80) | 隔离键 | db_index |
 | `owner_username` | CharField(150) | 所有者 | 默认 `anonymous`，db_index |
 | `created_at` / `updated_at` | DateTimeField | 时间戳 | auto |
 
-#### 4.2 `Message` 消息
+#### 4.3 `Message` 消息
 
 表名 `agent_api_message` ｜ 责任：Agent 编排
 
@@ -335,7 +352,7 @@ lark 用 `pv_std_status_15min`（对象_类型_粒度）。Django 表名由 `app
 | `token_usage` | JSONField | token 用量 | 默认 `{}` |
 | `created_at` | DateTimeField | 时间戳 | auto |
 
-#### 4.3 `AgentRun` 运行记录
+#### 4.4 `AgentRun` 运行记录
 
 表名 `agent_api_agentrun` ｜ 责任：Agent 编排
 
@@ -481,6 +498,7 @@ lark 用 `pv_std_status_15min`（对象_类型_粒度）。Django 表名由 `app
 | `EmbeddingRecord` | OneToOne | `DocumentChunk` | CASCADE | 切片删向量删 |
 | `Message` | FK | `Conversation` | CASCADE | 会话删消息删 |
 | `AgentRun` | FK | `Conversation` | CASCADE | 会话删运行删 |
+| `Conversation` | FK | `ConversationProject` | SET_NULL | 项目删对话移回未分组 |
 | `AgentObservation` | FK | `Conversation` / `AgentRun` | SET_NULL | 观测保留 |
 | `EvaluationRun` | FK | `EvaluationCase` | CASCADE | 用例删运行删 |
 | `EvaluationRun` | FK | `AgentObservation` | SET_NULL | 观测删运行保留 |
@@ -512,6 +530,8 @@ lark 用 `pv_std_status_15min`（对象_类型_粒度）。Django 表名由 `app
 | --- | --- | --- | --- | --- |
 | 2026-09-23 | ✏️ 建档 | 全部 21 张 ORM 表 | 建立字段级参考手册，全量登记现有 schema | —（基于现状） |
 | 2026-09-23 | 🆕 补录 | `agent_api_vectorindex`（pgvector 原生表） | 补录 `vector_store.py` 原生 SQL 建表，纳入 schema 覆盖（3.5 节） | —（原生 SQL，非 migration） |
+| 2026-09-24 | 🆕 新增 | `agent_api_conversationproject` | 对话项目分组（4.1 节） | `0027_conversationproject_conversation_project` |
+| 2026-09-24 | ✏️ 字段变更 | `agent_api_conversation.project` | 新增项目外键（SET_NULL，可空） | 同上 |
 
 ### 待登记的已知问题（来自架构分析，尚未执行）
 

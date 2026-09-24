@@ -10,8 +10,16 @@
 ## Chat / Agent
 
 - `POST /chat/`：Agent 对话。
-- `GET /conversations/`：会话列表。
+- `GET /conversations/`：会话列表（支持 `?project=<id>` / `?project=none` 过滤）。
 - `GET /conversations/<id>/`：会话详情。
+
+## Projects
+
+- `GET /projects/`：项目列表（含对话计数）。
+- `POST /projects/`：创建项目（`name` 必填，同所有者下重名返回 409）。
+- `PATCH /projects/<id>/`：重命名/改描述/颜色。
+- `DELETE /projects/<id>/`：删除项目，其中对话移回未分组（SET_NULL）。
+- `POST /conversations/<id>/move/`：把对话移入项目（`project_id` 为空表示移出到未分组）。
 
 ## Knowledge
 
