@@ -43,7 +43,7 @@ async function submit() {
           <el-icon><Lock /></el-icon>
         </div>
         <h2>智能个人博客系统</h2>
-        <p>企业知识智能体平台，基于 Agentic RAG 的智能知识管理，让博客、文档和对话汇聚为统一的知识源。</p>
+        <p>智能个人博客系统，基于 Agentic RAG 的知识管理与问答，让博客、文档和对话汇聚为统一的知识源。</p>
       </div>
     </div>
 

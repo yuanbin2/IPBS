@@ -64,7 +64,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
     <header class="dashboard-header">
       <div>
         <h1>欢迎回来，{{ auth.session.actor }}</h1>
-        <p class="dashboard-subtitle">企业知识智能体平台 · 运行概览</p>
+        <p class="dashboard-subtitle">智能个人博客系统 · 运行概览</p>
       </div>
       <RouterLink to="/chat">
         <el-button type="primary">新建对话</el-button>

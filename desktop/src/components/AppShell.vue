@@ -82,7 +82,7 @@ function closeSidebar() {
         <div class="sidebar-logo">K</div>
         <div class="sidebar-brand">
           <strong>智能个人博客系统</strong>
-          <small>企业知识智能体平台</small>
+          <small>Agentic RAG · 智能问答</small>
         </div>
       </div>
 
