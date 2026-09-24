@@ -81,7 +81,7 @@ function closeSidebar() {
       <div class="sidebar-header">
         <div class="sidebar-logo">K</div>
         <div class="sidebar-brand">
-          <strong>Knowledge Agent</strong>
+          <strong>智能个人博客系统</strong>
           <small>企业知识智能体平台</small>
         </div>
       </div>

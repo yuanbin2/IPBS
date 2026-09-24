@@ -84,7 +84,7 @@ function createTray(): void {
     }
   ])
 
-  tray.setToolTip('Knowledge Agent Platform')
+  tray.setToolTip('智能个人博客系统')
   tray.setContextMenu(contextMenu)
 
   tray.on('double-click', () => {

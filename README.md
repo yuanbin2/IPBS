@@ -1,6 +1,6 @@
-# Enterprise Knowledge Agent Platform with Personal Blog Agent
+# 智能个人博客系统
 
-企业知识智能体平台 + 个人博客智能体系统。
+基于 Django + LangGraph 的个人博客与知识智能体系统：RBAC 权限、博客、Agentic RAG、多智能体路由、Human-in-the-loop 审批、MCP 工具与可观测评估。
 
 这个仓库是一个企业级 Agent 工程化学习项目。第一阶段目标是搭建可启动的 monorepo，并逐步完成个人博客、企业知识库、Agentic RAG、多智能体协作、Human-in-the-loop、MCP 工具接入、可观测性和 CI/CD。
 
@@ -16,6 +16,8 @@
 
 ## 文档导航
 
+- [设计蓝图与迭代手册（总纲，先看这个）](docs/design-blueprint.md)
+- [全项目架构分析](docs/architecture-analysis.md)
 - [岗位准备、从零搭建、学习清单与面试题](docs/job-preparation-guide.md)
 - [部署说明](docs/deployment.md)
 - [API 文档](docs/api.md)

@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.knowledge-agent.desktop",
-  "productName": "Knowledge Agent",
-  "copyright": "Copyright © 2026 Knowledge Agent Platform",
+  "productName": "智能个人博客系统",
+  "copyright": "Copyright © 2026 智能个人博客系统",
   "directories": {
     "output": "release",
     "buildResources": "build"
@@ -29,7 +29,7 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Knowledge Agent",
+    "shortcutName": "智能个人博客系统",
     "installerIcon": "build/icon.ico",
     "uninstallerIcon": "build/icon.ico",
     "installerHeaderIcon": "build/icon.ico"

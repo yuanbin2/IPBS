@@ -1,7 +1,7 @@
 @echo off
-title Knowledge Agent Desktop
+title 智能个人博客系统
 echo ========================================
-echo   Knowledge Agent - Desktop Mode
+echo   智能个人博客系统 - 桌面模式
 echo ========================================
 echo.
 

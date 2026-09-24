@@ -8,9 +8,9 @@ if not exist "%CSC%" (
     exit /b 1
 )
 
-echo Building Knowledge Agent.exe ...
-"%CSC%" -nologo -target:winexe -win32icon:icon.ico -optimize+ -out:"Knowledge Agent.exe" Launcher.cs
+echo Building 智能个人博客系统.exe ...
+"%CSC%" -nologo -target:winexe -win32icon:icon.ico -optimize+ -out:"智能个人博客系统.exe" Launcher.cs
 if errorlevel 1 exit /b 1
 
-echo Done! Knowledge Agent.exe built with the embedded app icon.
+echo Done! 智能个人博客系统.exe built with the embedded app icon.
 endlocal

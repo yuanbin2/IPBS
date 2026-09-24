@@ -55,7 +55,7 @@ function handleDoubleClick() {
       <div class="titlebar-content">
         <div class="titlebar-brand">
           <div class="titlebar-logo">K</div>
-          <span class="titlebar-title">Knowledge Agent</span>
+          <span class="titlebar-title">智能个人博客系统</span>
         </div>
 
         <div class="titlebar-controls">

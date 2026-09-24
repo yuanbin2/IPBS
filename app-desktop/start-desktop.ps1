@@ -1,4 +1,4 @@
-# Knowledge Agent Desktop Launcher
+# 智能个人博客系统 桌面启动器
 # Starts backend, frontend, and opens Edge in app mode
 
 $ErrorActionPreference = "Continue"
@@ -7,7 +7,7 @@ if (-not $projectRoot) { $projectRoot = "E:\Desktop\MyProject\Blog-fixed-2026072
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  Knowledge Agent - Desktop Mode" -ForegroundColor Cyan
+Write-Host "  智能个人博客系统 - 桌面模式" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 

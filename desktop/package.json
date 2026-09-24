@@ -1,7 +1,7 @@
 {
   "name": "knowledge-agent-desktop",
   "version": "1.0.0",
-  "description": "Knowledge Agent Platform - Desktop Application",
+  "description": "智能个人博客系统 - 桌面应用",
   "main": "electron/main.js",
   "author": "yuanbin2",
   "license": "MIT",

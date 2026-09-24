@@ -1,13 +1,13 @@
-"""Generate the Knowledge Agent app icon (ICO + PNG) using pure Python.
+"""Generate the 智能个人博客系统 app icon (ICO + PNG) using pure Python.
 
 Design (brand palette from frontend themes: #276678 teal / #182329 dark):
   - rounded-square (squircle) badge instead of a plain circle — modern app-icon
     convention and it stands out next to circular avatars
   - diagonal teal gradient with a soft top-left sheen and a 1px inner
     highlight so the badge keeps its edge on dark taskbars
-  - a properly proportioned "K" (three capsules: stem + two arms meeting at the
-    stem midpoint) with a soft drop shadow for depth
-  - a four-point sparkle at the upper right — the "agent/AI" signal
+  - a properly proportioned "B" (stem + two bowl rings for Blog) with a soft
+    drop shadow for depth
+  - a four-point sparkle at the upper right — the "AI/agent" signal
 
 Quality: the master is rendered at 2x (512) with analytic anti-aliasing on the
 signed-distance fields, then every shipped size (256/64/48/32/16) is produced
@@ -51,20 +51,42 @@ def sd_capsule(px, py, ax, ay, bx, by, r):
     return math.sqrt(dx * dx + dy * dy) - r
 
 
+def sd_arc(px, py, cx, cy, r, t, a0_deg, a1_deg):
+    """Signed distance to a circular arc band (the B's bowl rings).
+
+    Measures to the arc itself inside [a0, a1] and to the nearest endpoint
+    outside it, so the stroke has flat ends instead of wrapping around.
+    """
+    a0, a1 = math.radians(a0_deg), math.radians(a1_deg)
+    angle = math.atan2(py - cy, px - cx)
+    if a0 <= angle <= a1:
+        ax, ay = cx + r * math.cos(angle), cy + r * math.sin(angle)
+    else:
+        e0x, e0y = cx + r * math.cos(a0), cy + r * math.sin(a0)
+        e1x, e1y = cx + r * math.cos(a1), cy + r * math.sin(a1)
+        d0 = (px - e0x) ** 2 + (py - e0y) ** 2
+        d1 = (px - e1x) ** 2 + (py - e1y) ** 2
+        ax, ay = (e0x, e0y) if d0 <= d1 else (e1x, e1y)
+    return math.sqrt((px - ax) ** 2 + (py - ay) ** 2) - t
+
+
 def coverage(sd: float) -> float:
     """Analytic anti-aliasing: 1px-wide transition across the SDF boundary."""
     return clamp01(0.5 - sd)
 
 
-# Glyph geometry (512 canvas). Stroke radius 22 (44px on 512) keeps the K
-# legible at 16px; the arms start at the stem's right edge so the junction
-# reads as a letter instead of a filled blob.
+# Glyph geometry (512 canvas). Stroke radius 22 (44px on 512) keeps the B
+# legible at 16px; each bowl is a right-half ring plus three bars that tie it
+# back to the stem, so the junction reads as a letter, not a filled blob.
 BADGE = (40, 40, 472, 472, 112)          # x0, y0, x1, y1, corner radius
-STEM = (185, 160, 185, 352, 22)          # ax, ay, bx, by, stroke radius
-ARM_UP = (202, 250, 322, 168, 22)
-ARM_DOWN = (202, 262, 338, 348, 22)
-SPARK_V = (390, 126, 390, 194, 12)
-SPARK_H = (364, 160, 416, 160, 12)
+STEM = (185, 165, 185, 347, 22)          # ax, ay, bx, by, stroke radius
+BOWL_UP = (245, 210, 46, 22, -90, 90)    # cx, cy, ring radius, stroke radius, arc degrees
+BOWL_DOWN = (245, 302, 46, 22, -90, 90)
+BAR_TOP = (207, 164, 245, 164, 22)       # ax, ay, bx, by, stroke radius
+BAR_MID = (207, 256, 245, 256, 22)
+BAR_BOTTOM = (207, 348, 245, 348, 22)
+SPARK_V = (398, 132, 398, 200, 12)
+SPARK_H = (372, 166, 424, 166, 12)
 
 GRAD_TOP_LEFT = (62, 147, 166)           # #3E93A6
 GRAD_MID = (39, 102, 120)                # #276678 brand teal
@@ -102,18 +124,24 @@ def render_master(size: int = MASTER) -> bytearray:
             edge = clamp01(1.0 - abs(badge_sd + 2.0) / 2.0)
             bg = mix(bg, (150, 210, 224), edge * 0.35)
 
-            # --- K shadow, then K ---
+            # --- B shadow, then B ---
             shadow = max(
                 coverage(sd_capsule(px, py - 7, *STEM[:4], STEM[4])),
-                coverage(sd_capsule(px, py - 7, *ARM_UP[:4], ARM_UP[4])),
-                coverage(sd_capsule(px, py - 7, *ARM_DOWN[:4], ARM_DOWN[4])),
+                coverage(sd_arc(px, py - 7, *BOWL_UP)),
+                coverage(sd_arc(px, py - 7, *BOWL_DOWN)),
+                coverage(sd_capsule(px, py - 7, *BAR_TOP[:4], BAR_TOP[4])),
+                coverage(sd_capsule(px, py - 7, *BAR_MID[:4], BAR_MID[4])),
+                coverage(sd_capsule(px, py - 7, *BAR_BOTTOM[:4], BAR_BOTTOM[4])),
             )
             bg = mix(bg, (10, 20, 26), shadow * 0.35)
 
             glyph = max(
                 coverage(sd_capsule(px, py, *STEM[:4], STEM[4])),
-                coverage(sd_capsule(px, py, *ARM_UP[:4], ARM_UP[4])),
-                coverage(sd_capsule(px, py, *ARM_DOWN[:4], ARM_DOWN[4])),
+                coverage(sd_arc(px, py, *BOWL_UP)),
+                coverage(sd_arc(px, py, *BOWL_DOWN)),
+                coverage(sd_capsule(px, py, *BAR_TOP[:4], BAR_TOP[4])),
+                coverage(sd_capsule(px, py, *BAR_MID[:4], BAR_MID[4])),
+                coverage(sd_capsule(px, py, *BAR_BOTTOM[:4], BAR_BOTTOM[4])),
             )
             fg = mix(bg, WHITE, glyph)
 

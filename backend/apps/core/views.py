@@ -10,7 +10,7 @@ class HealthCheckView(APIView):
         return Response(
             {
                 "status": "ok",
-                "service": "enterprise-knowledge-agent",
+                "service": "smart-personal-blog",
                 "modules": ["blog", "knowledge-base", "agent", "rag", "mcp"],
             }
         )

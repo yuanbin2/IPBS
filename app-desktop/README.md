@@ -1,4 +1,4 @@
-# Knowledge Agent Desktop
+# 智能个人博客系统 · 桌面启动器
 
 ## 快速启动
 
