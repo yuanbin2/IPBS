@@ -16,7 +16,7 @@ import type {
   TokenUsage
 } from "../features/chat/types";
 
-const MESSAGE_PAGE_SIZE = 30;
+const MESSAGE_PAGE_SIZE = 20;
 const auth = useAuthStore();
 
 const emptyUsage: TokenUsage = {

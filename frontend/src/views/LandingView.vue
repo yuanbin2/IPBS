@@ -38,8 +38,8 @@ function goToLogin() {
     <header class="landing-hero">
       <div class="landing-hero-inner">
         <div class="landing-hero-text">
-          <div class="landing-badge">Enterprise AI Platform</div>
-          <h1>企业知识智能体平台</h1>
+          <div class="landing-badge">AI Powered Blog</div>
+          <h1>智能个人博客系统</h1>
           <p>
             基于 Agentic RAG 的智能知识管理，让博客、文档和对话汇聚为统一的知识源。
           </p>
@@ -87,7 +87,7 @@ function goToLogin() {
 
     <!-- Footer -->
     <footer class="landing-footer">
-      <p>&copy; 2025 企业知识智能体平台</p>
+      <p>&copy; 2026 智能个人博客系统</p>
     </footer>
   </div>
 </template>

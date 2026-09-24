@@ -42,8 +42,8 @@ async function submit() {
         <div class="auth-brand-icon">
           <el-icon><Lock /></el-icon>
         </div>
-        <h2>Knowledge Agent</h2>
-        <p>企业知识智能体平台，基于 Agentic RAG 的智能知识管理，让博客、文档和对话汇聚为统一的知识源。</p>
+        <h2>智能个人博客系统</h2>
+        <p>智能个人博客系统，基于 Agentic RAG 的知识管理与问答，让博客、文档和对话汇聚为统一的知识源。</p>
       </div>
     </div>
 
@@ -54,7 +54,7 @@ async function submit() {
           <div class="auth-logo">
             <el-icon><Lock /></el-icon>
           </div>
-          <p class="eyebrow">Knowledge Agent</p>
+          <p class="eyebrow">智能个人博客系统</p>
           <h1>{{ mode === "login" ? "登录工作台" : "注册管理员账号" }}</h1>
         </header>
 

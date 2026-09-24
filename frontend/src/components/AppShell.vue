@@ -79,10 +79,10 @@ function closeSidebar() {
     <!-- Sidebar -->
     <aside class="sidebar" :class="{ 'sidebar-open': sidebarOpen }">
       <div class="sidebar-header">
-        <div class="sidebar-logo">K</div>
+        <div class="sidebar-logo">B</div>
         <div class="sidebar-brand">
-          <strong>Knowledge Agent</strong>
-          <small>企业知识智能体平台</small>
+          <strong>智能个人博客系统</strong>
+          <small>Agentic RAG · 智能问答</small>
         </div>
       </div>
 
