@@ -1,5 +1,5 @@
 @echo off
-title Knowledge Agent
+title 智能个人博客系统
 
 :: Check if frontend is already running
 curl -s http://127.0.0.1:5173 >nul 2>&1
