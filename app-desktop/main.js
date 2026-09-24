@@ -1,3 +1,4 @@
+const path = require('path')
 const { app, BrowserWindow } = require('electron')
 
 console.log('app type:', typeof app)
@@ -6,7 +7,11 @@ console.log('electron version:', process.versions.electron)
 
 if (app) {
   app.whenReady().then(() => {
-    const win = new BrowserWindow({ width: 800, height: 600 })
+    const win = new BrowserWindow({
+      width: 800,
+      height: 600,
+      icon: path.join(__dirname, 'icon.png')
+    })
     win.loadURL('https://www.baidu.com')
     console.log('Window created!')
   })

@@ -1,75 +1,167 @@
-"""Generate a Knowledge Agent icon (ICO + PNG) using pure Python."""
-import struct, zlib, math
+"""Generate the Knowledge Agent app icon (ICO + PNG) using pure Python.
 
-SIZE = 256
-TEAL = (39, 102, 120)
-DARK_TEAL = (23, 38, 46)
+Design (brand palette from frontend themes: #276678 teal / #182329 dark):
+  - rounded-square (squircle) badge instead of a plain circle — modern app-icon
+    convention and it stands out next to circular avatars
+  - diagonal teal gradient with a soft top-left sheen and a 1px inner
+    highlight so the badge keeps its edge on dark taskbars
+  - a properly proportioned "K" (three capsules: stem + two arms meeting at the
+    stem midpoint) with a soft drop shadow for depth
+  - a four-point sparkle at the upper right — the "agent/AI" signal
+
+Quality: the master is rendered at 2x (512) with analytic anti-aliasing on the
+signed-distance fields, then every shipped size (256/64/48/32/16) is produced
+by exact box-filter downscaling, so small sizes are smooth instead of jagged.
+"""
+import math
+import struct
+import zlib
+
+MASTER = 512  # supersampled master; shipped sizes are box-downscaled from it
 WHITE = (255, 255, 255)
+SPARKLE = (206, 232, 240)
 
-def create_rgba_pixels():
-    """Create RGBA pixel array for the icon."""
-    pixels = bytearray()
-    cx, cy = SIZE / 2, SIZE / 2
-    outer_r = SIZE / 2 - 8
 
-    for y in range(SIZE):
-        for x in range(SIZE):
-            dx = x - cx
-            dy = y - cy
-            dist = math.sqrt(dx * dx + dy * dy)
+def clamp01(value: float) -> float:
+    return 0.0 if value < 0.0 else (1.0 if value > 1.0 else value)
 
-            # Circle mask with anti-aliasing
-            if dist > outer_r + 1:
-                pixels.extend([0, 0, 0, 0])
-                continue
 
-            alpha = 255
-            if dist > outer_r - 1:
-                alpha = int(255 * (outer_r + 1 - dist) / 2)
-                alpha = max(0, min(255, alpha))
+def mix(a, b, t):
+    t = clamp01(t)
+    return tuple(a[i] + (b[i] - a[i]) * t for i in range(3))
 
-            if alpha == 0:
-                pixels.extend([0, 0, 0, 0])
-                continue
 
-            # Gradient background
-            t = (dy + outer_r) / (2 * outer_r)
-            r = int(TEAL[0] + (DARK_TEAL[0] - TEAL[0]) * t * 0.5)
-            g = int(TEAL[1] + (DARK_TEAL[1] - TEAL[1]) * t * 0.5)
-            b = int(TEAL[2] + (DARK_TEAL[2] - TEAL[2]) * t * 0.5)
+def sd_round_rect(px, py, x0, y0, x1, y1, r):
+    """Signed distance to a rounded rectangle (negative inside).
 
-            # Draw bold "K" centered
-            lx = x - 72
-            ly = y - 50
-            is_letter = False
+    Standard box-SDF with the corner radius folded into the half-extents;
+    a point beyond a corner measures to the corner arc, not to the square.
+    """
+    qx = abs(px - (x0 + x1) / 2) - ((x1 - x0) / 2 - r)
+    qy = abs(py - (y0 + y1) / 2) - ((y1 - y0) / 2 - r)
+    return min(max(qx, qy), 0.0) + math.sqrt(max(qx, 0.0) ** 2 + max(qy, 0.0) ** 2) - r
 
-            # Vertical bar
-            if 25 <= lx <= 58 and 25 <= ly <= 205:
-                is_letter = True
 
-            # Upper diagonal
-            if not is_letter and 58 <= lx <= 160:
-                t2 = (lx - 58) / 102
-                arm_y = 115 - t2 * 85
-                if abs(ly - arm_y) <= 18:
-                    is_letter = True
+def sd_capsule(px, py, ax, ay, bx, by, r):
+    """Signed distance to a capsule (segment with round caps), negative inside."""
+    abx, aby = bx - ax, by - ay
+    length2 = abx * abx + aby * aby
+    t = 0.0 if length2 == 0 else clamp01(((px - ax) * abx + (py - ay) * aby) / length2)
+    dx, dy = px - (ax + abx * t), py - (ay + aby * t)
+    return math.sqrt(dx * dx + dy * dy) - r
 
-            # Lower diagonal
-            if not is_letter and 58 <= lx <= 170:
-                t2 = (lx - 58) / 112
-                arm_y = 115 + t2 * 70
-                if abs(ly - arm_y) <= 18:
-                    is_letter = True
 
-            if is_letter:
-                pixels.extend([255, 255, 255, alpha])
+def coverage(sd: float) -> float:
+    """Analytic anti-aliasing: 1px-wide transition across the SDF boundary."""
+    return clamp01(0.5 - sd)
+
+
+# Glyph geometry (512 canvas). Stroke radius 22 (44px on 512) keeps the K
+# legible at 16px; the arms start at the stem's right edge so the junction
+# reads as a letter instead of a filled blob.
+BADGE = (40, 40, 472, 472, 112)          # x0, y0, x1, y1, corner radius
+STEM = (185, 160, 185, 352, 22)          # ax, ay, bx, by, stroke radius
+ARM_UP = (202, 250, 322, 168, 22)
+ARM_DOWN = (202, 262, 338, 348, 22)
+SPARK_V = (390, 126, 390, 194, 12)
+SPARK_H = (364, 160, 416, 160, 12)
+
+GRAD_TOP_LEFT = (62, 147, 166)           # #3E93A6
+GRAD_MID = (39, 102, 120)                # #276678 brand teal
+GRAD_BOTTOM_RIGHT = (18, 33, 42)         # #12212A
+
+
+def render_master(size: int = MASTER) -> bytearray:
+    """Render the icon at `size` with analytic AA; returns RGBA bytes."""
+    scale = size / MASTER
+    pixels = bytearray(size * size * 4)
+    diagonal = MASTER * 2
+
+    for y in range(size):
+        py = y / scale
+        for x in range(size):
+            px = x / scale
+
+            # --- badge shape ---
+            badge_sd = sd_round_rect(px, py, *BADGE)
+            badge_cov = coverage(badge_sd)
+
+            # --- background: diagonal gradient + sheen ---
+            t_diag = (px + py) / diagonal
+            if t_diag < 0.55:
+                bg = mix(GRAD_TOP_LEFT, GRAD_MID, t_diag / 0.55)
             else:
-                pixels.extend([r, g, b, alpha])
+                bg = mix(GRAD_MID, GRAD_BOTTOM_RIGHT, (t_diag - 0.55) / 0.45)
 
-    return bytes(pixels)
+            # soft radial sheen, top-left
+            sx, sy = (px - 170) / 300, (py - 140) / 300
+            sheen = clamp01(1.0 - math.sqrt(sx * sx + sy * sy))
+            bg = mix(bg, WHITE, sheen * 0.16)
+
+            # 1px inner highlight keeps the badge edge crisp on dark taskbars
+            edge = clamp01(1.0 - abs(badge_sd + 2.0) / 2.0)
+            bg = mix(bg, (150, 210, 224), edge * 0.35)
+
+            # --- K shadow, then K ---
+            shadow = max(
+                coverage(sd_capsule(px, py - 7, *STEM[:4], STEM[4])),
+                coverage(sd_capsule(px, py - 7, *ARM_UP[:4], ARM_UP[4])),
+                coverage(sd_capsule(px, py - 7, *ARM_DOWN[:4], ARM_DOWN[4])),
+            )
+            bg = mix(bg, (10, 20, 26), shadow * 0.35)
+
+            glyph = max(
+                coverage(sd_capsule(px, py, *STEM[:4], STEM[4])),
+                coverage(sd_capsule(px, py, *ARM_UP[:4], ARM_UP[4])),
+                coverage(sd_capsule(px, py, *ARM_DOWN[:4], ARM_DOWN[4])),
+            )
+            fg = mix(bg, WHITE, glyph)
+
+            # --- sparkle (four-point star from two crossed capsules) ---
+            spark = max(
+                coverage(sd_capsule(px, py, *SPARK_V[:4], SPARK_V[4])),
+                coverage(sd_capsule(px, py, *SPARK_H[:4], SPARK_H[4])),
+            )
+            fg = mix(fg, SPARKLE, spark)
+
+            alpha = int(255 * badge_cov)
+            offset = (y * size + x) * 4
+            # 颜色通道是 0-255 标度，按 0-255 截取（clamp01 只用于混合系数）
+            pixels[offset : offset + 4] = bytes(
+                (
+                    int(max(0, min(255, fg[0]))),
+                    int(max(0, min(255, fg[1]))),
+                    int(max(0, min(255, fg[2]))),
+                    alpha,
+                )
+            )
+    return pixels
+
+
+def box_downscale(src: bytearray, src_size: int, dst_size: int) -> bytearray:
+    """Exact box-filter downscale (area average) — no nearest-neighbor jaggies."""
+    out = bytearray(dst_size * dst_size * 4)
+    ratio = src_size / dst_size
+    for dy in range(dst_size):
+        y0, y1 = int(dy * ratio), max(int((dy + 1) * ratio), int(dy * ratio) + 1)
+        for dx in range(dst_size):
+            x0, x1 = int(dx * ratio), max(int((dx + 1) * ratio), int(dx * ratio) + 1)
+            acc = [0, 0, 0, 0]
+            count = 0
+            for sy in range(y0, y1):
+                for sx in range(x0, x1):
+                    idx = (sy * src_size + sx) * 4
+                    for c in range(4):
+                        acc[c] += src[idx + c]
+                    count += 1
+            offset = (dy * dst_size + dx) * 4
+            out[offset : offset + 4] = bytes(c // count for c in acc)
+    return out
+
 
 def make_png(rgba, width, height):
     """Encode RGBA pixels as PNG."""
+
     def chunk(ctype, data):
         c = ctype + data
         return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
@@ -87,6 +179,7 @@ def make_png(rgba, width, height):
         + chunk(b"IEND", b"")
     )
 
+
 def make_ico(pngs):
     """Create ICO from list of (width, height, png_data)."""
     count = len(pngs)
@@ -95,39 +188,28 @@ def make_ico(pngs):
     directory = b""
     image_data = b""
     for w, h, png in pngs:
-        directory += struct.pack("<BBBBHHII",
-            w & 255, h & 255, 0, 0, 1, 32, len(png), offset)
+        directory += struct.pack("<BBBBHHII", w & 255, h & 255, 0, 0, 1, 32, len(png), offset)
         image_data += png
         offset += len(png)
     return header + directory + image_data
 
+
 if __name__ == "__main__":
-    print("Generating 256x256 icon...")
-    rgba = create_rgba_pixels()
-    png_256 = make_png(rgba, 256, 256)
+    print(f"Rendering {MASTER}x{MASTER} master (analytic AA)...")
+    master = render_master()
 
-    def downscale(src, sw, dw):
-        ratio = sw / dw
-        out = bytearray()
-        for dy in range(dw):
-            for dx in range(dw):
-                sx = int(dx * ratio)
-                sy = int(dy * ratio)
-                idx = (sy * sw + sx) * 4
-                out.extend(src[idx:idx+4])
-        return bytes(out)
+    sizes = [256, 64, 48, 32, 16]
+    png_by_size = {}
+    for size in sizes:
+        pixels = master if size == MASTER else box_downscale(master, MASTER, size)
+        png_by_size[size] = make_png(pixels, size, size)
+        print(f"  {size}x{size}: {len(png_by_size[size]):,} bytes")
 
-    print("Creating smaller sizes...")
-    png_64 = make_png(downscale(rgba, 256, 64), 64, 64)
-    png_32 = make_png(downscale(rgba, 256, 32), 32, 32)
-
-    ico = make_ico([(256, 256, png_256), (64, 64, png_64), (32, 32, png_32)])
-
+    ico = make_ico([(size, size, png_by_size[size]) for size in sizes])
     with open("icon.ico", "wb") as f:
         f.write(ico)
     with open("icon.png", "wb") as f:
-        f.write(png_256)
-
-    print(f"icon.ico: {len(ico):,} bytes")
-    print(f"icon.png: {len(png_256):,} bytes")
+        f.write(png_by_size[256])
+    print(f"icon.ico: {len(ico):,} bytes ({len(sizes)} sizes)")
+    print(f"icon.png: {len(png_by_size[256]):,} bytes (256x256)")
     print("Done!")
