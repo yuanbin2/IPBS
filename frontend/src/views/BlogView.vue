@@ -1051,7 +1051,6 @@ async function requestJson(url: string, options: RequestInit = {}) {
             :can-edit="canEditCurrentArticle"
             :saving="savingArticleEdit"
             :categories="categories"
-            :upload-handler="handleEditorUpload"
             @back="currentArticle = null; router.push('/blog')"
             @ask-agent="askAgent"
             @sync="syncArticleKnowledge"
