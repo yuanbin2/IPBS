@@ -230,11 +230,11 @@ async function vditorUploadHandler(files: File[]): Promise<Array<{ url: string; 
       @clear="emit('clearAssistantResult')"
     />
 
-    <!-- 编辑器区域（Vditor WYSIWYG 编辑器） -->
+    <!-- 编辑器区域（Vditor 即时渲染模式，类 Typora 直接编辑） -->
     <div class="editor-container">
       <VditorEditor
         v-model="draft.content"
-        mode="wysiwyg"
+        mode="ir"
         :height="600"
         :upload-handler="vditorUploadHandler"
         class="blog-vditor-editor"

@@ -2,12 +2,13 @@
 import { computed, ref, nextTick, watch, onMounted } from "vue";
 import { ChatDotRound, Delete, ArrowLeft, Loading, View, EditPen } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
-import { MdPreview, MdEditor, type HeadList } from "md-editor-v3";
+import { MdPreview, type HeadList } from "md-editor-v3";
 import type { BlogArticle } from "../types";
 import { useThemeStore } from "../stores/themeStore";
 import { applyThemeToElement } from "../themes/applyTheme";
 import ThemeSwitcher from "./ThemeSwitcher.vue";
 import ThemeCreator from "./ThemeCreator.vue";
+import VditorEditor from "./VditorEditor.vue";
 
 const props = defineProps<{
   article: BlogArticle;
@@ -21,6 +22,8 @@ const props = defineProps<{
   canEdit: boolean;
   saving: boolean;
   categories: Array<{ id: number; name: string }>;
+  /** 正文插图上传处理（与写作台共用） */
+  uploadHandler?: (files: File[]) => Promise<Array<{ url: string; alt?: string; title?: string }>>;
 }>();
 
 const emit = defineEmits<{
@@ -333,13 +336,15 @@ function excerpt(text: string, maxLen = 60): string {
               </datalist>
               <el-input v-model="editForm.tags" placeholder="标签，逗号分隔" />
             </div>
-            <MdEditor
+            <VditorEditor
               v-model="editForm.content"
-              language="zh-CN"
-              :preview="true"
+              mode="ir"
+              :height="560"
+              cache-id="blog-inline-article-cache"
+              :upload-handler="uploadHandler"
               class="inline-editor-md"
             />
-            <p class="inline-editor-hint">管理员/运营保存后立即生效；作者本人保存会重新进入审核。</p>
+            <p class="inline-editor-hint">即时渲染模式：直接像 Typora 一样编辑正文。管理员/运营保存后立即生效；作者本人保存会重新进入审核。</p>
           </div>
 
           <!-- 阅读模式 -->

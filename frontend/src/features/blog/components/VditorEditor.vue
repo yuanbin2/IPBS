@@ -8,12 +8,15 @@ const props = withDefaults(
     modelValue?: string;
     mode?: "wysiwyg" | "ir" | "sv";
     height?: number;
+    /** localStorage 缓存 id；同一页面多个编辑器实例必须不同，否则内容会互相串 */
+    cacheId?: string;
     uploadHandler?: (files: File[]) => Promise<Array<{ url: string; alt?: string; title?: string }>>;
   }>(),
   {
     modelValue: "",
     mode: "wysiwyg",
     height: 600,
+    cacheId: "blog-vditor-cache",
   }
 );
 
@@ -73,7 +76,7 @@ onMounted(() => {
     },
     cache: {
       enable: true,
-      id: "blog-vditor-cache",
+      id: props.cacheId,
     },
     upload: {
       max: 5 * 1024 * 1024,
