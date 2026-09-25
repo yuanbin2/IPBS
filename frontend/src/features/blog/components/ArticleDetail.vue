@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, watch, onMounted } from "vue";
-import { ChatDotRound, Delete, ArrowLeft, Loading, View } from "@element-plus/icons-vue";
-import { MdPreview, type HeadList } from "md-editor-v3";
+import { ChatDotRound, Delete, ArrowLeft, Loading, View, EditPen } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { MdPreview, MdEditor, type HeadList } from "md-editor-v3";
 import type { BlogArticle } from "../types";
 import { useThemeStore } from "../stores/themeStore";
 import { applyThemeToElement } from "../themes/applyTheme";
@@ -16,15 +17,20 @@ const props = defineProps<{
   deletingSlug: string;
   relatedArticles: BlogArticle[];
   relatedLoading: boolean;
+  /** 当前用户是否可以直接编辑这篇文章（管理员/运营，或作者本人） */
+  canEdit: boolean;
+  saving: boolean;
+  categories: Array<{ id: number; name: string }>;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   back: [];
   askAgent: [article: BlogArticle];
   sync: [article: BlogArticle];
   remove: [article: BlogArticle];
   submitComment: [article: BlogArticle];
   openRelated: [article: BlogArticle];
+  save: [payload: { title: string; summary: string; cover_image: string; category: string; tags: string; content: string }];
 }>();
 
 const headings = ref<HeadList[]>([]);
@@ -34,6 +40,34 @@ const collapsedSections = ref<Set<number>>(new Set());
 const themeStore = useThemeStore();
 const articleThemeRef = ref<HTMLElement>();
 const readingProgress = ref(0);
+
+// 内联编辑状态：有编辑权限时在阅读页直接改，不用跳转写作台
+const editing = ref(false);
+const editForm = ref({ title: "", summary: "", cover_image: "", category: "", tags: "", content: "" });
+
+function startEdit() {
+  editForm.value = {
+    title: props.article.title || "",
+    summary: props.article.summary || "",
+    cover_image: props.article.cover_image || "",
+    category: props.article.category?.name || "",
+    tags: (props.article.tags || []).map((tag) => tag.name).join(", "),
+    content: props.article.content || ""
+  };
+  editing.value = true;
+}
+
+function cancelEdit() {
+  editing.value = false;
+}
+
+function submitEdit() {
+  if (!editForm.value.title.trim() || !editForm.value.content.trim()) {
+    ElMessage.warning("标题和正文不能为空。");
+    return;
+  }
+  emit("save", { ...editForm.value });
+}
 
 const readingMinutes = computed(() => {
   const text = (props.article.content || "").replace(/```[\s\S]*?```/g, "").replace(/\s+/g, "");
@@ -66,6 +100,13 @@ function applyCurrentTheme() {
 watch(() => themeStore.currentTheme, () => {
   applyCurrentTheme();
 }, { deep: true });
+
+// 保存成功后文章数据会重新加载（updated_at 变化），此时自动退出编辑态
+watch(() => props.article.updated_at, () => {
+  if (editing.value) {
+    editing.value = false;
+  }
+});
 
 onMounted(() => {
   applyCurrentTheme();
@@ -230,23 +271,30 @@ function excerpt(text: string, maxLen = 60): string {
       </div>
       <div class="article-actions-bar">
         <ThemeSwitcher />
-        <el-button type="primary" :icon="ChatDotRound" @click="$emit('askAgent', article)">让 Agent 总结</el-button>
-        <el-button
-          v-if="!article.knowledge_document_id"
-          :loading="publishing"
-          @click="$emit('sync', article)"
-        >
-          同步到知识库
-        </el-button>
-        <el-button
-          type="danger"
-          plain
-          :icon="Delete"
-          :loading="deletingSlug === article.slug"
-          @click="$emit('remove', article)"
-        >
-          删除
-        </el-button>
+        <template v-if="!editing">
+          <el-button v-if="canEdit" :icon="EditPen" @click="startEdit">编辑</el-button>
+          <el-button type="primary" :icon="ChatDotRound" @click="$emit('askAgent', article)">让 Agent 总结</el-button>
+          <el-button
+            v-if="!article.knowledge_document_id"
+            :loading="publishing"
+            @click="$emit('sync', article)"
+          >
+            同步到知识库
+          </el-button>
+          <el-button
+            type="danger"
+            plain
+            :icon="Delete"
+            :loading="deletingSlug === article.slug"
+            @click="$emit('remove', article)"
+          >
+            删除
+          </el-button>
+        </template>
+        <template v-else>
+          <el-button @click="cancelEdit">取消编辑</el-button>
+          <el-button type="primary" :loading="saving" @click="submitEdit">保存修改</el-button>
+        </template>
       </div>
     </header>
 
@@ -273,6 +321,29 @@ function excerpt(text: string, maxLen = 60): string {
       <!-- 右侧文章内容 -->
       <main class="article-main" ref="contentRef" @scroll="handleArticleScroll">
         <div ref="articleThemeRef" class="article-theme-container">
+          <!-- 编辑模式：有编辑权限时在阅读页直接修改 -->
+          <div v-if="editing" class="inline-article-editor">
+            <el-input v-model="editForm.title" size="large" placeholder="文章标题" class="inline-editor-title" />
+            <el-input v-model="editForm.summary" type="textarea" :rows="2" placeholder="摘要，显示在文章卡片里" />
+            <div class="inline-editor-meta">
+              <el-input v-model="editForm.cover_image" placeholder="封面图片 URL" />
+              <el-input v-model="editForm.category" placeholder="分类" list="inline-editor-categories" />
+              <datalist id="inline-editor-categories">
+                <option v-for="item in categories" :key="item.id" :value="item.name" />
+              </datalist>
+              <el-input v-model="editForm.tags" placeholder="标签，逗号分隔" />
+            </div>
+            <MdEditor
+              v-model="editForm.content"
+              language="zh-CN"
+              :preview="true"
+              class="inline-editor-md"
+            />
+            <p class="inline-editor-hint">管理员/运营保存后立即生效；作者本人保存会重新进入审核。</p>
+          </div>
+
+          <!-- 阅读模式 -->
+          <template v-else>
           <div class="article-breadcrumb">
             <span>文章</span><b>/</b><strong>{{ article.category?.name || "未分类" }}</strong>
           </div>
@@ -309,6 +380,7 @@ function excerpt(text: string, maxLen = 60): string {
             @onGetCatalog="handleGetCatalog"
             class="article-content blog-md-preview"
           />
+          </template>
         </div>
 
         <!-- 相关推荐 -->

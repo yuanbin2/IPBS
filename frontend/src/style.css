@@ -4873,6 +4873,37 @@ img {
   margin-bottom: var(--space-6);
 }
 
+/* 阅读页内联编辑器 */
+.inline-article-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.inline-editor-title .el-input__inner {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.inline-editor-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.inline-editor-md {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.inline-editor-hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .article-outline {

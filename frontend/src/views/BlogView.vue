@@ -78,10 +78,19 @@ const searchQuery = ref("");
 const writingAssistantLoading = ref(false);
 const writingAssistantError = ref("");
 const writingAssistantResult = ref<WritingAssistantResult | null>(null);
+const savingArticleEdit = ref(false);
 
 const libraryArticleCount = computed(() => {
   const categorizedCount = categories.value.reduce((total, item) => total + item.article_count, 0);
   return Math.max(articles.value.length, categorizedCount);
+});
+
+/** 有编辑权限：管理员/运营可改所有文章；登录用户可改自己署名（忽略大小写）的文章。 */
+const canEditCurrentArticle = computed(() => {
+  const article = currentArticle.value;
+  if (!article || !auth.isAuthenticated) return false;
+  if (auth.session.role === "admin" || auth.session.role === "operator") return true;
+  return (article.author_name || "").toLowerCase() === (auth.session.actor || "").toLowerCase();
 });
 
 const draft = ref({
@@ -662,6 +671,40 @@ async function updatePendingArticle() {
   }
 }
 
+/** 阅读页内联保存：管理员/运营走 PATCH 直接生效；作者本人走 PUT 重新进入审核。 */
+async function saveArticleEdit(payload: {
+  title: string;
+  summary: string;
+  cover_image: string;
+  category: string;
+  tags: string;
+  content: string;
+}) {
+  const article = currentArticle.value;
+  if (!article) return;
+
+  savingArticleEdit.value = true;
+  const isOperator = auth.session.role === "admin" || auth.session.role === "operator";
+  try {
+    const body = {
+      ...payload,
+      tags: payload.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
+    };
+    await requestJson(`/api/agent/blog/articles/${encodeURIComponent(article.slug)}/`, {
+      method: isOperator ? "PATCH" : "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    await loadArticle(article.slug);
+    await Promise.all([loadArticles(), loadMyArticles()]);
+    ElMessage.success(isOperator ? "文章已更新。" : "文章已更新，等待管理员审核。");
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "保存失败，请稍后重试。");
+  } finally {
+    savingArticleEdit.value = false;
+  }
+}
+
 async function reviewCurrentApproval(decision: "approve" | "reject") {
   if (!pendingApproval.value) return;
   reviewingApproval.value = true;
@@ -1005,12 +1048,16 @@ async function requestJson(url: string, options: RequestInit = {}) {
             :deleting-slug="deletingArticleSlug"
             :related-articles="relatedArticles"
             :related-loading="relatedLoading"
+            :can-edit="canEditCurrentArticle"
+            :saving="savingArticleEdit"
+            :categories="categories"
             @back="currentArticle = null; router.push('/blog')"
             @ask-agent="askAgent"
             @sync="syncArticleKnowledge"
             @remove="deleteArticle"
             @submit-comment="submitComment"
             @open-related="openRelatedArticle"
+            @save="saveArticleEdit"
           />
           <ArticleList
             v-else
