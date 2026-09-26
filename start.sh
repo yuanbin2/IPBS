@@ -33,5 +33,5 @@ export LANGCHAIN_TRACING_V2=false
 echo "[4/5] Preparing the local SQLite database..."
 .venv/bin/python backend/manage.py migrate --noinput
 
-echo "[5/5] Starting the project at http://127.0.0.1:8000/ ..."
-exec .venv/bin/python backend/manage.py runserver 127.0.0.1:8000 --noreload
+echo "[5/5] Starting the project at http://127.0.0.1:8001/ ..."
+exec .venv/bin/python backend/manage.py runserver 127.0.0.1:8001 --noreload

@@ -41,7 +41,7 @@ echo [4/5] Preparing the local SQLite database...
 if errorlevel 1 exit /b 1
 
 echo [5/5] Starting the project...
-echo Open http://127.0.0.1:8000/ in your browser.
-".venv\Scripts\python.exe" backend\manage.py runserver 127.0.0.1:8000 --noreload
+echo Open http://127.0.0.1:8001/ in your browser.
+".venv\Scripts\python.exe" backend\manage.py runserver 127.0.0.1:8001 --noreload
 
 endlocal
