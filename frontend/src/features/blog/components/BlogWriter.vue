@@ -1,17 +1,21 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { EditPen, UploadFilled, ArrowDown } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import type { BlogDraft, EditorStats } from "../types";
 import type { WritingAssistantRequest, WritingAssistantResult } from "../types";
 import { parseMarkdownFile, type ParsedMarkdown } from "../utils/parseMarkdownFile";
 import VditorEditor from "./VditorEditor.vue";
+import HtmlImportDialog from "./HtmlImportDialog.vue";
 import WritingAssistantPanel from "./WritingAssistantPanel.vue";
 import ThemeSwitcher from "./ThemeSwitcher.vue";
 import ThemeCreator from "./ThemeCreator.vue";
 
 const props = defineProps<{
   draft: BlogDraft;
+  editorCacheId: string;
+  draftSaveStatus: string;
+  draftConflict: boolean;
   templates: Array<{ name: string; content: string }>;
   categories: Array<{ id: number; name: string }>;
   stats: EditorStats;
@@ -34,14 +38,18 @@ const emit = defineEmits<{
   applyTemplate: [content: string];
   insertSnippet: [content: string];
   clearDraft: [];
-  importMarkdown: [data: ParsedMarkdown];
+  importMarkdown: [data: ParsedMarkdown, confirmed?: boolean];
   uploadCoverImage: [file: File];
   generateWithAssistant: [request: WritingAssistantRequest];
   applyAssistantResult: [strategy: "append" | "replace"];
   clearAssistantResult: [];
+  resolveDraftConflict: [];
+  reloadConflictingDraft: [];
 }>();
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const htmlInputRef = ref<HTMLInputElement | null>(null);
+const htmlFile = ref<File | null>(null);
 const coverInputRef = ref<HTMLInputElement | null>(null);
 
 const ALLOWED_EXTENSIONS = [".md", ".markdown", ".txt"];
@@ -69,6 +77,45 @@ function handleCoverSelect(event: Event) {
 
 function triggerFileInput() {
   fileInputRef.value?.click();
+}
+
+function triggerHtmlInput() {
+  if (props.editingArticle) return;
+  htmlInputRef.value?.click();
+}
+
+function handleHtmlSelect(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  if (!/\.html?$/i.test(file.name)) {
+    ElMessage.error("仅支持 .html 或 .htm 文件");
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.error("HTML 文件不能超过 5 MiB");
+    return;
+  }
+  htmlFile.value = file;
+}
+
+async function applyHtmlImport(data: ParsedMarkdown) {
+  if (props.draftConflict) {
+    ElMessage.warning("请先处理另一个标签页的草稿冲突");
+    return;
+  }
+  if (props.draft.title.trim() || props.draft.content.trim()) {
+    try {
+      await ElMessageBox.confirm("导入会覆盖当前草稿内容，是否继续？", "导入 HTML", {
+        confirmButtonText: "继续导入", cancelButtonText: "取消", type: "warning"
+      });
+    } catch {
+      return;
+    }
+  }
+  emit("importMarkdown", data, true);
+  htmlFile.value = null;
 }
 
 function handleFileSelect(event: Event) {
@@ -131,6 +178,7 @@ async function vditorUploadHandler(files: File[]): Promise<Array<{ url: string; 
           style="display: none"
           @change="handleFileSelect"
         />
+        <input ref="htmlInputRef" type="file" accept=".html,.htm" style="display: none" @change="handleHtmlSelect" />
         <ThemeSwitcher />
         <el-button v-if="editingArticle" @click="emit('cancelEdit')">取消编辑</el-button>
         <el-button
@@ -206,6 +254,7 @@ async function vditorUploadHandler(files: File[]): Promise<Array<{ url: string; 
       </div>
       <div class="toolbar-group">
         <el-button :icon="UploadFilled" @click="triggerFileInput">导入</el-button>
+        <el-button v-if="!editingArticle" @click="triggerHtmlInput">导入 HTML</el-button>
         <el-button plain type="danger" @click="emit('clearDraft')">清空草稿</el-button>
       </div>
       <div class="toolbar-divider" />
@@ -233,13 +282,29 @@ async function vditorUploadHandler(files: File[]): Promise<Array<{ url: string; 
     <!-- 编辑器区域（Vditor WYSIWYG 编辑器） -->
     <div class="editor-container">
       <VditorEditor
+        :key="editorCacheId"
         v-model="draft.content"
+        :cache-id="editorCacheId"
         mode="wysiwyg"
         :height="600"
         :upload-handler="vditorUploadHandler"
         class="blog-vditor-editor"
       />
     </div>
+
+    <el-alert
+      v-if="draftConflict"
+      class="draft-conflict-alert"
+      type="warning"
+      :closable="false"
+      title="检测到另一个标签页修改了这篇草稿，自动保存已暂停。请选择保留当前内容或载入另一标签页的版本。"
+    >
+      <template #default>
+        <el-button size="small" @click="emit('reloadConflictingDraft')">载入另一标签页版本</el-button>
+        <el-button size="small" type="warning" @click="emit('resolveDraftConflict')">保留当前版本并覆盖</el-button>
+      </template>
+    </el-alert>
+    <p class="draft-save-status" role="status" aria-live="polite">{{ draftSaveStatus }}</p>
 
     <!-- 错误提示 -->
     <p v-if="error" class="editor-error">{{ error }}</p>
@@ -262,4 +327,5 @@ async function vditorUploadHandler(files: File[]): Promise<Array<{ url: string; 
   </section>
 
   <ThemeCreator />
+  <HtmlImportDialog :file="htmlFile" :visible="Boolean(htmlFile)" @close="htmlFile = null" @apply="applyHtmlImport" />
 </template>

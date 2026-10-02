@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from celery.result import AsyncResult
-from django.conf import settings
+from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -10,31 +10,43 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..exceptions import ErrorCode
-from ..models import ApprovalRequest, Document, KnowledgeBase, UserProfile
+from ..models import ApprovalRequest, Document, DocumentIngestionJob, KnowledgeBase, UserProfile
 from ..serializers import serialize_document, serialize_knowledge_base
-from ..services.rag import get_default_knowledge_base, search_knowledge_base
-from ..tasks import ingest_document_task
+from ..services.ingestion_jobs import schedule_document_ingestion, uploaded_file_digest
+from ..services.rag import EmbeddingSpaceError, get_default_knowledge_base, search_knowledge_base
 from .common import approval_required_response, error_response, get_workspace_key, require_roles
 
 
-def dispatch_ingestion_task(document: Document):
-    if settings.DEBUG or settings.CELERY_TASK_ALWAYS_EAGER:
-        return ingest_document_task.apply(args=(document.id,)), True
-
-    return ingest_document_task.delay(document.id), False
+def dispatch_ingestion_task(document: Document, *, force: bool = False):
+    return schedule_document_ingestion(document, force=force)
 
 
-def ingestion_response_payload(document: Document, task, completed_synchronously: bool = False) -> dict:
-    """Return a polling URL in production and the final result in local mode."""
-    payload = {**serialize_document(document), "task_id": task.id}
-    if settings.CELERY_TASK_ALWAYS_EAGER or completed_synchronously:
-        payload["task_state"] = task.state
-        if task.successful():
-            payload["task_result"] = task.result
-        elif task.failed():
-            payload["task_error"] = str(task.result)
+def ingestion_response_payload(document: Document, job: DocumentIngestionJob) -> dict:
+    """Expose durable outbox state; do not depend on ephemeral Celery results."""
+    document.refresh_from_db()
+    job.refresh_from_db()
+    payload = {
+        **serialize_document(document),
+        "task_id": str(job.pk),
+        "ingestion_job": {
+            "id": str(job.pk),
+            "generation": job.generation,
+            "status": job.status,
+            "failure_code": job.failure_code or None,
+        },
+    }
+    if job.status == DocumentIngestionJob.Status.COMPLETED:
+        payload["task_state"] = "SUCCESS"
+        payload["task_result"] = {
+            "document_id": document.pk,
+            "status": document.status,
+            "chunk_count": document.chunk_count,
+        }
+    elif job.status == DocumentIngestionJob.Status.FAILED:
+        payload["task_state"] = "FAILURE"
+        payload["task_error"] = job.failure_code
     else:
-        payload["task_url"] = f"/api/agent/tasks/{task.id}/"
+        payload["task_url"] = f"/api/agent/tasks/{job.pk}/"
     return payload
 
 
@@ -43,6 +55,9 @@ class KnowledgeBaseListView(APIView):
     permission_classes = []
 
     def get(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
         get_default_knowledge_base(get_workspace_key(request))
         knowledge_bases = KnowledgeBase.objects.filter(workspace_key=get_workspace_key(request))
 
@@ -173,6 +188,9 @@ class DocumentListUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def get(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
         knowledge_base_id = request.query_params.get("knowledge_base_id")
         documents = Document.objects.select_related("knowledge_base").filter(workspace_key=get_workspace_key(request))
         if knowledge_base_id:
@@ -204,16 +222,18 @@ class DocumentListUploadView(APIView):
             knowledge_base = get_default_knowledge_base(get_workspace_key(request))
 
         title = str(request.data.get("title") or Path(upload.name).stem).strip()
-        document = Document.objects.create(
-            knowledge_base=knowledge_base,
-            workspace_key=get_workspace_key(request),
-            title=title,
-            source_file=upload,
-            content_type=getattr(upload, "content_type", "") or suffix.lstrip("."),
-        )
-        task, completed_synchronously = dispatch_ingestion_task(document)
+        source_digest = uploaded_file_digest(upload)
+        with transaction.atomic():
+            document = Document.objects.create(
+                knowledge_base=knowledge_base,
+                workspace_key=get_workspace_key(request),
+                title=title,
+                source_file=upload,
+                content_type=getattr(upload, "content_type", "") or suffix.lstrip("."),
+            )
+            job = schedule_document_ingestion(document, source_digest=source_digest)
         return Response(
-            ingestion_response_payload(document, task, completed_synchronously),
+            ingestion_response_payload(document, job),
             status=status.HTTP_202_ACCEPTED,
         )
 
@@ -249,12 +269,17 @@ class DocumentReindexView(APIView):
         if denied:
             return denied
         document = get_object_or_404(Document, pk=pk, workspace_key=get_workspace_key(request))
-        document.status = Document.Status.PENDING
-        document.error_message = ""
-        document.save(update_fields=["status", "error_message", "updated_at"])
-        task, completed_synchronously = dispatch_ingestion_task(document)
+        source_digest = None
+        if document.source_file and not document.content_text.strip():
+            from ..services.ingestion_jobs import document_file_digest
+
+            source_digest = document_file_digest(document)
+        with transaction.atomic():
+            document.error_message = ""
+            document.save(update_fields=["error_message", "updated_at"])
+            job = schedule_document_ingestion(document, force=True, source_digest=source_digest)
         return Response(
-            ingestion_response_payload(document, task, completed_synchronously),
+            ingestion_response_payload(document, job),
             status=status.HTTP_202_ACCEPTED,
         )
 
@@ -269,6 +294,23 @@ class TaskStatusView(APIView):
         denied = require_roles(request, [UserProfile.Role.OPERATOR])
         if denied:
             return denied
+        job = DocumentIngestionJob.objects.filter(
+            pk=task_id, document__workspace_key=get_workspace_key(request)
+        ).first()
+        if job:
+            payload = {
+                "id": str(job.pk),
+                "state": job.status,
+                "ready": job.status
+                in {
+                    DocumentIngestionJob.Status.COMPLETED,
+                    DocumentIngestionJob.Status.FAILED,
+                    DocumentIngestionJob.Status.SUPERSEDED,
+                },
+                "failure_code": job.failure_code or None,
+                "generation": job.generation,
+            }
+            return Response(payload)
         task = AsyncResult(task_id)
         payload = {"id": task.id, "state": task.state, "ready": task.ready()}
         if task.successful():
@@ -283,6 +325,9 @@ class KnowledgeSearchView(APIView):
     permission_classes = []
 
     def post(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
         query = str(request.data.get("query", "")).strip()
         if not query:
             return error_response("query is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
@@ -296,12 +341,18 @@ class KnowledgeSearchView(APIView):
         except (TypeError, ValueError):
             limit = 5
 
-        results = search_knowledge_base(
-            query,
-            knowledge_base_id=int(knowledge_base_id) if knowledge_base_id else None,
-            limit=limit,
-            workspace_key=get_workspace_key(request),
-        )
+        try:
+            results = search_knowledge_base(
+                query,
+                knowledge_base_id=int(knowledge_base_id) if knowledge_base_id else None,
+                limit=limit,
+                workspace_key=get_workspace_key(request),
+            )
+        except EmbeddingSpaceError:
+            return Response(
+                {"detail": "The configured embedding space is unavailable; retrieval did not switch models."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response(
             [
                 {

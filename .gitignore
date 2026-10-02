@@ -15,9 +15,14 @@ backend/frontend_dist/
 .idea/
 .vscode/
 *.log
+.run/
 celerybeat-schedule*
 
 # Desktop app browser profiles
 app-desktop/.edge-profile/
 desktop-app/.edge-profile/
 frontend/frontend/
+
+# Playwright test artifacts
+frontend/playwright-report/
+frontend/test-results/

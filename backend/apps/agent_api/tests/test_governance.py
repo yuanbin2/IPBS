@@ -2,13 +2,11 @@
 
 from unittest.mock import patch
 
-from django.test import TestCase
-
 from ..models import ApprovalRequest, BlogArticle, MCPTool, SecurityAuditEvent
-from .support import NO_MODEL_ENV
+from .support import NO_MODEL_ENV, AdminApiTestCase, OperatorApiTestCase
 
 
-class GovernanceApprovalTests(TestCase):
+class GovernanceApprovalTests(AdminApiTestCase):
 
     @patch.dict("os.environ", NO_MODEL_ENV)
     def test_destructive_knowledge_base_request_prioritizes_approval(self):
@@ -28,7 +26,7 @@ class GovernanceApprovalTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        names = {item["name"] for item in payload}
+        names = {item["name"] for item in payload["tools"]}
         self.assertIn("local_file_search", names)
         self.assertIn("git_repo_info", names)
         self.assertIn("safe_database_stats", names)
@@ -138,7 +136,7 @@ class GovernanceApprovalTests(TestCase):
         self.assertFalse(tool.is_enabled)
 
 
-class ChatGovernanceTests(TestCase):
+class ChatGovernanceTests(OperatorApiTestCase):
     """聊天入口的治理路径：敏感输入拦截、MCP 审批绕过防护。"""
 
     @patch.dict("os.environ", NO_MODEL_ENV)

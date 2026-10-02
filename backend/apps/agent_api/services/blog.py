@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import slugify
 
 from ..models import ArticleCategory, ArticleTag, BlogArticle, Document
-from .rag import get_default_knowledge_base, ingest_document
+from .ingestion_jobs import schedule_document_ingestion
+from .rag import get_default_knowledge_base
 
 ARTICLE_LIST_LIMIT = 50
 
@@ -37,6 +39,25 @@ def list_articles(
     is_admin: bool,
 ) -> list[BlogArticle]:
     """按过滤器返回文章列表：草稿/拒绝态仅登录可见，非管理员只能看自己的。"""
+    articles = filtered_articles(
+        filters,
+        workspace_key=workspace_key,
+        actor=actor,
+        authenticated=authenticated,
+        is_admin=is_admin,
+    )
+    return list(articles[:ARTICLE_LIST_LIMIT])
+
+
+def filtered_articles(
+    filters: ArticleListFilters,
+    *,
+    workspace_key: str,
+    actor: str,
+    authenticated: bool,
+    is_admin: bool,
+):
+    """Share the workspace and draft authorization boundary with paginated discovery."""
     articles = (
         BlogArticle.objects.select_related("category", "knowledge_document")
         .prefetch_related("tags")
@@ -51,6 +72,11 @@ def list_articles(
         if not is_admin:
             # 普通用户只能看到自己提交的（忽略大小写）
             articles = articles.filter(author_name__iexact=actor)
+    elif filters.status == "all":
+        if not authenticated:
+            articles = articles.filter(status=BlogArticle.Status.PUBLISHED)
+        elif not is_admin:
+            articles = articles.filter(Q(status=BlogArticle.Status.PUBLISHED) | Q(author_name__iexact=actor))
     else:
         # 已发布文章，支持按 author_name 过滤（忽略大小写）
         if filters.author_name:
@@ -69,7 +95,7 @@ def list_articles(
             | Q(content__icontains=filters.query)
         )
 
-    return list(articles.distinct()[:ARTICLE_LIST_LIMIT])
+    return articles.distinct()
 
 
 def unique_slug(model, value: str, instance_id: int | None = None, max_length: int = 180) -> str:
@@ -113,8 +139,9 @@ def set_article_tags(article: BlogArticle, tag_names: list[str]) -> None:
     article.tags.set(tags)
 
 
+@transaction.atomic
 def publish_article_to_knowledge_base(article: BlogArticle) -> BlogArticle:
-    knowledge_base = get_default_knowledge_base()
+    knowledge_base = get_default_knowledge_base(article.workspace_key)
     document = article.knowledge_document
     content = article_to_knowledge_text(article)
 
@@ -132,7 +159,9 @@ def publish_article_to_knowledge_base(article: BlogArticle) -> BlogArticle:
         document.content_type = "text/markdown"
         document.save(update_fields=["knowledge_base", "title", "content_text", "content_type", "updated_at"])
 
-    document = ingest_document(document)
+    document.workspace_key = article.workspace_key
+    document.save(update_fields=["workspace_key", "updated_at"])
+    schedule_document_ingestion(document)
     article.knowledge_document = document
     if article.status != BlogArticle.Status.PUBLISHED:
         article.status = BlogArticle.Status.PUBLISHED

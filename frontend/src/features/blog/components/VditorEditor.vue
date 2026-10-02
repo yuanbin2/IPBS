@@ -6,34 +6,43 @@ import "vditor/dist/index.css";
 const props = withDefaults(
   defineProps<{
     modelValue?: string;
+    cacheId: string;
     mode?: "wysiwyg" | "ir" | "sv";
-    height?: number;
+    visualOnly?: boolean;
+    externalOutline?: boolean;
+    height?: number | string;
     uploadHandler?: (files: File[]) => Promise<Array<{ url: string; alt?: string; title?: string }>>;
   }>(),
   {
     modelValue: "",
+    cacheId: "blog-v2-unscoped",
     mode: "wysiwyg",
+    visualOnly: false,
+    externalOutline: false,
     height: 600,
   }
 );
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
+  uploadError: [message: string];
+  ready: [];
 }>();
 
 const editorContainerRef = ref<HTMLDivElement>();
 const vditorInstance = shallowRef<Vditor>();
 let isInternalUpdate = false;
+let editorReady = false;
 
 onMounted(() => {
   if (!editorContainerRef.value) return;
 
   vditorInstance.value = new Vditor(editorContainerRef.value, {
     value: props.modelValue,
-    mode: props.mode,
+    mode: props.visualOnly ? "wysiwyg" : props.mode,
     height: props.height,
     lang: "zh_CN",
-    placeholder: "用 Markdown 写正文，可插入标题、列表、代码块、表格、链接、图片、流程图和公式。",
+    placeholder: props.visualOnly ? "直接在这里写和修改正文；用上方按钮排版。" : "用 Markdown 写正文，可插入标题、列表、代码块、表格、链接、图片、流程图和公式。",
     theme: "classic",
     toolbar: [
       "emoji",
@@ -52,28 +61,30 @@ onMounted(() => {
       "inline-code",
       "table",
       "|",
-      "upload",
+      ...(props.uploadHandler ? ["upload"] : []),
       "link",
       "|",
       "undo",
       "redo",
       "|",
-      "edit-mode",
+      ...(props.visualOnly ? [] : ["edit-mode"]),
       "fullscreen",
-      "preview",
-      "outline",
+      ...(props.visualOnly ? [] : ["preview"]),
+      ...(props.externalOutline ? [] : ["outline"]),
     ],
     toolbarConfig: {
       hide: false,
       pin: true,
     },
     outline: {
-      enable: true,
+      enable: !props.externalOutline,
       position: "left",
     },
     cache: {
-      enable: true,
-      id: "blog-vditor-cache",
+      // The page-level, owner-scoped draft record is authoritative. Vditor's
+      // separate cache could race with async restoration and revive stale text.
+      enable: false,
+      id: props.cacheId,
     },
     upload: {
       max: 5 * 1024 * 1024,
@@ -87,6 +98,7 @@ onMounted(() => {
               });
             } catch (err) {
               console.error("Image upload failed:", err);
+              emit("uploadError", err instanceof Error ? err.message : "图片上传失败");
             }
             return null;
           }
@@ -98,19 +110,27 @@ onMounted(() => {
       isInternalUpdate = false;
     },
     after: () => {
-      // Editor ready
+      editorReady = true;
+      // A draft can be restored while Vditor is still initializing. Apply the
+      // latest prop only after its internal WYSIWYG state is ready.
+      if (vditorInstance.value && vditorInstance.value.getValue() !== props.modelValue) {
+        vditorInstance.value.setValue(props.modelValue);
+      }
+      emit("ready");
     },
   });
 });
 
 onBeforeUnmount(() => {
+  editorReady = false;
   vditorInstance.value?.destroy();
+  vditorInstance.value = undefined;
 });
 
 watch(
   () => props.modelValue,
   (newVal) => {
-    if (isInternalUpdate) return;
+    if (isInternalUpdate || !editorReady) return;
     if (vditorInstance.value && newVal !== vditorInstance.value.getValue()) {
       vditorInstance.value.setValue(newVal);
     }
@@ -120,6 +140,7 @@ watch(
 // Expose instance methods for parent
 defineExpose({
   getInstance: () => vditorInstance.value,
+  isReady: () => editorReady,
   getValue: () => vditorInstance.value?.getValue() ?? "",
   getHTML: () => vditorInstance.value?.getHTML() ?? "",
   setValue: (value: string) => vditorInstance.value?.setValue(value),
@@ -137,11 +158,11 @@ defineExpose({
 }
 
 :deep(.vditor) {
-  border: 1px solid var(--color-border, #dcdfe6) !important;
+  border: 1px solid var(--color-border, #dce4e1) !important;
   border-radius: var(--radius-lg, 8px);
 }
 
 :deep(.vditor-toolbar) {
-  background: var(--color-bg-secondary, #fafafa) !important;
+  background: var(--color-bg-secondary, #f6f8f7) !important;
 }
 </style>

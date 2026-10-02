@@ -48,7 +48,7 @@ def answer_with_external_context(
             sources=[],
             trace=[
                 "internet_search -> completed",
-                f"internet_generate -> failed: {type(exc).__name__}: {str(exc)[:200]}",
+                f"internet_generate -> failed: {type(exc).__name__}",
             ],
             route="internet",
             token_usage=empty_token_usage(),

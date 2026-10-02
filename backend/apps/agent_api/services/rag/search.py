@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
-from django.db.models import Q
+from django.db.models import F, Q
 
 from ...models import DocumentChunk, EmbeddingRecord
-from ..vector_store import search_pgvector
+from ..embedding_space import embedding_space_identity
+from ..vector_store import count_incompatible_embeddings, search_pgvector, should_use_pgvector
 from .ingest import embed_query
 from .text import cosine_similarity, keyword_tokens
 
 VECTOR_SCORE_WEIGHT = 0.72
 KEYWORD_SCORE_WEIGHT = 0.28
+logger = logging.getLogger(__name__)
 BILINGUAL_QUERY_ALIASES = {
     "散射成像": "scattering imaging imaging through scattering media",
     "散射介质": "scattering media diffuser",
@@ -191,17 +194,36 @@ def search_knowledge_base(
     """在指定知识库/工作区中执行带文档多样性的混合检索。"""
     query = expand_multilingual_query(query)
     query_vector = embed_query(query)
+    identity = embedding_space_identity(len(query_vector))
+    skipped = count_incompatible_embeddings(identity, knowledge_base_id=knowledge_base_id, workspace_key=workspace_key)
+    if skipped:
+        logger.warning(
+            "rag_embedding_space_mismatch_skipped count=%s provider=%s model=%s model_version=%s "
+            "dimensions=%s workspace=%s knowledge_base_id=%s action=review_or_reindex",
+            skipped,
+            identity.provider,
+            identity.model,
+            identity.model_version,
+            identity.vector_dimensions,
+            workspace_key or "all-authorized-workspaces",
+            knowledge_base_id or "all",
+        )
     scored = search_knowledge_base_with_pgvector(
         query,
         query_vector,
+        identity=identity,
         knowledge_base_id=knowledge_base_id,
         limit=limit,
         workspace_key=workspace_key,
     )
-    if not scored:
+    # PostgreSQL is the authoritative vector store when selected. Falling
+    # through to EmbeddingRecord JSON there can silently hide pgvector errors
+    # or make an empty PostgreSQL result look like a successful local search.
+    if not scored and not should_use_pgvector():
         scored = search_knowledge_base_with_django_vectors(
             query,
             query_vector,
+            identity=identity,
             knowledge_base_id=knowledge_base_id,
             workspace_key=workspace_key,
         )
@@ -212,6 +234,7 @@ def search_knowledge_base_with_pgvector(
     query: str,
     query_vector: list[float],
     *,
+    identity,
     knowledge_base_id: int | None,
     limit: int,
     workspace_key: str | None,
@@ -219,6 +242,7 @@ def search_knowledge_base_with_pgvector(
     candidate_limit = max(limit * 8, 24)
     matches = search_pgvector(
         query_vector,
+        identity=identity,
         knowledge_base_id=knowledge_base_id,
         workspace_key=workspace_key,
         limit=candidate_limit,
@@ -245,6 +269,7 @@ def search_knowledge_base_with_django_vectors(
     query: str,
     query_vector: list[float],
     *,
+    identity,
     knowledge_base_id: int | None = None,
     workspace_key: str | None = None,
 ) -> list[SearchResult]:
@@ -253,6 +278,11 @@ def search_knowledge_base_with_django_vectors(
         records = records.filter(chunk__knowledge_base_id=knowledge_base_id)
     if workspace_key:
         records = records.filter(chunk__knowledge_base__workspace_key=workspace_key)
+    records = records.filter(
+        status="ready",
+        chunk__ingestion_generation=F("chunk__document__active_ingestion_generation"),
+        **identity.as_record_fields(),
+    )
 
     scored: list[SearchResult] = []
     # SQLite/local fallback. PostgreSQL deployments use pgvector above.
@@ -359,7 +389,12 @@ def expand_search_results_with_neighbors(
         chunk_filter |= Q(document_id=document_id, chunk_index__in=indexes)
 
     chunks = list(
-        DocumentChunk.objects.select_related("document").filter(chunk_filter).order_by("document_id", "chunk_index")
+        DocumentChunk.objects.select_related("document")
+        .filter(
+            chunk_filter,
+            ingestion_generation=F("document__active_ingestion_generation"),
+        )
+        .order_by("document_id", "chunk_index")
     )
     original_by_id = {result.chunk_id: result for result in unique_results}
     original_by_document: dict[int, list[SearchResult]] = {}

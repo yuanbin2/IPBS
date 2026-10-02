@@ -5,6 +5,9 @@ from django.test import SimpleTestCase, override_settings
 
 
 class HealthCheckTests(SimpleTestCase):
+    def setUp(self):
+        self.client.defaults["HTTP_X_FORWARDED_PROTO"] = "https"
+
     def test_health_check_returns_platform_status(self):
         response = self.client.get("/api/health/", HTTP_HOST="localhost")
 

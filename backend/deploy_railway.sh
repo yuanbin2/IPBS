@@ -28,11 +28,16 @@ railway add redis
 
 # 6. 设置环境变量
 echo "⚙️ 设置环境变量..."
-railway variables set DJANGO_SECRET_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')
+railway variables set DJANGO_SECRET_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')
 railway variables set DJANGO_DEBUG=false
 railway variables set BLOG_LOCAL_MODE=false
 railway variables set APP_TIMEZONE=Asia/Shanghai
 railway variables set AGENT_SECURITY_ENFORCED=true
+railway variables set DJANGO_SECURE_SSL_REDIRECT=true
+railway variables set DJANGO_SECURE_HSTS_SECONDS=3600
+railway variables set DJANGO_SESSION_COOKIE_SECURE=true
+railway variables set DJANGO_CSRF_COOKIE_SECURE=true
+railway variables set DJANGO_HTTPS_TERMINATED=true
 
 # 7. 部署
 echo "🚀 部署到 Railway..."
@@ -44,3 +49,4 @@ echo "📋 接下来："
 echo "1. 访问 https://railway.app 查看部署状态"
 echo "2. 在 Settings 中绑定自定义域名（可选）"
 echo "3. 在 Variables 中添加其他环境变量（如 OPENAI_API_KEY）"
+echo "4. 若前端单独部署，设置 DJANGO_CORS_ALLOWED_ORIGINS=https://<前端域名>"

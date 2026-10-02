@@ -5,9 +5,14 @@ import type { BlogArticle, BlogCategory } from "../types";
 
 const props = defineProps<{
   articles: BlogArticle[];
+  total: number;
+  page: number;
+  pages: number;
+  pageSize: number;
   deletingSlug: string;
   activeCategory: string;
   categories: BlogCategory[];
+  canDelete: boolean;
 }>();
 
 const activeCategoryName = computed(() => {
@@ -20,6 +25,8 @@ defineEmits<{
   remove: [article: BlogArticle];
   filterCategory: [slug: string];
   clearFilter: [];
+  pageChange: [page: number];
+  clearAllFilters: [];
 }>();
 
 function formatDate(dateStr: string | null): string {
@@ -41,7 +48,7 @@ function excerpt(text: string, maxLen = 150): string {
         <span class="section-eyebrow">KNOWLEDGE INDEX</span>
         <h1>{{ activeCategoryName }}</h1>
       </div>
-      <span class="article-result-count">{{ articles.length }} 篇结果</span>
+      <span class="article-result-count">共 {{ total }} 篇 · 第 {{ page }} / {{ Math.max(pages, 1) }} 页</span>
     </header>
 
     <nav class="category-filter-bar" aria-label="文章分类">
@@ -75,7 +82,7 @@ function excerpt(text: string, maxLen = 150): string {
       @click="$emit('open', article)"
     >
       <div class="article-index" aria-hidden="true">
-        {{ String(index + 1).padStart(2, "0") }}
+        {{ String((page - 1) * pageSize + index + 1).padStart(2, "0") }}
       </div>
 
       <div class="card-body">
@@ -99,6 +106,7 @@ function excerpt(text: string, maxLen = 150): string {
           <span class="meta-comments"><el-icon><ChatLineRound /></el-icon> {{ article.comment_count }}</span>
           <span class="card-read-link">阅读全文 <b>→</b></span>
           <el-button
+            v-if="canDelete"
             class="card-admin-action"
             size="small"
             type="danger"
@@ -118,8 +126,18 @@ function excerpt(text: string, maxLen = 150): string {
     </article>
 
     <div v-if="!articles.length" class="empty-state">
-      <strong>这个分类还没有文章</strong>
-      <p>可以切换其他分类，或创建一篇新的技术笔记。</p>
+      <strong>没有找到符合条件的文章</strong>
+      <p>试试缩短关键词，或清除分类、标签和作者筛选。</p>
+      <el-button @click="$emit('clearAllFilters')">清除筛选</el-button>
     </div>
+    <nav v-if="pages > 1" class="article-pagination" aria-label="文章分页">
+      <el-button :disabled="page <= 1" @click="$emit('pageChange', page - 1)">上一页</el-button>
+      <span>第 {{ page }} / {{ pages }} 页</span>
+      <el-button :disabled="page >= pages" @click="$emit('pageChange', page + 1)">下一页</el-button>
+    </nav>
   </section>
 </template>
+
+<style scoped>
+.article-pagination { display: flex; justify-content: center; align-items: center; gap: 16px; padding: 28px 12px; }
+</style>

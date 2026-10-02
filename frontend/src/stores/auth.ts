@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { authPost, clearAccessToken, getAccessToken, refreshAccessToken, setAccessToken } from "../api/client";
 
 interface AuthSession {
   actor: string;
@@ -14,6 +15,13 @@ interface AuthUser {
   workspace_key: string;
 }
 
+interface AuthPayload {
+  token?: string;
+  access?: string;
+  user?: AuthUser;
+  session: AuthSession;
+}
+
 const emptySession: AuthSession = {
   actor: "anonymous",
   role: "visitor",
@@ -22,10 +30,12 @@ const emptySession: AuthSession = {
   security_enforced: false
 };
 
+let syncStarted = false;
+let authChannel: BroadcastChannel | null = null;
+
 export const useAuthStore = defineStore("auth", {
   state: () => ({
-    token: localStorage.getItem("agent_auth_token") || "",
-    refreshToken: localStorage.getItem("agent_refresh_token") || "",
+    token: "",
     session: { ...emptySession },
     user: null as AuthUser | null,
     loaded: false
@@ -38,49 +48,74 @@ export const useAuthStore = defineStore("auth", {
     }
   },
   actions: {
-    async bootstrap() {
-      if (!this.token) {
-        this.loaded = true;
-        return;
-      }
-      try {
-        const payload = await this.requestJson("/api/agent/auth/me/");
-        this.session = payload;
-      } catch {
-        // If backend is not available, just logout silently
-        this.logout();
-      }
-    },
-    async login(username: string, password: string) {
-      const payload = await this.requestJson("/api/agent/auth/login/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
+    startSync() {
+      if (syncStarted) return;
+      syncStarted = true;
+      window.addEventListener("blog-access-changed", (event) => {
+        this.token = (event as CustomEvent<string>).detail;
+        if (!this.token) this.session = { ...emptySession };
       });
-      this.applyAuthPayload(payload);
+      if (typeof BroadcastChannel !== "undefined") {
+        authChannel = new BroadcastChannel("blog-auth");
+        authChannel.onmessage = (event) => {
+          if (event.data?.type !== "logout") return;
+          this.clearLocalSession();
+          window.location.replace("/login");
+        };
+      }
     },
-    async register(username: string, password: string, role: string, workspaceKey: string) {
-      const payload = await this.requestJson("/api/agent/auth/register/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role, workspace_key: workspaceKey })
-      });
-      this.applyAuthPayload(payload);
-    },
-    logout() {
+    clearLocalSession() {
+      clearAccessToken();
       this.token = "";
       this.session = { ...emptySession };
       this.user = null;
       localStorage.removeItem("agent_auth_token");
       localStorage.removeItem("agent_refresh_token");
     },
-    applyAuthPayload(payload: { token?: string; access?: string; refresh?: string; user?: AuthUser; session: AuthSession }) {
-      this.token = payload.access ?? payload.token ?? "";
-      this.refreshToken = payload.refresh ?? "";
+    async bootstrap() {
+      this.startSync();
+      const legacyRefresh = localStorage.getItem("agent_refresh_token");
+      localStorage.removeItem("agent_auth_token");
+      localStorage.removeItem("agent_refresh_token");
+      try {
+        try {
+          await refreshAccessToken();
+        } catch {
+          if (!legacyRefresh) throw new Error("No session");
+          const upgraded = await authPost("upgrade", { refresh: legacyRefresh });
+          setAccessToken(String(upgraded.access ?? ""));
+        }
+        this.token = getAccessToken();
+        this.session = await this.requestJson("/api/agent/auth/me/");
+      } catch {
+        this.clearLocalSession();
+      } finally {
+        this.loaded = true;
+      }
+    },
+    async login(username: string, password: string) {
+      this.startSync();
+      const payload = await authPost("login", { username, password }) as unknown as AuthPayload;
+      this.applyAuthPayload(payload);
+    },
+    async register(username: string, password: string) {
+      this.startSync();
+      const payload = await authPost("register", { username, password }) as unknown as AuthPayload;
+      this.applyAuthPayload(payload);
+    },
+    async logout() {
+      await authPost("logout");
+      this.clearLocalSession();
+      authChannel?.postMessage({ type: "logout" });
+    },
+    applyAuthPayload(payload: AuthPayload) {
+      setAccessToken(payload.access ?? payload.token ?? "");
+      this.token = getAccessToken();
       this.user = payload.user ?? null;
       this.session = payload.session;
-      localStorage.setItem("agent_auth_token", this.token);
-      localStorage.setItem("agent_refresh_token", this.refreshToken);
+      this.loaded = true;
+      localStorage.removeItem("agent_auth_token");
+      localStorage.removeItem("agent_refresh_token");
     },
     async requestJson(url: string, options: RequestInit = {}) {
       const response = await fetch(url, options);

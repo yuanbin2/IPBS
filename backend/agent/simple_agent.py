@@ -116,7 +116,7 @@ class SimpleToolCallingAgent:
                 answer=fallback.answer,
                 tool_calls=fallback.tool_calls,
                 sources=fallback.sources,
-                trace=[*initial_state["trace"], f"工作流异常：{exc}", *fallback.trace],
+                trace=[*initial_state["trace"], f"工作流异常：{type(exc).__name__}", *fallback.trace],
                 route=fallback.route,
                 token_usage=fallback.token_usage,
             )
@@ -183,7 +183,7 @@ class SimpleToolCallingAgent:
                 "answer": fallback.answer,
                 "tool_calls": [asdict(call) for call in fallback.tool_calls],
                 "sources": [asdict(source) for source in fallback.sources],
-                "trace": [*initial_state["trace"], f"工作流异常：{exc}", *fallback.trace],
+                "trace": [*initial_state["trace"], f"工作流异常：{type(exc).__name__}", *fallback.trace],
                 "route": fallback.route,
                 "token_usage": fallback.token_usage,
             }

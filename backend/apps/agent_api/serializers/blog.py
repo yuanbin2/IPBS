@@ -34,7 +34,7 @@ class ArticleTagSerializer(serializers.ModelSerializer):
 class BlogCommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = BlogComment
-        fields = ["id", "author_name", "content", "created_at"]
+        fields = ["id", "author_name", "content", "quote", "anchor_offset", "created_at"]
 
 
 class BlogArticleSerializer(serializers.ModelSerializer):
@@ -58,6 +58,7 @@ class BlogArticleSerializer(serializers.ModelSerializer):
             "category",
             "tags",
             "published_at",
+            "publication_version",
             "created_at",
             "updated_at",
             "knowledge_document_id",
@@ -70,12 +71,15 @@ class BlogArticleSerializer(serializers.ModelSerializer):
         return instance.comments.filter(is_approved=True).count()
 
     def get_comments(self, instance):
+        if not self.context.get("include_comments", True):
+            return []
         return BlogCommentSerializer(instance.comments.filter(is_approved=True), many=True).data
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         if not self.context.get("include_content"):
             data.pop("content", None)
+        if not self.context.get("include_content") or not self.context.get("include_comments", True):
             data.pop("comments", None)
         return data
 
@@ -94,8 +98,10 @@ def serialize_tag(instance):
     return ArticleTagSerializer(instance).data
 
 
-def serialize_article(instance, include_content=False):
-    return BlogArticleSerializer(instance, context={"include_content": include_content}).data
+def serialize_article(instance, include_content=False, include_comments=True):
+    return BlogArticleSerializer(
+        instance, context={"include_content": include_content, "include_comments": include_comments}
+    ).data
 
 
 def serialize_blog_agent_message(instance):

@@ -1,74 +1,105 @@
 const nativeFetch = window.fetch.bind(window);
-let refreshPromise: Promise<string> | null = null;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-
-async function refreshAccessToken(): Promise<string> {
-  const refresh = localStorage.getItem("agent_refresh_token");
-  if (!refresh) throw new Error("No refresh token");
-
-  const response = await nativeFetch(`${API_BASE_URL}/api/agent/auth/refresh/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh })
-  });
-  if (!response.ok) throw new Error("JWT refresh failed");
-
-  const payload = await response.json();
-  localStorage.setItem("agent_auth_token", payload.access);
-  if (payload.refresh) localStorage.setItem("agent_refresh_token", payload.refresh);
-  return payload.access;
+export function apiUrl(path: string): string {
+  return `${API_BASE_URL}${path}`;
 }
 
-/**
- * Install one authenticated fetch boundary for the SPA.
- *
- * Existing feature modules may continue using fetch while authorization,
- * refresh de-duplication and one-time retry remain centralized here.
- */
-export function installApiClient() {
+let accessToken = "";
+let csrfToken: string | null = null;
+let refreshPromise: Promise<string> | null = null;
+
+export function getAccessToken(): string {
+  return accessToken;
+}
+
+export function setAccessToken(token: string): void {
+  accessToken = token;
+  window.dispatchEvent(new CustomEvent("blog-access-changed", { detail: token }));
+}
+
+export function clearAccessToken(): void {
+  setAccessToken("");
+}
+
+async function getCsrfToken(): Promise<string> {
+  if (csrfToken) return csrfToken;
+  const response = await nativeFetch(apiUrl("/api/agent/auth/csrf/"), {
+    credentials: "include"
+  });
+  if (!response.ok) throw new Error(`CSRF 初始化失败 (${response.status})`);
+  const payload = await response.json();
+  csrfToken = payload.csrfToken;
+  if (!csrfToken) throw new Error("CSRF 初始化失败");
+  return csrfToken;
+}
+
+export async function authPost(path: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const response = await nativeFetch(apiUrl(`/api/agent/auth/cookie/${path}/`), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": await getCsrfToken()
+    },
+    body: JSON.stringify(body ?? {})
+  });
+  const text = await response.text();
+  let payload: Record<string, unknown> = {};
+  if (text && (response.headers.get("content-type") ?? "").includes("application/json")) {
+    payload = JSON.parse(text);
+  }
+  if (!response.ok) {
+    const detail = typeof payload.detail === "string" ? payload.detail : `HTTP ${response.status}`;
+    throw new Error(detail);
+  }
+  return payload;
+}
+
+async function withRefreshLock<T>(action: () => Promise<T>): Promise<T> {
+  if (navigator.locks) {
+    return navigator.locks.request("blog-refresh", action);
+  }
+  return action();
+}
+
+export async function refreshAccessToken(): Promise<string> {
+  refreshPromise ??= withRefreshLock(async () => {
+    const payload = await authPost("refresh");
+    const token = String(payload.access ?? "");
+    if (!token) throw new Error("刷新响应缺少访问令牌");
+    setAccessToken(token);
+    return token;
+  }).finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
+/** Keep feature requests on one authenticated boundary; tokens never enter storage. */
+export function installApiClient(): void {
   window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-
-    // Check if this is an API call that needs to go to the backend
     const isApiCall = url.startsWith("/api/agent/") || url.startsWith("api/agent/");
-
-    // If it's not an API call, use the original fetch
     if (!isApiCall) return nativeFetch(input, init);
 
-    // Construct the full URL with API_BASE_URL
-    let fullUrl = url;
-    if (url.startsWith("/api/agent/")) {
-      fullUrl = `${API_BASE_URL}${url}`;
-    } else if (url.startsWith("api/agent/")) {
-      fullUrl = `${API_BASE_URL}/${url}`;
-    }
-
+    const fullUrl = url.startsWith("/") ? `${API_BASE_URL}${url}` : `${API_BASE_URL}/${url}`;
     const headers = new Headers(init.headers || {});
-    const token = localStorage.getItem("agent_auth_token");
-    if (token && !headers.has("Authorization")) {
-      headers.set("Authorization", `Bearer ${token}`);
+    if (accessToken && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${accessToken}`);
     }
-
-    // Add CORS headers
-    if (!headers.has("Content-Type")) {
+    if (!headers.has("Content-Type") && !(init.body instanceof FormData)) {
       headers.set("Content-Type", "application/json");
     }
 
-    let response = await nativeFetch(fullUrl, { ...init, headers });
-    const isAuthEndpoint =
-      url.includes("/auth/login/") || url.includes("/auth/register/") || url.includes("/auth/refresh/");
-
-    if (response.status === 401 && !isAuthEndpoint && localStorage.getItem("agent_refresh_token")) {
+    const options: RequestInit = { ...init, headers, credentials: "include" };
+    let response = await nativeFetch(fullUrl, options);
+    if (response.status === 401 && !url.includes("/auth/")) {
       try {
-        refreshPromise ??= refreshAccessToken().finally(() => {
-          refreshPromise = null;
-        });
-        headers.set("Authorization", `Bearer ${await refreshPromise}`);
-        response = await nativeFetch(fullUrl, { ...init, headers });
+        headers.set("Authorization", `Bearer ${await refreshAccessToken()}`);
+        response = await nativeFetch(fullUrl, options);
       } catch {
-        localStorage.removeItem("agent_auth_token");
-        localStorage.removeItem("agent_refresh_token");
+        clearAccessToken();
       }
     }
     return response;

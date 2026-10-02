@@ -7,11 +7,22 @@ from .blog import (
     BlogAgentSecurityEvent,
     BlogAgentSession,
     BlogArticle,
+    BlogArticleRevision,
     BlogComment,
+    BlogCommentReport,
+    BlogInteractionRestriction,
+    PrivateNote,
 )
-from .evaluation import AgentObservation, EvaluationCase, EvaluationRun
+from .evaluation import (
+    AgentObservation,
+    EvaluationBatch,
+    EvaluationCase,
+    EvaluationCaseResult,
+    EvaluationDataset,
+    EvaluationRun,
+)
 from .governance import ApprovalRequest, MCPTool
-from .knowledge import Document, DocumentChunk, EmbeddingRecord, KnowledgeBase
+from .knowledge import Document, DocumentChunk, DocumentIngestionJob, EmbeddingRecord, KnowledgeBase
 
 __all__ = [
     "AgentObservation",
@@ -23,13 +34,21 @@ __all__ = [
     "BlogAgentSecurityEvent",
     "BlogAgentSession",
     "BlogArticle",
+    "BlogArticleRevision",
     "BlogComment",
+    "BlogCommentReport",
+    "BlogInteractionRestriction",
+    "PrivateNote",
     "Conversation",
     "ConversationProject",
     "Document",
     "DocumentChunk",
+    "DocumentIngestionJob",
     "EmbeddingRecord",
+    "EvaluationBatch",
     "EvaluationCase",
+    "EvaluationCaseResult",
+    "EvaluationDataset",
     "EvaluationRun",
     "KnowledgeBase",
     "MCPTool",

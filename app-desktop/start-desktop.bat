@@ -14,12 +14,12 @@ timeout /t 3 /nobreak >nul
 :: Start frontend
 echo [2/3] Starting frontend dev server...
 cd /d "%~dp0..\frontend"
-start /b cmd /c "npm run dev"
+start /b cmd /c "npm run dev -- --host 127.0.0.1 --port 5174 --strictPort"
 timeout /t 5 /nobreak >nul
 
 :: Open in Edge app mode
 echo [3/3] Opening desktop window...
-start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --app=http://127.0.0.1:5173 --window-size=1400,900 --window-position=100,100 --user-data-dir="%~dp0.edge-profile"
+start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --app=http://127.0.0.1:5174 --window-size=1400,900 --window-position=100,100 --user-data-dir="%~dp0.edge-profile"
 
 echo.
 echo ========================================

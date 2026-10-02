@@ -11,11 +11,24 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from agent.security import redact_sensitive_output
+
 from ..exceptions import ErrorCode
 from ..models import BlogAgentMessage, BlogAgentSecurityEvent, BlogAgentSession
 from ..serializers import serialize_blog_agent_message
 from ..services.blog_agent import PublicBlogAgent
 from .common import BLOG_AGENT_RATE_LIMIT, BLOG_AGENT_RATE_WINDOW_SECONDS, error_response, request_ip_hash
+
+
+def _redact_public_payload(value):
+    """Keep model output, source snippets and traces safe before saving or returning them."""
+    if isinstance(value, str):
+        return redact_sensitive_output(value)[0]
+    if isinstance(value, list):
+        return [_redact_public_payload(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _redact_public_payload(item) for key, item in value.items()}
+    return value
 
 
 class BlogAgentChatView(APIView):
@@ -50,7 +63,7 @@ class BlogAgentChatView(APIView):
 
         agent = PublicBlogAgent(Path(settings.BASE_DIR).parent)
         answer = agent.answer(message, history=history)
-        payload = answer.to_dict()
+        payload = _redact_public_payload(answer.to_dict())
 
         if answer.blocked:
             BlogAgentSecurityEvent.objects.create(
@@ -63,10 +76,10 @@ class BlogAgentChatView(APIView):
         agent_message = BlogAgentMessage.objects.create(
             session=session,
             role=BlogAgentMessage.Role.AGENT,
-            content=answer.answer,
+            content=payload["answer"],
             sources=payload["sources"],
-            trace=answer.trace,
-            token_usage=answer.token_usage,
+            trace=payload["trace"],
+            token_usage=payload["token_usage"],
         )
         session.save(update_fields=["updated_at"])
 
@@ -88,7 +101,9 @@ class BlogAgentChatView(APIView):
         return Response(
             {
                 "session_key": session.session_key,
-                "messages": [serialize_blog_agent_message(message) for message in reversed(messages)],
+                "messages": [
+                    _redact_public_payload(serialize_blog_agent_message(message)) for message in reversed(messages)
+                ],
             }
         )
 

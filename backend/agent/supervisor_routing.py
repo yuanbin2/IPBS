@@ -143,6 +143,10 @@ def select_mcp_tool_name(message: str) -> str:
 
 def routing_message(message: str, history: list[dict[str, str]]) -> str:
     """把上一轮用户问题拼进路由输入，使追问仍能继承实体。"""
+    # Explicit review requests inspect the previous answer via structured
+    # history; including the old question here can incorrectly route them to RAG.
+    if contains_any(message.lower(), ["审查", "检查回答", "检查刚才", "核对回答", "核对引用", "review"]):
+        return message
     is_follow_up = len(message) <= 18 or contains_any(message.lower(), FOLLOW_UP_MARKERS)
     if not is_follow_up or not history:
         return message

@@ -2,13 +2,11 @@
 
 from unittest.mock import patch
 
-from django.test import TestCase
-
 from ..models import Conversation, Message
-from .support import NO_MODEL_ENV
+from .support import NO_MODEL_ENV, OperatorApiTestCase
 
 
-class ConversationTests(TestCase):
+class ConversationTests(OperatorApiTestCase):
 
     @patch.dict("os.environ", NO_MODEL_ENV)
     def test_conversation_detail_returns_messages(self):
@@ -32,7 +30,9 @@ class ConversationTests(TestCase):
         self.assertIn("sources", payload["messages"][1])
 
     def test_conversation_detail_limits_messages_and_loads_older(self):
-        conversation = Conversation.objects.create(title="paged history")
+        conversation = Conversation.objects.create(
+            title="paged history", workspace_key="default", owner_username=self.test_user.username
+        )
         for index in range(8):
             Message.objects.create(
                 conversation=conversation,
@@ -64,7 +64,9 @@ class ConversationTests(TestCase):
         )
 
     def test_conversation_search_returns_matched_message_id(self):
-        conversation = Conversation.objects.create(title="searchable")
+        conversation = Conversation.objects.create(
+            title="searchable", workspace_key="default", owner_username=self.test_user.username
+        )
         Message.objects.create(
             conversation=conversation,
             role=Message.Role.USER,

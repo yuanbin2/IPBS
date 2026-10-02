@@ -20,14 +20,14 @@ Start-Sleep -Seconds 3
 # Start frontend
 Write-Host "[2/3] Starting frontend dev server..." -ForegroundColor Yellow
 $frontendDir = Join-Path $projectRoot "frontend"
-$frontendProcess = Start-Process -FilePath "npm" -ArgumentList "run", "dev" -WorkingDirectory $frontendDir -PassThru -WindowStyle Hidden
+$frontendProcess = Start-Process -FilePath "npm" -ArgumentList "run", "dev", "--", "--host", "127.0.0.1", "--port", "5174", "--strictPort" -WorkingDirectory $frontendDir -PassThru -WindowStyle Hidden
 Start-Sleep -Seconds 5
 
 # Open Edge in app mode
 Write-Host "[3/3] Opening desktop window..." -ForegroundColor Yellow
 $edgePath = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $edgeProfile = Join-Path $PSScriptRoot ".edge-profile"
-$edgeProcess = Start-Process -FilePath $edgePath -ArgumentList "--app=http://127.0.0.1:5173", "--window-size=1400,900", "--window-position=100,100", "--user-data-dir=$edgeProfile" -PassThru
+$edgeProcess = Start-Process -FilePath $edgePath -ArgumentList "--app=http://127.0.0.1:5174", "--window-size=1400,900", "--window-position=100,100", "--user-data-dir=$edgeProfile" -PassThru
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green

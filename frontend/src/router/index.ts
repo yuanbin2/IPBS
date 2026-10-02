@@ -12,6 +12,7 @@ const LoginView = () => import("../views/LoginView.vue");
 const MCPToolsView = () => import("../views/MCPToolsView.vue");
 const ObservabilityView = () => import("../views/ObservabilityView.vue");
 const LandingView = () => import("../views/LandingView.vue");
+const SecurityView = () => import("../views/SecurityView.vue");
 
 const router = createRouter({
   history: createWebHistory(),
@@ -20,13 +21,13 @@ const router = createRouter({
       path: "/landing",
       name: "landing",
       component: LandingView,
-      meta: { public: true }
+      meta: { public: true, guestOnly: true }
     },
     {
       path: "/login",
       name: "login",
       component: LoginView,
-      meta: { public: true }
+      meta: { public: true, guestOnly: true }
     },
     {
       path: "/",
@@ -41,7 +42,8 @@ const router = createRouter({
     {
       path: "/blog/:slug?",
       name: "blog",
-      component: BlogView
+      component: BlogView,
+      meta: { public: true }
     },
     {
       path: "/knowledge",
@@ -63,6 +65,12 @@ const router = createRouter({
       path: "/observability",
       name: "observability",
       component: ObservabilityView
+    },
+    {
+      path: "/security",
+      name: "security",
+      component: SecurityView,
+      meta: { requiresAdmin: true }
     }
   ]
 });
@@ -72,9 +80,10 @@ router.beforeEach(async (to) => {
   if (!auth.loaded) {
     await auth.bootstrap();
   }
-  if (to.meta.public) {
+  if (to.meta.guestOnly) {
     return auth.isAuthenticated ? "/" : true;
   }
+  if (to.meta.public) return true;
   if (!auth.isAuthenticated) {
     // If going to root, show landing page; otherwise redirect to login
     if (to.path === "/") {

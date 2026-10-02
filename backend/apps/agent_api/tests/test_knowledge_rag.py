@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import override_settings
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
@@ -13,17 +13,18 @@ from agent.simple_agent import SimpleToolCallingAgent
 
 from ..models import BlogArticle, Document, DocumentChunk, EmbeddingRecord, KnowledgeBase
 from ..services.blog_agent import PublicBlogAgent
+from ..services.embedding_space import embedding_space_identity
 from ..services.rag import (
-    LOCAL_EMBEDDING_MODEL,
     SearchResult,
     expand_search_results_with_neighbors,
+    local_embedding,
     search_knowledge_base,
 )
 from ..services.vector_store import VectorMatch
-from .support import NO_MODEL_ENV, TEST_MEDIA_ROOT
+from .support import NO_MODEL_ENV, TEST_MEDIA_ROOT, OperatorApiTestCase, post_and_run_commit_callbacks
 
 
-class KnowledgeRagTests(TestCase):
+class KnowledgeRagTests(OperatorApiTestCase):
 
     @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
     @patch.dict("os.environ", NO_MODEL_ENV)
@@ -36,7 +37,8 @@ class KnowledgeRagTests(TestCase):
             ),
             content_type="text/plain",
         )
-        self.client.post(
+        post_and_run_commit_callbacks(
+            self,
             "/api/agent/documents/",
             {"file": upload, "title": "Agentic RAG"},
             HTTP_HOST="localhost",
@@ -58,13 +60,15 @@ class KnowledgeRagTests(TestCase):
     @patch.dict("os.environ", NO_MODEL_ENV)
     def test_uploaded_sample_is_indexed_searchable_and_available_to_chat_rag(self):
         workspace = "sample-workspace"
+        self.authenticate_test_user("operator", workspace_key=workspace)
         upload = SimpleUploadedFile(
             "codex-rag-smoke.txt",
             (b"Codex RAG smoke marker ALPHA42.\n\n" b"The uploaded sample says the retrieval answer color is teal."),
             content_type="text/plain",
         )
 
-        upload_response = self.client.post(
+        upload_response = post_and_run_commit_callbacks(
+            self,
             "/api/agent/documents/",
             {"file": upload, "title": "Codex RAG Smoke Sample"},
             HTTP_HOST="localhost",
@@ -115,6 +119,7 @@ class KnowledgeRagTests(TestCase):
     @patch.dict("os.environ", NO_MODEL_ENV)
     def test_uploaded_wei_xiaobin_resume_is_searchable_from_related_info_question(self):
         workspace = "resume-workspace"
+        self.authenticate_test_user("operator", workspace_key=workspace)
         upload = SimpleUploadedFile(
             "wei-xiaobin-resume.txt",
             (
@@ -127,7 +132,8 @@ class KnowledgeRagTests(TestCase):
             content_type="text/plain",
         )
 
-        upload_response = self.client.post(
+        upload_response = post_and_run_commit_callbacks(
+            self,
             "/api/agent/documents/",
             {"file": upload, "title": "卫晓斌-agent开发"},
             HTTP_HOST="localhost",
@@ -189,17 +195,18 @@ class KnowledgeRagTests(TestCase):
             chunk_index=1,
             content="Agentic RAG stores retrieved context inside the final prompt before answering.",
         )
+        identity = embedding_space_identity(384, mode="local_hash")
         EmbeddingRecord.objects.create(
             chunk=weak_chunk,
-            model=LOCAL_EMBEDDING_MODEL,
-            vector=[0.0, 0.0, 0.0],
-            vector_dimensions=3,
+            vector=local_embedding(weak_chunk.content),
+            status=EmbeddingRecord.Status.READY,
+            **identity.as_record_fields(),
         )
         EmbeddingRecord.objects.create(
             chunk=strong_chunk,
-            model=LOCAL_EMBEDDING_MODEL,
-            vector=[0.0, 0.0, 0.0],
-            vector_dimensions=3,
+            vector=local_embedding(strong_chunk.content),
+            status=EmbeddingRecord.Status.READY,
+            **identity.as_record_fields(),
         )
 
         results = search_knowledge_base("retrieved context prompt", knowledge_base_id=knowledge_base.id, limit=2)

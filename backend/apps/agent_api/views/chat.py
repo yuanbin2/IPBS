@@ -14,7 +14,7 @@ from agent.multi_agent import MultiAgentSupervisor
 from agent.security import detect_sensitive_input
 
 from ..exceptions import ErrorCode
-from ..models import AgentRun, ApprovalRequest, Message, SecurityAuditEvent
+from ..models import AgentRun, ApprovalRequest, Message, SecurityAuditEvent, UserProfile
 from ..serializers import serialize_agent_observation, serialize_approval_request, serialize_conversation
 from .common import (
     audit_security_event,
@@ -25,6 +25,7 @@ from .common import (
     get_workspace_key,
     maybe_create_blog_delete_approval,
     maybe_create_mcp_approval,
+    require_roles,
 )
 
 
@@ -33,6 +34,9 @@ class AgentChatView(APIView):
     permission_classes = []
 
     def post(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
         message = str(request.data.get("message", "")).strip()
         if not message:
             return error_response("message is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
@@ -56,7 +60,8 @@ class AgentChatView(APIView):
         )
         # 只把最近十条消息送入 Agent，既保留追问上下文，也控制 prompt 长度。
         history = [
-            {"role": item.role, "content": item.content} for item in conversation.messages.order_by("-id")[:10][::-1]
+            {"role": item.role, "content": item.content, "sources": item.sources}
+            for item in conversation.messages.order_by("-id")[:10][::-1]
         ]
         Message.objects.create(
             conversation=conversation,
@@ -210,6 +215,9 @@ class AgentChatStreamView(APIView):
     permission_classes = []
 
     def post(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
         message = str(request.data.get("message", "")).strip()
         if not message:
             return error_response("message is required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST)
@@ -232,7 +240,8 @@ class AgentChatStreamView(APIView):
             project_id=request.data.get("project_id"),
         )
         history = [
-            {"role": item.role, "content": item.content} for item in conversation.messages.order_by("-id")[:10][::-1]
+            {"role": item.role, "content": item.content, "sources": item.sources}
+            for item in conversation.messages.order_by("-id")[:10][::-1]
         ]
         Message.objects.create(
             conversation=conversation,

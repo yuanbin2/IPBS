@@ -110,17 +110,21 @@ def run_blog_agent(project_root, message: str, history: list[dict[str, str]] | N
     )
 
 
-def run_sql_analysis_agent(message: str) -> MultiAgentResponse:
+def run_sql_analysis_agent(message: str, workspace_key: str) -> MultiAgentResponse:
     from apps.agent_api.models import BlogArticle, BlogComment, Conversation, Document, KnowledgeBase
 
     stats = {
-        "knowledge_bases": KnowledgeBase.objects.count(),
-        "documents": Document.objects.count(),
-        "ready_documents": Document.objects.filter(status=Document.Status.READY).count(),
-        "published_articles": BlogArticle.objects.filter(status=BlogArticle.Status.PUBLISHED).count(),
-        "draft_articles": BlogArticle.objects.filter(status=BlogArticle.Status.DRAFT).count(),
-        "comments": BlogComment.objects.count(),
-        "conversations": Conversation.objects.count(),
+        "knowledge_bases": KnowledgeBase.objects.filter(workspace_key=workspace_key).count(),
+        "documents": Document.objects.filter(workspace_key=workspace_key).count(),
+        "ready_documents": Document.objects.filter(workspace_key=workspace_key, status=Document.Status.READY).count(),
+        "published_articles": BlogArticle.objects.filter(
+            workspace_key=workspace_key, status=BlogArticle.Status.PUBLISHED
+        ).count(),
+        "draft_articles": BlogArticle.objects.filter(
+            workspace_key=workspace_key, status=BlogArticle.Status.DRAFT
+        ).count(),
+        "comments": BlogComment.objects.filter(article__workspace_key=workspace_key).count(),
+        "conversations": Conversation.objects.filter(workspace_key=workspace_key).count(),
     }
     output = "\n".join(f"- {key}: {value}" for key, value in stats.items())
     answer = (
@@ -288,19 +292,40 @@ def run_internet_agent(
     return from_agent_response(response_with_query_trace, internet_decision, trace, redact_sensitive_output)
 
 
-def run_review_agent(message: str) -> MultiAgentResponse:
-    answer = (
-        "Review Agent 已接手。当前审查结论：\n\n"
-        "- 优先检查回答是否引用了知识库或博客来源。\n"
-        "- 对没有来源支撑的结论，应标记为推断或建议。\n"
-        "- 对涉及后台结构、API Key、数据库字段和管理信息的问题，应拒绝或转交 Admin Approval Agent。\n"
-        "- 对写作类输出，重点检查是否跑题、是否有明显事实风险。\n\n"
-        f"待审查内容：{message}"
-    )
+def run_review_agent(message: str, history: list[dict] | None = None) -> MultiAgentResponse:
+    """Review the previous answer against its stored citations without inventing verification."""
+    previous = next((item for item in reversed(history or []) if item.get("role") == "agent"), None)
+    if not previous:
+        answer = "当前会话没有上一条 Agent 回答。请先提问，再让我审查回答与来源。"
+        outcome = "no previous answer"
+    else:
+        previous_answer = str(previous.get("content", ""))
+        sources = [item for item in previous.get("sources", []) if isinstance(item, dict)]
+        citation_markers = [f"[{index}]" for index in range(1, len(sources) + 1)]
+        cited = [marker for marker in citation_markers if marker in previous_answer]
+        if not sources:
+            verdict = "上一条回答没有保存可核对的来源；其中的事实性结论尚不能视为已证实。"
+            outcome = "no saved sources"
+        elif not cited:
+            verdict = f"已保存 {len(sources)} 条来源，但回答没有对应的引用标记；目前无法把结论逐条关联到来源。"
+            outcome = "sources without citations"
+        else:
+            verdict = (
+                f"已保存 {len(sources)} 条来源，回答引用了 {len(cited)} 个来源编号；仍需核对原文是否真正支持每条结论。"
+            )
+            outcome = "citations require factual review"
+        source_lines = [
+            f"- [{index}] {str(source.get('document_title') or '未命名来源')[:100]}"
+            for index, source in enumerate(sources[:5], start=1)
+        ]
+        answer = "Review Agent 审查上一条回答：\n\n" + verdict
+        if source_lines:
+            answer += "\n\n可核对来源：\n" + "\n".join(source_lines)
+        answer += "\n\n这一步只检查已保存来源与引用关系，不自动证明事实正确。请逐条对照原文，并补充缺失来源。"
     return plain_response(
         answer=answer,
-        tool_call=ToolResult("answer_review", message, "quality and safety review checklist generated"),
-        trace=["review_agent -> quality checklist generated"],
+        tool_call=ToolResult("answer_review", message, outcome),
+        trace=[f"review_agent -> {outcome}"],
         route="review_agent",
         supervisor_decision=decision("review_agent", "Review Agent", "quality review", 1.0),
     )

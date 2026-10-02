@@ -22,10 +22,10 @@ python manage.py runserver
 
 # 终端2: 启动前端
 cd frontend
-npm run dev
+npm run dev -- --host 127.0.0.1 --port 5174 --strictPort
 
 # 终端3: 打开桌面窗口
-"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --app=http://127.0.0.1:5173 --window-size=1400,900
+"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --app=http://127.0.0.1:5174 --window-size=1400,900
 ```
 
 ## 为什么用 Edge App 模式？

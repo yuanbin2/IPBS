@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from django.conf import settings
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -8,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..exceptions import ErrorCode
-from ..models import ApprovalRequest, BlogArticle, MCPTool, UserProfile
+from ..models import ApprovalRequest, BlogArticle, BlogArticleRevision, MCPTool, UserProfile
 from ..serializers import serialize_approval_request, serialize_mcp_tool
 from .common import (
     approval_required_response,
@@ -39,11 +40,14 @@ class ApprovalRequestDetailView(APIView):
     authentication_classes = []
     permission_classes = []
 
+    @transaction.atomic
     def post(self, request, pk: int):
         denied = require_roles(request, [UserProfile.Role.ADMIN])
         if denied:
             return denied
-        approval = get_object_or_404(ApprovalRequest, pk=pk, workspace_key=get_workspace_key(request))
+        approval = get_object_or_404(
+            ApprovalRequest.objects.select_for_update(), pk=pk, workspace_key=get_workspace_key(request)
+        )
         decision = str(request.data.get("decision", "")).strip().lower()
         reviewer = str(request.data.get("reviewer", "admin")).strip()
         note = str(request.data.get("note", "")).strip()
@@ -68,11 +72,22 @@ class ApprovalRequestDetailView(APIView):
 
             # 如果是博客发布审批被拒绝，更新文章状态
             if approval.action == ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE:
+                revision_id = approval.payload.get("revision_id")
+                if revision_id is not None:
+                    BlogArticleRevision.objects.filter(
+                        pk=revision_id,
+                        article__workspace_key=get_workspace_key(request),
+                        status=BlogArticleRevision.Status.PENDING,
+                    ).update(status=BlogArticleRevision.Status.REJECTED, reviewed_at=timezone.now())
+                    return Response(serialize_approval_request(approval))
                 article_slug = approval.payload.get("article_slug")
                 if article_slug:
-                    BlogArticle.objects.filter(slug=article_slug, workspace_key=get_workspace_key(request)).update(
-                        status=BlogArticle.Status.REJECTED
-                    )
+                    BlogArticle.objects.filter(
+                        slug=article_slug,
+                        workspace_key=get_workspace_key(request),
+                    ).exclude(
+                        status=BlogArticle.Status.PUBLISHED
+                    ).update(status=BlogArticle.Status.REJECTED)
 
             return Response(serialize_approval_request(approval))
 

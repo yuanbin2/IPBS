@@ -2,13 +2,11 @@
 
 from unittest.mock import patch
 
-from django.test import TestCase
-
 from ..models import Conversation, ConversationProject
-from .support import NO_MODEL_ENV
+from .support import NO_MODEL_ENV, OperatorApiTestCase
 
 
-class ConversationProjectTests(TestCase):
+class ConversationProjectTests(OperatorApiTestCase):
 
     def _create_project(self, name: str = "LangGraph 学习") -> dict:
         response = self.client.post(
@@ -71,7 +69,7 @@ class ConversationProjectTests(TestCase):
 
     def test_delete_project_keeps_conversations_ungrouped(self):
         project = self._create_project("to delete")
-        conversation = Conversation.objects.create(title="inside")
+        conversation = Conversation.objects.create(title="inside", owner_username=self.test_user.username)
         conversation.project_id = project["id"]
         conversation.save(update_fields=["project"])
 
@@ -87,7 +85,7 @@ class ConversationProjectTests(TestCase):
 
     def test_move_conversation_into_and_out_of_project(self):
         project = self._create_project("target")
-        conversation = Conversation.objects.create(title="movable")
+        conversation = Conversation.objects.create(title="movable", owner_username=self.test_user.username)
 
         move_in = self.client.post(
             f"/api/agent/conversations/{conversation.id}/move/",
@@ -113,7 +111,7 @@ class ConversationProjectTests(TestCase):
             workspace_key="default",
             owner_username="another-user",
         )
-        conversation = Conversation.objects.create(title="mine")
+        conversation = Conversation.objects.create(title="mine", owner_username=self.test_user.username)
 
         response = self.client.post(
             f"/api/agent/conversations/{conversation.id}/move/",
@@ -128,10 +126,10 @@ class ConversationProjectTests(TestCase):
 
     def test_conversation_list_filters_by_project(self):
         project = self._create_project("filtered")
-        inside = Conversation.objects.create(title="inside project")
+        inside = Conversation.objects.create(title="inside project", owner_username=self.test_user.username)
         inside.project_id = project["id"]
         inside.save(update_fields=["project"])
-        Conversation.objects.create(title="outside project")
+        Conversation.objects.create(title="outside project", owner_username=self.test_user.username)
 
         in_project = self.client.get(
             f"/api/agent/conversations/?project={project['id']}",

@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
+import logging
+import math
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
-from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 from langchain_openai import OpenAIEmbeddings
 
 from ...models import Document, DocumentChunk, EmbeddingRecord, KnowledgeBase
 from ...models.constants import DEFAULT_WORKSPACE_KEY
+from ..embedding_space import (
+    EmbeddingSpaceError,
+    embedding_mode,
+    embedding_space_identity,
+    normalize_vector,
+)
 from ..vector_store import should_use_pgvector, upsert_chunk_vector
 from .text import local_embedding, normalize_text
 
@@ -19,6 +28,7 @@ DEFAULT_KNOWLEDGE_BASE_NAME = "默认知识库"
 DEFAULT_BAILIAN_EMBEDDING_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_BAILIAN_EMBEDDING_MODEL = "text-embedding-v1"
 LOCAL_EMBEDDING_MODEL = "local-hash-embedding"
+logger = logging.getLogger(__name__)
 CHUNK_SIZE = 900
 CHUNK_OVERLAP = 140
 
@@ -96,68 +106,151 @@ def split_long_text(text: str, chunk_size: int, overlap: int) -> list[str]:
     return [chunk for chunk in chunks if chunk]
 
 
-@transaction.atomic
 def ingest_document(document: Document) -> Document:
-    """原子化完成抽取、切片和向量写入，保证文档状态与索引一致。"""
-    document.status = Document.Status.PROCESSING
-    document.error_message = ""
-    document.save(update_fields=["status", "error_message", "updated_at"])
-
+    """Compatibility helper for direct callers; provider work precedes index replacement."""
     try:
-        text = extract_text_from_document(document)
-        chunks = split_text(text)
-        if not chunks:
-            raise ValueError("文档没有可索引的文本内容。")
-
-        # 重建前先清除旧切片；整个函数位于事务中，失败时数据库改动会回滚。
-        document.chunks.all().delete()
-        vectors = embed_texts(chunks)
-        model_name = embedding_model() if use_remote_embeddings() else LOCAL_EMBEDDING_MODEL
-
-        for index, (content, vector) in enumerate(zip(chunks, vectors, strict=True)):
-            chunk = DocumentChunk.objects.create(
-                document=document,
-                knowledge_base=document.knowledge_base,
-                chunk_index=index,
-                content=content,
-                token_estimate=max(1, len(content) // 2),
-                metadata={
-                    "source": document.title,
-                    "content_type": document.content_type,
-                },
+        chunks, vectors, identity = build_document_index(document)
+        generation = document.desired_ingestion_generation or document.active_ingestion_generation or 1
+        with transaction.atomic():
+            persist_document_index(document, chunks, vectors, identity, generation=generation)
+            document.chunks.exclude(ingestion_generation=generation).delete()
+            document.active_ingestion_generation = generation
+            document.desired_ingestion_generation = max(document.desired_ingestion_generation, generation)
+            document.status = Document.Status.READY
+            document.chunk_count = len(chunks)
+            document.ingestion_error_code = ""
+            document.error_message = ""
+            document.save(
+                update_fields=[
+                    "active_ingestion_generation",
+                    "desired_ingestion_generation",
+                    "status",
+                    "chunk_count",
+                    "ingestion_error_code",
+                    "error_message",
+                    "updated_at",
+                ]
             )
-            EmbeddingRecord.objects.create(
-                chunk=chunk,
-                model=model_name,
-                vector=[] if should_use_pgvector() else vector,
-                vector_dimensions=len(vector),
-            )
-            upsert_chunk_vector(chunk, model_name, vector)
-
-        document.status = Document.Status.READY
-        document.chunk_count = len(chunks)
-        document.save(update_fields=["status", "chunk_count", "updated_at"])
-    except Exception as exc:
-        document.status = Document.Status.FAILED
-        document.error_message = str(exc)
-        document.save(update_fields=["status", "error_message", "updated_at"])
+    except EmbeddingSpaceError as exc:
+        failure_code = getattr(exc, "failure_code", "embedding_space_invalid")
+        document.ingestion_error_code = failure_code[:80]
+        document.error_message = failure_code[:300]
+        has_previous_index = (
+            document.status == Document.Status.READY
+            and document.chunks.filter(ingestion_generation=document.active_ingestion_generation).exists()
+        )
+        logger.warning(
+            "rag_embedding_failed document_id=%s failure_code=%s retained_previous_index=%s",
+            document.pk,
+            failure_code,
+            has_previous_index,
+        )
+        if not has_previous_index:
+            document.status = Document.Status.FAILED
+        document.save(update_fields=["status", "ingestion_error_code", "error_message", "updated_at"])
+    except Exception:
+        document.ingestion_error_code = "document_ingestion_failed"
+        document.error_message = "document_ingestion_failed"
+        has_previous_index = (
+            document.status == Document.Status.READY
+            and document.chunks.filter(ingestion_generation=document.active_ingestion_generation).exists()
+        )
+        if not has_previous_index:
+            document.status = Document.Status.FAILED
+        document.save(update_fields=["status", "ingestion_error_code", "error_message", "updated_at"])
     return document
 
 
+def build_document_index(document: Document):
+    """Do file parsing and all embedding I/O before opening the short write transaction."""
+    text = extract_text_from_document(document)
+    chunks = split_text(text)
+    if not chunks:
+        raise ValueError("文档没有可索引的文本内容。")
+    vectors = embed_texts(chunks)
+    mode = embedding_mode()
+    base_url = normalized_embedding_base_url() if mode == "remote" else ""
+    model_name = embedding_model() if mode == "remote" else LOCAL_EMBEDDING_MODEL
+    identity = embedding_space_identity(len(vectors[0]), mode=mode, model=model_name, base_url=base_url)
+    if any(len(vector) != identity.vector_dimensions for vector in vectors):
+        raise EmbeddingSpaceError("Embedding service returned vectors with inconsistent dimensions.")
+    _validate_configured_dimensions(identity.vector_dimensions)
+    return chunks, vectors, identity
+
+
+def persist_document_index(document, chunks, vectors, identity, *, generation: int) -> None:
+    """Write a complete generation; callers wrap this and the active-pointer update atomically."""
+    for index, (content, vector) in enumerate(zip(chunks, vectors, strict=True)):
+        chunk = DocumentChunk.objects.create(
+            document=document,
+            knowledge_base_id=document.knowledge_base_id,
+            ingestion_generation=generation,
+            chunk_index=index,
+            content=content,
+            token_estimate=max(1, len(content) // 2),
+            metadata={"source": document.title, "content_type": document.content_type},
+        )
+        EmbeddingRecord.objects.create(
+            chunk=chunk,
+            vector=[] if should_use_pgvector() else vector,
+            **identity.as_record_fields(),
+            status=EmbeddingRecord.Status.READY,
+            embedded_at=timezone.now(),
+        )
+        upsert_chunk_vector(chunk, identity, vector)
+
+
 def embed_texts(texts: list[str]) -> list[list[float]]:
-    # 远程 embedding 不可用时回退到确定性的本地向量，使开发、测试和
-    # 无外网环境仍能完成整条 RAG 流程。
-    if use_remote_embeddings():
+    mode = embedding_mode()
+    if mode == "remote":
+        api_key = embedding_api_key()
+        if not api_key:
+            raise EmbeddingSpaceError("Remote embedding credentials are not configured.")
+        model = embedding_model()
+        base_url = normalized_embedding_base_url()
+        configured_dimensions = os.getenv("RAG_EMBEDDING_DIMENSIONS", "").strip()
+        if configured_dimensions:
+            try:
+                _validate_configured_dimensions(int(configured_dimensions))
+            except ValueError as exc:
+                raise EmbeddingSpaceError("RAG_EMBEDDING_DIMENSIONS must be an integer.") from exc
+        # Fail configuration checks before making a billable provider request.
+        embedding_space_identity(int(configured_dimensions or "1"), mode=mode, model=model, base_url=base_url)
         try:
             embeddings = OpenAIEmbeddings(
-                model=embedding_model(),
-                api_key=embedding_api_key(),
-                base_url=normalized_embedding_base_url(),
+                model=model,
+                api_key=api_key,
+                base_url=base_url,
             )
-            return embeddings.embed_documents(texts)
-        except Exception:
-            return [local_embedding(text) for text in texts]
-    return [local_embedding(text) for text in texts]
+            vectors = embeddings.embed_documents(texts)
+        except Exception as exc:
+            provider = urlparse(base_url).hostname or "unknown-provider"
+            logger.warning(
+                "rag_embedding_request_failed provider=%s model=%s error_class=%s fallback=denied",
+                provider,
+                model,
+                type(exc).__name__,
+            )
+            raise EmbeddingRequestError(type(exc).__name__) from exc
+    else:
+        vectors = [local_embedding(text) for text in texts]
+        logger.info(
+            "rag_embedding_local_hash_selected model=%s algorithm=%s", LOCAL_EMBEDDING_MODEL, "sha256-token-hash-v1"
+        )
+
+    if not vectors or any(not vector or any(not math.isfinite(float(value)) for value in vector) for vector in vectors):
+        raise EmbeddingSpaceError("Embedding service returned an empty or non-finite vector.")
+    dimensions = len(vectors[0])
+    _validate_configured_dimensions(dimensions)
+    identity = embedding_space_identity(
+        dimensions,
+        mode=mode,
+        model=embedding_model() if mode == "remote" else LOCAL_EMBEDDING_MODEL,
+        base_url=normalized_embedding_base_url() if mode == "remote" else "",
+    )
+    if identity.normalized:
+        vectors = [normalize_vector(vector) for vector in vectors]
+    return vectors
 
 
 def embed_query(query: str) -> list[float]:
@@ -165,15 +258,24 @@ def embed_query(query: str) -> list[float]:
 
 
 def use_remote_embeddings() -> bool:
-    if os.getenv("AGENT_FORCE_LOCAL_EMBEDDINGS", "").lower() in {"1", "true", "yes"}:
-        return False
-    if settings.DEBUG and os.getenv("AGENT_ENABLE_REMOTE_EMBEDDINGS", "").lower() not in {
-        "1",
-        "true",
-        "yes",
-    }:
-        return False
-    return embedding_api_key() != ""
+    return embedding_mode() == "remote"
+
+
+class EmbeddingRequestError(EmbeddingSpaceError):
+    def __init__(self, error_class: str):
+        self.failure_code = f"embedding_request_failed:{error_class}"
+        super().__init__(self.failure_code)
+
+
+def _validate_configured_dimensions(dimensions: int) -> None:
+    configured = os.getenv("RAG_EMBEDDING_DIMENSIONS", "").strip()
+    if configured:
+        try:
+            expected = int(configured)
+        except ValueError as exc:
+            raise EmbeddingSpaceError("RAG_EMBEDDING_DIMENSIONS must be an integer.") from exc
+        if expected != dimensions:
+            raise EmbeddingSpaceError(f"Embedding dimension mismatch: configured {expected}, received {dimensions}.")
 
 
 def embedding_api_key() -> str:

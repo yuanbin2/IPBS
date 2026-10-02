@@ -211,7 +211,7 @@ class PublicBlogAgent:
             return BlogAgentAnswer(
                 answer=self._fallback_answer(question, sources),
                 sources=sources,
-                trace=[*trace, f"generate -> fallback because {exc}"],
+                trace=[*trace, f"generate -> fallback because {type(exc).__name__}"],
                 token_usage=empty_token_usage(),
             )
 

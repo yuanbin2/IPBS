@@ -54,8 +54,13 @@ def issue_jwt_pair(user) -> dict[str, str]:
 
 
 def context_from_request(request) -> SecurityContext:
-    # 优先使用 DRF 已认证用户；手动解析 Bearer Token 仅作为兼容路径。
-    if getattr(request, "user", None) and request.user.is_authenticated:
+    # Accept only JWT authentication for agent APIs. A Django session cookie
+    # left by older releases must not survive refresh-token logout.
+    if (
+        isinstance(getattr(request, "auth", None), AccessToken)
+        and getattr(request, "user", None)
+        and request.user.is_authenticated
+    ):
         profile = get_or_create_profile(request.user)
         return SecurityContext(request.user.username, profile.role, profile.workspace_key, True)
 
@@ -83,6 +88,21 @@ def context_from_token(token: str) -> SecurityContext:
         return SecurityContext("anonymous", "visitor", DEFAULT_WORKSPACE_KEY, False)
     profile = get_or_create_profile(user)
     return SecurityContext(user.username, profile.role, normalize_workspace_key(profile.workspace_key), True)
+
+
+def jwt_user_from_request(request):
+    """Resolve a real, active JWT principal for resources that require a stable user ID.
+
+    Development role headers and old session cookies deliberately do not qualify.
+    """
+    auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+    if not auth_header.lower().startswith("bearer "):
+        return None
+    try:
+        token = AccessToken(auth_header.split(" ", 1)[1].strip())
+        return get_user_model().objects.get(pk=token["user_id"], is_active=True)
+    except (TokenError, KeyError, ValueError, TypeError, get_user_model().DoesNotExist):
+        return None
 
 
 def get_or_create_profile(user):

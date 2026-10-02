@@ -16,17 +16,29 @@
 
 ## 文档导航
 
-- [设计蓝图与迭代手册（总纲，先看这个）](docs/design-blueprint.md)
-- [全项目架构分析](docs/architecture-analysis.md)
+- [Blog 设计文档 V2.0（当前改造方案）](docs/Blog设计文档V2.0.md)
+- [数据库设计文档 V2.0](docs/数据库设计文档V2.0.md)
+- [评测与测试升级方案 V2.0（含 2026-09-29 基线）](docs/评测与测试升级方案V2.0.md)
+- [缺陷跟踪表 V2.0（逐项修复与验收）](docs/缺陷跟踪表V2.0.md)
+- [发布阻断审查 V2.0（本地证据与待办）](docs/发布阻断审查V2.0.md)
+- [写作、阅读与笔记体验升级计划 V2.1（B-025～B-028）](docs/写作阅读与笔记体验升级计划V2.1.md)
+- [HTML 导入 Markdown 博客设计 V2.4（B-040，待实现）](docs/HTML导入Markdown博客设计V2.4.md)
+- [智能体答案质量与人工复核计划 V2.4（待实施）](docs/智能体答案质量与人工复核计划V2.4.md)
+- [历史设计蓝图与迭代手册](docs/design-blueprint.md)
+- [全项目架构分析（历史快照）](docs/architecture-analysis.md)
 - [岗位准备、从零搭建、学习清单与面试题](docs/job-preparation-guide.md)
 - [部署说明](docs/deployment.md)
 - [API 文档](docs/api.md)
 - [系统架构图](docs/system-architecture.md)
 - [项目修复与验证报告](docs/repair-report.md)
-- [评估报告](docs/evaluation-report.md)
+- [评估报告（历史快照）](docs/evaluation-report.md)
 - [简历包装](docs/resume.md)
 - [演示视频脚本](docs/demo-script.md)
 - [最终总结博客](docs/final-blog-post.md)
+
+> 面试和发布评审以 V2 设计、数据库、评测方案及缺陷表为当前索引；旧架构分析和评估报告仅保留历史对比。CI 的每次运行给出该提交的门禁结果；本地测试通过不代表真实 Railway、worker、PostgreSQL 与人工评测均已验收。
+
+提交后的 GitHub Actions `CI evidence summary` 会按当前 commit 自动列出后端、真实 PostgreSQL、前端构建、浏览器 E2E 和 Compose 门禁状态。报告是流水线结果索引；模型质量、Railway 实站、人工标注与真实用户性能仍按 V2 缺陷表逐项验收。
 
 ## 架构
 
@@ -76,6 +88,12 @@ SQLite、本地内存缓存和同步任务模式启动完整项目，不要求�
 PostgreSQL、Redis 或 RabbitMQ。启动后访问 `http://127.0.0.1:8000/`。
 这种模式下向量检索会使用 Django/SQLite 兼容兜底，方便本机调试。
 
+依赖已安装后，可用 `restart.bat`（Windows）或 `./restart.sh`（Git Bash、Linux/macOS）
+重启开发版前后端。重启脚本固定后端 `http://127.0.0.1:8001`、前端
+`http://127.0.0.1:5174`，将前端 API 代理到该后端，并继续使用
+`backend/db.sqlite3`。启动成功后打开 `/blog`；注册入口在 `/login`。
+如果端口被无法确认属于本项目的进程占用，脚本会停止并提示，不会清理其他服务。
+
 未配置模型 API Key 时，RAG、本地检索、博客、审批和基础 Agent 功能仍可
 运行，模型回答会自动使用本地降级路径。需要真实大模型和远程 embedding
 时，再将 `.env.example` 复制为 `.env` 并填写对应 Key。
@@ -91,8 +109,12 @@ Windows PowerShell 可使用：
 
 ```powershell
 Copy-Item .env.example .env
+# 生成一个私有密钥，并将输出填入 .env 的 DJANGO_SECRET_KEY
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 docker compose up -d --build
 ```
+
+非本地运行要求 `DJANGO_SECRET_KEY` 至少 50 个字符、`DJANGO_DEBUG=false`、`AGENT_SECURITY_ENFORCED=true`，并明确确认请求经过 TLS 终止代理。Railway 会自动提供 `RAILWAY_PUBLIC_DOMAIN` 和 HTTPS 转发头；其他平台须设置 `DJANGO_HTTPS_TERMINATED=true` 并按该平台确认代理行为。生产检查强制 HTTPS、Secure Session/CSRF Cookie 和 1 小时 HSTS；HSTS 子域与 preload 暂未启用。缺少安全配置会阻止服务启动。请勿把生成的密钥提交到 Git。
 
 访问：`http://localhost/`。Docker 模式会启动完整的 PostgreSQL、Redis、
 RabbitMQ 和 Celery 基础设施。

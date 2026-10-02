@@ -31,6 +31,9 @@ export interface KnowledgeDocument {
   status: "pending" | "processing" | "ready" | "failed";
   error_message: string;
   chunk_count: number;
+  desired_ingestion_generation: number;
+  active_ingestion_generation: number;
+  ingestion_error_code: string;
   created_at: string;
 }
 

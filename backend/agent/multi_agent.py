@@ -8,7 +8,7 @@ Supervisor 只负责识别意图、执行安全策略并把请求交给专用 Ag
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from . import specialized_agents
@@ -27,6 +27,50 @@ from .supervisor_routing import (
     routing_message,
     select_mcp_tool_name,
 )
+
+
+def _safe_response(response: MultiAgentResponse) -> MultiAgentResponse:
+    """Redact secrets in every exposed channel, including tool output and citations."""
+    changed = False
+
+    def clean(value: str) -> str:
+        nonlocal changed
+        result, redacted = redact_sensitive_output(value)
+        changed |= redacted
+        return result
+
+    answer = clean(response.answer)
+    tool_calls = [replace(call, input=clean(call.input), output=clean(call.output)) for call in response.tool_calls]
+    sources = [
+        replace(source, document_title=clean(source.document_title), content=clean(source.content))
+        for source in response.sources
+    ]
+    trace = [clean(item) for item in response.trace]
+    if changed and "security_filter -> output redacted" not in trace:
+        trace.append("security_filter -> output redacted")
+    return replace(response, answer=answer, tool_calls=tool_calls, sources=sources, trace=trace)
+
+
+def _safe_stream_event(event: dict) -> dict:
+    """Apply the same redaction to serialized SSE responses from all routes."""
+    changed = False
+
+    def clean(value):
+        nonlocal changed
+        if isinstance(value, str):
+            result, redacted = redact_sensitive_output(value)
+            changed |= redacted
+            return result
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        if isinstance(value, dict):
+            return {key: clean(item) for key, item in value.items()}
+        return value
+
+    safe = clean(event)
+    if changed and safe.get("type") == "response" and "security_filter -> output redacted" not in safe.get("trace", []):
+        safe["trace"] = [*safe.get("trace", []), "security_filter -> output redacted"]
+    return safe
 
 
 class MultiAgentSupervisor:
@@ -51,23 +95,25 @@ class MultiAgentSupervisor:
         sensitive_marker = detect_sensitive_input(message)
         if sensitive_marker:
             response = specialized_agents.run_admin_approval_agent(message)
-            return MultiAgentResponse(
-                answer=response.answer,
-                tool_calls=response.tool_calls,
-                sources=response.sources,
-                trace=[
-                    "security_filter -> sensitive input detected",
-                    f"security_filter -> pattern={sensitive_marker}",
-                    *response.trace,
-                ],
-                route=response.route,
-                token_usage=response.token_usage,
-                supervisor=decision(
-                    "admin_approval_agent",
-                    "Admin Approval Agent",
-                    "security filter requires human approval",
-                    0.97,
-                ),
+            return _safe_response(
+                MultiAgentResponse(
+                    answer=response.answer,
+                    tool_calls=response.tool_calls,
+                    sources=response.sources,
+                    trace=[
+                        "security_filter -> sensitive input detected",
+                        f"security_filter -> pattern={sensitive_marker}",
+                        *response.trace,
+                    ],
+                    route=response.route,
+                    token_usage=response.token_usage,
+                    supervisor=decision(
+                        "admin_approval_agent",
+                        "Admin Approval Agent",
+                        "security filter requires human approval",
+                        0.97,
+                    ),
+                )
             )
 
         # 把最近对话压缩进路由输入，使“他是哪个学校”等追问仍能
@@ -86,22 +132,26 @@ class MultiAgentSupervisor:
         if explicit_web_search or (
             internet_enabled and (not is_mcp_request(message) or select_mcp_tool_name(message) == "web_search")
         ):
-            return specialized_agents.run_internet_agent(
-                self.rag_agent, self.project_root, self.workspace_key, message, trace, history
+            return _safe_response(
+                specialized_agents.run_internet_agent(
+                    self.rag_agent, self.project_root, self.workspace_key, message, trace, history
+                )
             )
 
         if route_decision.selected_agent == "rag_agent":
             response = self.rag_agent.chat(message, history=history)
-            return specialized_agents.from_agent_response(response, route_decision, trace, redact_sensitive_output)
+            return _safe_response(
+                specialized_agents.from_agent_response(response, route_decision, trace, redact_sensitive_output)
+            )
 
         if route_decision.selected_agent == "blog_agent":
             response = specialized_agents.run_blog_agent(self.project_root, message, history)
         elif route_decision.selected_agent == "sql_analysis_agent":
-            response = specialized_agents.run_sql_analysis_agent(message)
+            response = specialized_agents.run_sql_analysis_agent(message, self.workspace_key)
         elif route_decision.selected_agent == "mcp_tool_agent":
             response = specialized_agents.run_mcp_tool_agent(self.project_root, self.workspace_key, message)
         elif route_decision.selected_agent == "review_agent":
-            response = specialized_agents.run_review_agent(message)
+            response = specialized_agents.run_review_agent(message, history)
         elif route_decision.selected_agent == "admin_approval_agent":
             response = specialized_agents.run_admin_approval_agent(message)
         else:
@@ -109,14 +159,16 @@ class MultiAgentSupervisor:
 
         answer, redacted = redact_sensitive_output(response.answer)
         extra_trace = ["security_filter -> output redacted"] if redacted else []
-        return MultiAgentResponse(
-            answer=answer,
-            tool_calls=response.tool_calls,
-            sources=response.sources,
-            trace=[*trace, *response.trace, *extra_trace],
-            route=response.route,
-            token_usage=response.token_usage,
-            supervisor=route_decision,
+        return _safe_response(
+            MultiAgentResponse(
+                answer=answer,
+                tool_calls=response.tool_calls,
+                sources=response.sources,
+                trace=[*trace, *response.trace, *extra_trace],
+                route=response.route,
+                token_usage=response.token_usage,
+                supervisor=route_decision,
+            )
         )
 
     def chat_stream(
@@ -141,23 +193,25 @@ class MultiAgentSupervisor:
             yield {"type": "trace", "data": "security_filter -> sensitive input detected"}
             yield {"type": "trace", "data": f"security_filter -> pattern={sensitive_marker}"}
             response = specialized_agents.run_admin_approval_agent(message)
-            yield {
-                "type": "response",
-                "answer": response.answer,
-                "tool_calls": [asdict(call) for call in response.tool_calls],
-                "sources": [asdict(source) for source in response.sources],
-                "trace": response.trace,
-                "route": response.route,
-                "token_usage": response.token_usage,
-                "supervisor": asdict(
-                    decision(
-                        "admin_approval_agent",
-                        "Admin Approval Agent",
-                        "security filter requires human approval",
-                        0.97,
-                    )
-                ),
-            }
+            yield _safe_stream_event(
+                {
+                    "type": "response",
+                    "answer": response.answer,
+                    "tool_calls": [asdict(call) for call in response.tool_calls],
+                    "sources": [asdict(source) for source in response.sources],
+                    "trace": response.trace,
+                    "route": response.route,
+                    "token_usage": response.token_usage,
+                    "supervisor": asdict(
+                        decision(
+                            "admin_approval_agent",
+                            "Admin Approval Agent",
+                            "security filter requires human approval",
+                            0.97,
+                        )
+                    ),
+                }
+            )
             return
 
         # Supervisor routing
@@ -181,16 +235,19 @@ class MultiAgentSupervisor:
             response = specialized_agents.run_internet_agent(
                 self.rag_agent, self.project_root, self.workspace_key, message, base_trace, history
             )
-            yield {
-                "type": "response",
-                "answer": response.answer,
-                "tool_calls": [asdict(call) for call in response.tool_calls],
-                "sources": [asdict(source) for source in response.sources],
-                "trace": [*base_trace, *response.trace],
-                "route": response.route,
-                "token_usage": response.token_usage,
-                "supervisor": asdict(route_decision),
-            }
+            response = _safe_response(response)
+            yield _safe_stream_event(
+                {
+                    "type": "response",
+                    "answer": response.answer,
+                    "tool_calls": [asdict(call) for call in response.tool_calls],
+                    "sources": [asdict(source) for source in response.sources],
+                    "trace": response.trace,
+                    "route": response.route,
+                    "token_usage": response.token_usage,
+                    "supervisor": asdict(response.supervisor),
+                }
+            )
             return
 
         # RAG agent — stream LangGraph execution
@@ -202,20 +259,22 @@ class MultiAgentSupervisor:
                 if event["type"] == "trace":
                     if event["data"] not in seen_trace:
                         seen_trace.add(event["data"])
-                        yield event
+                        yield _safe_stream_event(event)
                 elif event["type"] == "response":
                     answer, redacted = redact_sensitive_output(event["answer"])
                     extra_trace = ["security_filter -> output redacted"] if redacted else []
-                    yield {
-                        "type": "response",
-                        "answer": answer,
-                        "tool_calls": event["tool_calls"],
-                        "sources": event["sources"],
-                        "trace": [*base_trace, *event["trace"], *extra_trace],
-                        "route": event["route"],
-                        "token_usage": event["token_usage"],
-                        "supervisor": asdict(route_decision),
-                    }
+                    yield _safe_stream_event(
+                        {
+                            "type": "response",
+                            "answer": answer,
+                            "tool_calls": event["tool_calls"],
+                            "sources": event["sources"],
+                            "trace": [*base_trace, *event["trace"], *extra_trace],
+                            "route": event["route"],
+                            "token_usage": event["token_usage"],
+                            "supervisor": asdict(route_decision),
+                        }
+                    )
             return
 
         # Other agents — synchronous, yield trace then response
@@ -224,13 +283,13 @@ class MultiAgentSupervisor:
             response = specialized_agents.run_blog_agent(self.project_root, message, history)
         elif route_decision.selected_agent == "sql_analysis_agent":
             yield {"type": "trace", "data": "sql_analysis_agent -> safe aggregate query completed"}
-            response = specialized_agents.run_sql_analysis_agent(message)
+            response = specialized_agents.run_sql_analysis_agent(message, self.workspace_key)
         elif route_decision.selected_agent == "mcp_tool_agent":
             yield {"type": "trace", "data": "mcp_tool_agent -> executing tool"}
             response = specialized_agents.run_mcp_tool_agent(self.project_root, self.workspace_key, message)
         elif route_decision.selected_agent == "review_agent":
-            yield {"type": "trace", "data": "review_agent -> quality checklist generated"}
-            response = specialized_agents.run_review_agent(message)
+            yield {"type": "trace", "data": "review_agent -> checking previous answer and sources"}
+            response = specialized_agents.run_review_agent(message, history)
         elif route_decision.selected_agent == "admin_approval_agent":
             yield {"type": "trace", "data": "admin_approval_agent -> manual approval required"}
             response = specialized_agents.run_admin_approval_agent(message)
@@ -240,16 +299,18 @@ class MultiAgentSupervisor:
 
         answer, redacted = redact_sensitive_output(response.answer)
         extra_trace = ["security_filter -> output redacted"] if redacted else []
-        yield {
-            "type": "response",
-            "answer": answer,
-            "tool_calls": [asdict(call) for call in response.tool_calls],
-            "sources": [asdict(source) for source in response.sources],
-            "trace": [*base_trace, *response.trace, *extra_trace],
-            "route": response.route,
-            "token_usage": response.token_usage,
-            "supervisor": asdict(route_decision),
-        }
+        yield _safe_stream_event(
+            {
+                "type": "response",
+                "answer": answer,
+                "tool_calls": [asdict(call) for call in response.tool_calls],
+                "sources": [asdict(source) for source in response.sources],
+                "trace": [*base_trace, *response.trace, *extra_trace],
+                "route": response.route,
+                "token_usage": response.token_usage,
+                "supervisor": asdict(route_decision),
+            }
+        )
 
     # 路由相关的类方法保留在 Supervisor 上：测试与上层（审批流）通过
     # MultiAgentSupervisor.is_mcp_request / select_mcp_tool_name 调用。

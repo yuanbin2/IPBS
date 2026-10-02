@@ -1,9 +1,9 @@
 """统一错误格式（detail + code）测试。"""
 
-from django.test import TestCase
+from .support import OperatorApiTestCase
 
 
-class ApiErrorFormatTests(TestCase):
+class ApiErrorFormatTests(OperatorApiTestCase):
     """统一错误格式：detail 给人看，code 给前端做分支（coding-conventions.md §4.4）。"""
 
     def test_missing_field_error_carries_code(self):

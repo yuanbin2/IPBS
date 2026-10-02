@@ -17,6 +17,8 @@ export interface BlogComment {
   id: number;
   author_name: string;
   content: string;
+  quote: string;
+  anchor_offset: number | null;
   created_at: string;
 }
 
@@ -33,6 +35,17 @@ export interface BlogArticle {
   category: BlogCategory | null;
   tags: BlogTag[];
   published_at: string | null;
+  publication_version: number;
+  pending_revision?: {
+    id: number;
+    base_version: number;
+    title: string;
+    summary: string;
+    cover_image: string;
+    content: string;
+    category: string;
+    tags: string[];
+  };
   created_at: string;
   updated_at?: string;
   knowledge_document_id: number | null;
@@ -79,6 +92,20 @@ export interface BlogDraft {
   category: string;
   tags: string;
   content: string;
+}
+
+export interface PrivateNote {
+  id: number;
+  title: string;
+  content: string;
+  quote: string;
+  anchor_offset: number | null;
+  source_article: number | null;
+  source_article_slug: string | null;
+  version: number;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export type WritingAssistantMode = "task_list" | "outline" | "draft" | "improve";

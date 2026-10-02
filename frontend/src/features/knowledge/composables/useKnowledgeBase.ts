@@ -1,5 +1,6 @@
 ﻿import { onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { apiUrl, refreshAccessToken } from "../../../api/client";
 import type { KnowledgeBase, KnowledgeDocument, SearchResult } from "../types";
 
 async function readPayload(response: Response) {
@@ -83,8 +84,10 @@ export function useKnowledgeBase() {
       const response = await fetch(taskUrl);
       const task = await response.json();
       if (!response.ok) throw new Error(task.detail ?? "无法读取后台任务状态");
-      if (task.state === "SUCCESS") return task.result;
-      if (task.state === "FAILURE") throw new Error(task.error ?? "后台任务执行失败");
+      if (task.state === "SUCCESS" || task.state === "completed") return task.result;
+      if (task.state === "FAILURE" || task.state === "failed") {
+        throw new Error(task.failure_code ?? task.error ?? "后台任务执行失败");
+      }
       if (attempt > 0 && attempt % 5 === 0) {
         await loadDocuments();
       }
@@ -110,14 +113,13 @@ export function useKnowledgeBase() {
     })();
   }
 
-  function uploadFormData(url: string, form: FormData): Promise<unknown> {
+  async function uploadFormData(url: string, form: FormData): Promise<unknown> {
+    const token = await refreshAccessToken();
     return new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
-      request.open("POST", url);
-      const token = localStorage.getItem("agent_auth_token");
-      if (token) {
-        request.setRequestHeader("Authorization", `Bearer ${token}`);
-      }
+      request.open("POST", apiUrl(url));
+      request.withCredentials = true;
+      request.setRequestHeader("Authorization", `Bearer ${token}`);
       request.upload.onprogress = (event) => {
         if (!event.lengthComputable) return;
         uploadProgress.value = Math.min(95, Math.round((event.loaded / event.total) * 100));

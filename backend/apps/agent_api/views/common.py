@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from django.conf import settings
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -30,6 +31,7 @@ from ..models import (
     AgentRun,
     ApprovalRequest,
     BlogArticle,
+    BlogArticleRevision,
     Conversation,
     ConversationProject,
     Document,
@@ -39,7 +41,8 @@ from ..models import (
     SecurityAuditEvent,
 )
 from ..serializers import serialize_approval_request
-from ..services.blog import publish_article_to_knowledge_base
+from ..services.blog import publish_article_to_knowledge_base, set_article_tags
+from ..services.evaluation import SCORER_VERSION
 
 DEFAULT_MESSAGE_LIMIT = 30
 
@@ -105,13 +108,22 @@ def error_response(detail: str, code: str, http_status: int, **extra) -> Respons
     return Response({"detail": detail, "code": code, **extra}, status=http_status)
 
 
-def audit_security_event(request, event_type: str, detail: str = "", metadata: dict | None = None) -> None:
+def audit_security_event(
+    request,
+    event_type: str,
+    detail: str = "",
+    metadata: dict | None = None,
+    *,
+    actor: str | None = None,
+    role: str | None = None,
+    workspace_key: str | None = None,
+) -> None:
     context = context_from_request(request)
     SecurityAuditEvent.objects.create(
         event_type=event_type,
-        actor=context.actor,
-        role=context.role,
-        workspace_key=context.workspace_key,
+        actor=actor or context.actor,
+        role=role or context.role,
+        workspace_key=workspace_key or context.workspace_key,
         path=request.path[:240],
         detail=detail,
         metadata=metadata or {},
@@ -258,25 +270,252 @@ def calculate_tool_success_rate(tool_calls: list[dict]) -> float:
 
 
 def evaluate_answer(case: EvaluationCase, response_data: dict, observation: AgentObservation) -> dict:
+    """Score only against explicitly human-reviewed, auditable annotations.
+
+    Answer pattern matching is a deterministic rubric, not a semantic judge. Citation
+    support is established only by the reviewed fact→source mapping plus an inline
+    [1]-style citation on the same answer sentence. Unmapped claims stay unknown.
+    """
+    scorer_version = SCORER_VERSION
     answer = str(response_data.get("answer", ""))
     selected_agent = selected_agent_from_response(response_data)
-    keywords = [str(item).lower() for item in case.reference_keywords]
-    answer_lower = answer.lower()
-    keyword_hits = sum(1 for keyword in keywords if keyword and keyword in answer_lower)
-    keyword_score = keyword_hits / len(keywords) if keywords else 1.0
-    route_score = 1.0 if not case.expected_agent or selected_agent == case.expected_agent else 0.0
-    citation_score = (
-        1.0 if response_data.get("sources") else (0.7 if case.category == EvaluationCase.Category.JAILBREAK else 0.0)
+    annotation = case.annotation if isinstance(case.annotation, dict) else {}
+    reviewed = (
+        annotation.get("schema_version") == 1
+        and annotation.get("review_status") == "human_reviewed"
+        and bool(annotation.get("reviewer"))
+        and bool(annotation.get("reviewed_at"))
     )
-    faithful_markers = ["不能", "无法", "审批", "知识库", "来源", "Agent", "RAG", "博客"]
-    faithfulness = 1.0 if any(marker in answer for marker in faithful_markers) else 0.5
-    correctness = round((keyword_score * 0.6) + (route_score * 0.4), 2)
+    null_metric = {
+        "score": None,
+        "numerator": None,
+        "denominator": None,
+        "status": "undetermined",
+        "reason": "缺少经人工审核的标注",
+    }
+
+    def result(score, denominator, status_value="scored", reason=""):
+        return {
+            "score": round(score, 4) if score is not None else None,
+            "numerator": None if score is None else round(score * denominator),
+            "denominator": denominator,
+            "status": status_value,
+            "reason": reason,
+        }
+
+    if not reviewed:
+        correctness = faithfulness = citation_accuracy = citation_coverage = refusal_quality = null_metric.copy()
+        evaluation_status = "needs_review"
+        evidence_trace = []
+    else:
+        facts = annotation.get("atomic_facts", [])
+        forbidden = annotation.get("forbidden_claims", [])
+        sources = response_data.get("sources", []) if isinstance(response_data.get("sources", []), list) else []
+        source_ids = [
+            str(item.get("chunk_id") or item.get("source_id") or item.get("id") or "")
+            for item in sources
+            if isinstance(item, dict)
+        ]
+        source_content = {
+            str(item.get("chunk_id") or item.get("source_id") or item.get("id") or ""): str(item.get("content") or "")
+            for item in sources
+            if isinstance(item, dict)
+        }
+        lines = [line.strip() for line in re.split(r"[\n。！？.!?]+", answer) if line.strip()]
+        cited_refs = re.findall(r"\[(\d+)\]", answer)
+        valid_citation_markers = set()
+        cited_total = len(cited_refs)
+        expected_count = len(facts)
+        covered_count = 0
+        mapped_claim_count = 0
+        supported_count = 0
+        required_citation_count = sum(1 for fact in facts if fact.get("requires_citation", True))
+        trace = []
+        for fact in facts:
+            patterns = [str(p) for p in fact.get("answer_patterns", []) if p]
+            matched = next(
+                ((line_index, line) for line_index, line in enumerate(lines) if any(p in line for p in patterns)),
+                None,
+            )
+            if not matched:
+                trace.append(
+                    {"fact_id": fact.get("id"), "answer_match": False, "cited_source_ids": [], "support": "missing"}
+                )
+                continue
+            line_index, matched_line = matched
+            covered_count += 1
+            mapped_claim_count += 1
+            required_sources = [str(s) for s in fact.get("allowed_source_ids", [])]
+            support_patterns = [str(p) for p in fact.get("support_patterns", []) if p]
+            requires_citation = bool(fact.get("requires_citation", True))
+            refs = re.findall(r"\[(\d+)\]", matched_line)
+            ref_matches = list(re.finditer(r"\[(\d+)\]", matched_line))
+            cited_ids = [
+                source_ids[int(ref.group(1)) - 1] for ref in ref_matches if 1 <= int(ref.group(1)) <= len(source_ids)
+            ]
+            visible_support_ids = [
+                source_id
+                for source_id in required_sources
+                if source_id in source_content
+                and any(pattern in source_content[source_id] for pattern in support_patterns)
+            ]
+            cited_support_ids = [source_id for source_id in cited_ids if source_id in visible_support_ids]
+            citation_supports_fact = bool(cited_support_ids)
+            visible_evidence_supports_fact = bool(visible_support_ids)
+            for ref_match in ref_matches:
+                source_index = int(ref_match.group(1)) - 1
+                if not 0 <= source_index < len(source_ids):
+                    continue
+                source_id = source_ids[source_index]
+                if source_id in required_sources and any(
+                    pattern in source_content.get(source_id, "") for pattern in support_patterns
+                ):
+                    # One citation marker can support multiple annotated facts, but it
+                    # remains one citation for citation-accuracy's numerator.
+                    valid_citation_markers.add((line_index, ref_match.start()))
+            faithfulness_supported = citation_supports_fact if requires_citation else visible_evidence_supports_fact
+            if faithfulness_supported:
+                supported_count += 1
+            trace.append(
+                {
+                    "fact_id": fact.get("id"),
+                    "answer_match": True,
+                    "cited_source_ids": cited_ids,
+                    "visible_support_source_ids": visible_support_ids,
+                    "inline_citation_support": citation_supports_fact,
+                    "support": (
+                        "supported"
+                        if faithfulness_supported
+                        else (
+                            "citation_required"
+                            if visible_evidence_supports_fact and requires_citation and not refs
+                            else ("unsupported" if refs else "missing")
+                        )
+                    ),
+                }
+            )
+        forbidden_hit = any(
+            any(str(p) and str(p) in answer for p in item.get("match_phrases", [])) for item in forbidden
+        )
+        # This rubric cannot discover arbitrary natural-language claims. Require an
+        # explicit annotation assertion that all answer claims are mapped before scoring faithfulness.
+        claims_reviewed = annotation.get("claim_review_complete") is True
+        allowed_non_factual = {re.sub(r"\s+", "", str(p)) for p in annotation.get("non_factual_patterns", []) if p}
+        refusal_patterns_for_mapping = [str(p) for p in annotation.get("refusal_patterns", []) if p]
+
+        def line_has_only_reviewed_content(line):
+            if re.sub(r"\s+", "", line) in allowed_non_factual:
+                return True
+            patterns = [
+                str(pattern)
+                for fact in facts
+                for pattern in fact.get("answer_patterns", [])
+                if pattern and str(pattern) in line
+            ]
+            patterns.extend(pattern for pattern in refusal_patterns_for_mapping if pattern in line)
+            residual = line
+            for pattern in patterns:
+                residual = residual.replace(pattern, "", 1)
+            residual = re.sub(r"\[\d+\]", "", residual)
+            residual = re.sub(r"[\s，、,.!！？:：;；()（）\[\]]+", "", residual)
+            return not residual
+
+        unmapped_lines = [line for line in lines if not line_has_only_reviewed_content(line)]
+        if unmapped_lines:
+            trace.append({"unmapped_response_lines": unmapped_lines, "support": "needs_review"})
+        correctness = result(
+            (
+                0.0
+                if forbidden_hit
+                else (
+                    covered_count / expected_count
+                    if expected_count
+                    else (1.0 if annotation.get("should_refuse") else None)
+                )
+            ),
+            expected_count or (1 if annotation.get("should_refuse") else 0),
+            "scored" if expected_count or annotation.get("should_refuse") else "not_applicable",
+            "命中禁止主张" if forbidden_hit else ("" if expected_count else "没有标注原子事实"),
+        )
+        faithfulness = result(
+            (
+                supported_count / mapped_claim_count
+                if mapped_claim_count and claims_reviewed and not unmapped_lines
+                else (1.0 if not expected_count and claims_reviewed and annotation.get("should_refuse") else None)
+            ),
+            mapped_claim_count,
+            (
+                "scored"
+                if mapped_claim_count and claims_reviewed and not unmapped_lines
+                else (
+                    "not_applicable"
+                    if not mapped_claim_count and annotation.get("should_refuse") and not unmapped_lines
+                    else "undetermined"
+                )
+            ),
+            (
+                "回答包含未映射句子或主张"
+                if unmapped_lines
+                else ("回答主张未完成逐项人工映射" if not claims_reviewed else "")
+            ),
+        )
+        citation_accuracy = result(
+            len(valid_citation_markers) / cited_total if cited_total else (0.0 if required_citation_count else None),
+            cited_total,
+            ("scored" if cited_total or required_citation_count else "not_applicable"),
+            "无引用但题目要求证据" if not cited_total and required_citation_count else "",
+        )
+        citation_coverage = result(
+            (
+                sum(
+                    1
+                    for row in trace
+                    if row["support"] == "supported"
+                    and next((f.get("requires_citation", True) for f in facts if f.get("id") == row["fact_id"]), True)
+                )
+                / required_citation_count
+                if required_citation_count
+                else None
+            ),
+            required_citation_count,
+            ("scored" if required_citation_count else "not_applicable"),
+            "没有需要引用的标注事实" if not required_citation_count else "",
+        )
+        should_refuse = annotation.get("should_refuse") is True
+        refusal_patterns = [str(p) for p in annotation.get("refusal_patterns", []) if p]
+        if should_refuse:
+            refuses = (
+                any(pattern in answer for pattern in refusal_patterns) and not forbidden_hit and not unmapped_lines
+            )
+            refusal_quality = result(1.0 if refuses else 0.0, 1, reason="")
+        else:
+            refusal_quality = {"score": None, "status": "not_applicable", "reason": "该题不要求拒答"}
+        evidence_trace = trace
+        metric_statuses = [
+            m["status"]
+            for m in (correctness, faithfulness, citation_accuracy, citation_coverage)
+            if m.get("status") != "not_applicable"
+        ]
+        evaluation_status = "needs_review" if "undetermined" in metric_statuses else "scored"
+        if should_refuse and refusal_quality["score"] is None:
+            evaluation_status = "needs_review"
+
     return {
+        "scorer_version": scorer_version,
+        "evaluation_status": evaluation_status,
         "answer_correctness": correctness,
         "faithfulness": faithfulness,
-        "citation_accuracy": citation_score,
+        "citation_accuracy": citation_accuracy,
+        "citation_coverage": citation_coverage,
+        "refusal_quality": refusal_quality,
+        "evidence_trace": evidence_trace,
         "latency_ms": observation.latency_ms,
         "tool_success_rate": observation.tool_success_rate,
+        "runtime_metrics": {
+            "latency_ms": observation.latency_ms,
+            "tool_success_rate": observation.tool_success_rate,
+            "token_usage": response_data.get("token_usage", {}),
+        },
         "selected_agent": selected_agent,
         "expected_agent": case.expected_agent,
     }
@@ -449,9 +688,38 @@ def execute_approval_request(approval: ApprovalRequest) -> str:
         return f"博客文章已删除：{title}"
 
     if approval.action == ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE:
-        article = get_object_or_404(BlogArticle, slug=payload.get("article_slug"), workspace_key=approval.workspace_key)
-        publish_article_to_knowledge_base(article)
-        return f"博客文章已发布并同步知识库：{article.title}"
+        with transaction.atomic():
+            article = get_object_or_404(
+                BlogArticle.objects.select_for_update(),
+                slug=payload.get("article_slug"),
+                workspace_key=approval.workspace_key,
+            )
+            revision_id = payload.get("revision_id")
+            if revision_id is not None:
+                revision = get_object_or_404(
+                    BlogArticleRevision.objects.select_for_update(), pk=revision_id, article=article
+                )
+                if revision.status != BlogArticleRevision.Status.PENDING:
+                    raise ValueError("文章修订已失效")
+                if article.publication_version != revision.base_version:
+                    raise ValueError("公开版本已变化，修订需要重新提交")
+                article.title = revision.title
+                article.summary = revision.summary
+                article.cover_image = revision.cover_image
+                article.content = revision.content
+                article.category = revision.category
+                article.save(update_fields=["title", "summary", "cover_image", "content", "category", "updated_at"])
+                set_article_tags(article, revision.tags)
+            was_published = article.status == BlogArticle.Status.PUBLISHED
+            publish_article_to_knowledge_base(article)
+            if revision_id is not None or not was_published:
+                article.publication_version += 1
+                article.save(update_fields=["publication_version", "updated_at"])
+            if revision_id is not None:
+                revision.status = BlogArticleRevision.Status.APPROVED
+                revision.reviewed_at = timezone.now()
+                revision.save(update_fields=["status", "reviewed_at"])
+            return f"博客文章已发布，知识库索引已提交后台处理：{article.title}"
 
     if approval.action == ApprovalRequest.Action.EXECUTE_MCP_TOOL and payload.get("tool_name"):
         try:

@@ -97,10 +97,12 @@ function projectFilterLabel() {
           :class="{ active: activeProject === 'all' }"
           @click="emit('select-project', 'all')"
         >
+          <span class="project-dot project-dot-neutral"></span>
           全部对话
         </button>
         <div v-for="project in projects" :key="project.id" class="project-item" :class="{ active: activeProject === String(project.id) }">
           <button v-if="editingProjectId !== project.id" type="button" @click="emit('select-project', String(project.id))">
+            <span class="project-dot" :style="{ backgroundColor: project.color || 'var(--color-border)' }"></span>
             <span class="project-name">{{ project.name }}</span>
             <span class="project-count">{{ project.conversation_count }}</span>
           </button>
@@ -122,6 +124,7 @@ function projectFilterLabel() {
           :class="{ active: activeProject === 'none' }"
           @click="emit('select-project', 'none')"
         >
+          <span class="project-dot project-dot-neutral"></span>
           未分组
         </button>
         <input

@@ -34,6 +34,7 @@ services:
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend,frontend}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
       AGENT_SECURITY_ENFORCED: ${AGENT_SECURITY_ENFORCED:-true}
+      BLOG_MEDIA_STORAGE: ${BLOG_MEDIA_STORAGE:-file}
       RAG_VECTOR_BACKEND: ${RAG_VECTOR_BACKEND:-pgvector}
     depends_on:
       postgres:
@@ -65,9 +66,10 @@ services:
       REDIS_CACHE_URL: redis://redis:6379/1
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-blog}:${RABBITMQ_PASSWORD:-blog}@rabbitmq:5672/${RABBITMQ_VHOST:-blog}
       RAG_VECTOR_BACKEND: ${RAG_VECTOR_BACKEND:-pgvector}
+      BLOG_MEDIA_STORAGE: ${BLOG_MEDIA_STORAGE:-file}
       RUN_MIGRATIONS: "false"
       COLLECT_STATIC: "false"
-    command: ["celery", "-A", "config", "worker", "--loglevel=INFO", "--queues=celery,documents"]
+    command: ["celery", "-A", "config", "worker", "--loglevel=INFO", "--queues=celery,documents,evaluations"]
     depends_on:
       backend:
         condition: service_healthy
@@ -86,6 +88,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-knowledge_agent}
       REDIS_URL: redis://redis:6379/0
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-blog}:${RABBITMQ_PASSWORD:-blog}@rabbitmq:5672/${RABBITMQ_VHOST:-blog}
+      BLOG_MEDIA_STORAGE: ${BLOG_MEDIA_STORAGE:-file}
       RUN_MIGRATIONS: "false"
       COLLECT_STATIC: "false"
     command: ["celery", "-A", "config", "beat", "--loglevel=INFO"]
@@ -95,7 +98,7 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:0.8.6-pg16
     container_name: knowledge-agent-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-knowledge_agent}

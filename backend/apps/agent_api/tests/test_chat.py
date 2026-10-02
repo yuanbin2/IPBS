@@ -6,12 +6,12 @@ from django.test import TestCase
 
 from agent.multi_agent import MultiAgentSupervisor
 
-from ..models import AgentObservation, AgentRun, BlogArticle, Conversation, Message
+from ..models import AgentObservation, AgentRun, BlogArticle, BlogComment, Conversation, Message
 from ..services.rag import expand_multilingual_query, keyword_similarity
-from .support import NO_MODEL_ENV
+from .support import NO_MODEL_ENV, OperatorApiTestCase
 
 
-class ChatExecutionTests(TestCase):
+class ChatExecutionTests(OperatorApiTestCase):
 
     @patch.dict("os.environ", NO_MODEL_ENV)
     def test_agent_chat_uses_calculator_tool_and_persists_history(self):
@@ -225,6 +225,61 @@ class ChatExecutionTests(TestCase):
         self.assertNotIn("CREATE TABLE", payload["answer"])
 
     @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_sql_agent_counts_only_the_authenticated_workspace(self):
+        baseline_articles = BlogArticle.objects.filter(
+            workspace_key="default", status=BlogArticle.Status.PUBLISHED
+        ).count()
+        baseline_comments = BlogComment.objects.filter(article__workspace_key="default").count()
+        own = BlogArticle.objects.create(
+            title="Own", slug="own-stats", content="own", status=BlogArticle.Status.PUBLISHED
+        )
+        foreign = BlogArticle.objects.create(
+            title="Foreign",
+            slug="foreign-stats",
+            content="foreign",
+            workspace_key="another",
+            status=BlogArticle.Status.PUBLISHED,
+        )
+        BlogComment.objects.create(article=own, author_name="reader", content="own comment", is_approved=True)
+        BlogComment.objects.create(article=foreign, author_name="reader", content="foreign comment", is_approved=True)
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "统计文章和评论数量"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 200)
+        output = response.json()["tool_calls"][0]["output"]
+        self.assertIn(f"published_articles: {baseline_articles + 1}", output)
+        self.assertIn(f"comments: {baseline_comments + 1}", output)
+        self.assertNotIn(f"published_articles: {baseline_articles + 2}", output)
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_review_agent_checks_previous_answer_and_saved_sources(self):
+        conversation = Conversation.objects.create(
+            title="Review context", owner_username=self.test_user.username, workspace_key="default"
+        )
+        Message.objects.create(conversation=conversation, role=Message.Role.USER, content="知识库项目依据是什么")
+        Message.objects.create(
+            conversation=conversation,
+            role=Message.Role.AGENT,
+            content="项目使用了 [1] 里的说明。",
+            sources=[{"document_title": "架构设计", "content": "项目说明", "document_id": 1}],
+        )
+        response = self.client.post(
+            "/api/agent/chat/",
+            {"message": "检查刚才回答的引用", "conversation_id": conversation.id},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route"], "review_agent")
+        self.assertIn("已保存 1 条来源", payload["answer"])
+        self.assertIn("架构设计", payload["answer"])
+        self.assertIn("不自动证明事实正确", payload["answer"])
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
     def test_explicit_retrieval_uses_private_workspace_rag(self):
         response = self.client.post(
             "/api/agent/chat/",
@@ -316,7 +371,7 @@ class SupervisorRoutingTests(TestCase):
         self.assertFalse(MultiAgentSupervisor.is_system_stack_question("今天天气怎么样"))
 
 
-class ToolSuccessTests(TestCase):
+class ToolSuccessTests(OperatorApiTestCase):
     """工具成功率判定：显式 ok 标志优先，正文含「失败」等词不误判。"""
 
     def test_explicit_ok_flag_wins_over_output_keywords(self):

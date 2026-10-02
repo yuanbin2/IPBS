@@ -6,15 +6,15 @@ from unittest.mock import patch
 from urllib.error import URLError
 
 from django.conf import settings
-from django.test import TestCase
 
 from ..models import MCPTool
-from .support import NO_MODEL_ENV
+from .support import NO_MODEL_ENV, OperatorApiTestCase
 
 
-class WebSearchTests(TestCase):
+class WebSearchTests(OperatorApiTestCase):
 
     @patch("agent.web_search.urlopen")
+    @patch.dict("os.environ", {**NO_MODEL_ENV, "WEB_SEARCH_PROVIDER": "duckduckgo"})
     def test_web_search_returns_external_results(self, mocked_urlopen):
         class FakeResponse:
             def __enter__(self):
@@ -58,6 +58,7 @@ class WebSearchTests(TestCase):
         self.assertIn("provider=duckduckgo", response.json()["output"])
 
     @patch("agent.web_search.urlopen", side_effect=URLError("network blocked"))
+    @patch.dict("os.environ", {**NO_MODEL_ENV, "WEB_SEARCH_PROVIDER": "duckduckgo"})
     def test_web_search_reports_network_failure_instead_of_empty_results(self, _mocked_urlopen):
         tool, _ = MCPTool.objects.update_or_create(
             name="web_search",
@@ -81,6 +82,7 @@ class WebSearchTests(TestCase):
         self.assertIn("network blocked", response.json()["output"])
 
     @patch("agent.web_search.urlopen")
+    @patch.dict("os.environ", {**NO_MODEL_ENV, "WEB_SEARCH_PROVIDER": "duckduckgo"})
     def test_web_search_falls_back_to_bing_when_duckduckgo_fails(self, mocked_urlopen):
         class FakeResponse:
             def __init__(self, body: str):
@@ -150,8 +152,42 @@ class WebSearchTests(TestCase):
         self.assertEqual(runner._normalize_duckduckgo_url("https://127.0.0.1/admin"), "")
 
 
-class InternetAgentTests(TestCase):
+class InternetAgentTests(OperatorApiTestCase):
     """联网 Agent：显式开关、追问重写与降级路径。"""
+
+    @patch("agent.mcp_tools.LocalMCPToolRunner.run")
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_web_result_secrets_are_redacted_in_rest_and_sse(self, mocked_run):
+        from agent.mcp_tools import MCPToolExecution
+
+        MCPTool.objects.update_or_create(
+            name="web_search",
+            defaults={
+                "display_name": "网页搜索",
+                "category": MCPTool.Category.WEB,
+                "permission_scope": "network:web_search",
+                "is_enabled": True,
+                "requires_approval": False,
+            },
+        )
+        secret = "sk-abcdefghijklmnop"
+        mocked_run.return_value = MCPToolExecution("web_search", "public query", f"[1] public result {secret}")
+        for path in ("/api/agent/chat/", "/api/agent/chat/stream/"):
+            response = self.client.post(
+                path,
+                {"message": "网页搜索公开资料"},
+                content_type="application/json",
+                HTTP_HOST="localhost",
+            )
+            self.assertEqual(response.status_code, 200)
+            body = (
+                b"".join(response.streaming_content).decode("utf-8")
+                if response.streaming
+                else response.content.decode("utf-8")
+            )
+            self.assertNotIn(secret, body)
+            self.assertIn("[REDACTED_SECRET]", body)
+            self.assertIn("security_filter -> output redacted", body)
 
     @patch("agent.mcp_tools.LocalMCPToolRunner.run")
     @patch.dict("os.environ", NO_MODEL_ENV)

@@ -2,12 +2,18 @@ import os
 from pathlib import Path
 
 from django.conf import settings
-from django.contrib.auth import authenticate, get_user_model, login
+from django.contrib.auth import authenticate, get_user_model
+from django.middleware.csrf import get_token
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_protect
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
 
-from agent.security import issue_jwt_pair, normalize_workspace_key, security_enforced
+from agent.security import issue_jwt_pair, security_enforced
 
 from ..exceptions import ErrorCode
 from ..models import SecurityAuditEvent, UserProfile
@@ -38,7 +44,6 @@ class AuthLoginView(APIView):
         if user is None:
             return error_response("invalid credentials", ErrorCode.INVALID_CREDENTIALS, status.HTTP_401_UNAUTHORIZED)
 
-        login(request, user)
         tokens = issue_jwt_pair(user)
         profile = user.agent_profile
         audit_security_event(
@@ -46,6 +51,9 @@ class AuthLoginView(APIView):
             SecurityAuditEvent.EventType.LOGIN,
             "login succeeded",
             {"username": username, "role": profile.role},
+            actor=user.username,
+            role=profile.role,
+            workspace_key=profile.workspace_key,
         )
         return Response(
             {
@@ -53,9 +61,113 @@ class AuthLoginView(APIView):
                 "access": tokens["access"],
                 "refresh": tokens["refresh"],
                 "user": serialize_user_profile(profile),
-                "session": serialize_security_context(request),
+                "session": {
+                    "actor": user.username,
+                    "role": profile.role,
+                    "workspace_key": profile.workspace_key,
+                    "authenticated": True,
+                    "security_enforced": security_enforced(),
+                },
             }
         )
+
+
+def _set_refresh_cookie(response, token):
+    response.set_cookie(
+        settings.JWT_REFRESH_COOKIE_NAME,
+        token,
+        max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
+        path=settings.JWT_REFRESH_COOKIE_PATH,
+        secure=settings.CSRF_COOKIE_SECURE,
+        httponly=True,
+        samesite=settings.JWT_REFRESH_COOKIE_SAMESITE,
+    )
+    return response
+
+
+def _clear_refresh_cookie(response):
+    response.delete_cookie(
+        settings.JWT_REFRESH_COOKIE_NAME,
+        path=settings.JWT_REFRESH_COOKIE_PATH,
+        samesite=settings.JWT_REFRESH_COOKIE_SAMESITE,
+    )
+    return response
+
+
+class AuthCsrfView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        return Response({"csrfToken": get_token(request)})
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class AuthCookieLoginView(AuthLoginView):
+    def post(self, request):
+        response = super().post(request)
+        if response.status_code == status.HTTP_200_OK:
+            refresh = response.data.pop("refresh")
+            _set_refresh_cookie(response, refresh)
+        return response
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class AuthCookieRefreshView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        refresh = request.COOKIES.get(settings.JWT_REFRESH_COOKIE_NAME)
+        if not refresh:
+            return error_response(
+                "refresh cookie is required", ErrorCode.INVALID_CREDENTIALS, status.HTTP_401_UNAUTHORIZED
+            )
+        serializer = TokenRefreshSerializer(data={"refresh": refresh})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError:
+            return error_response("invalid refresh cookie", ErrorCode.INVALID_CREDENTIALS, status.HTTP_401_UNAUTHORIZED)
+        response = Response({"access": serializer.validated_data["access"]})
+        return _set_refresh_cookie(response, serializer.validated_data["refresh"])
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class AuthCookieUpgradeView(APIView):
+    """Exchange one legacy browser refresh token for an HttpOnly cookie once."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        legacy_refresh = request.data.get("refresh")
+        if not isinstance(legacy_refresh, str) or not legacy_refresh:
+            return error_response(
+                "refresh token is required", ErrorCode.INVALID_CREDENTIALS, status.HTTP_401_UNAUTHORIZED
+            )
+        serializer = TokenRefreshSerializer(data={"refresh": legacy_refresh})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError:
+            return error_response("invalid refresh token", ErrorCode.INVALID_CREDENTIALS, status.HTTP_401_UNAUTHORIZED)
+        response = Response({"access": serializer.validated_data["access"]})
+        return _set_refresh_cookie(response, serializer.validated_data["refresh"])
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class AuthCookieLogoutView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        refresh = request.COOKIES.get(settings.JWT_REFRESH_COOKIE_NAME)
+        if refresh:
+            try:
+                RefreshToken(refresh).blacklist()
+            except TokenError:
+                # The cookie may already be expired or revoked; clearing it is idempotent.
+                pass
+        return _clear_refresh_cookie(Response(status=status.HTTP_204_NO_CONTENT))
 
 
 class AuthRegisterView(APIView):
@@ -65,8 +177,6 @@ class AuthRegisterView(APIView):
     def post(self, request):
         username = str(request.data.get("username", "")).strip()
         password = str(request.data.get("password", ""))
-        role = str(request.data.get("role", UserProfile.Role.ADMIN)).strip().lower()
-        workspace_key = normalize_workspace_key(request.data.get("workspace_key", "default"))
         if not username or not password:
             return error_response(
                 "username and password are required", ErrorCode.MISSING_FIELD, status.HTTP_400_BAD_REQUEST
@@ -75,14 +185,15 @@ class AuthRegisterView(APIView):
             return error_response(
                 "password must be at least 8 characters", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST
             )
-        if role not in {UserProfile.Role.ADMIN, UserProfile.Role.OPERATOR, UserProfile.Role.VISITOR}:
-            role = UserProfile.Role.ADMIN
-
         User = get_user_model()
         if User.objects.filter(username=username).exists():
             return error_response("username already exists", ErrorCode.CONFLICT, status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.create_user(username=username, password=password, is_staff=role == UserProfile.Role.ADMIN)
+        # Registration is self-service only for visitor accounts. Privileged
+        # roles and workspace membership must be granted by an administrator.
+        role = UserProfile.Role.VISITOR
+        workspace_key = "default"
+        user = User.objects.create_user(username=username, password=password)
         profile, _ = UserProfile.objects.update_or_create(
             user=user,
             defaults={"role": role, "workspace_key": workspace_key},
@@ -93,6 +204,9 @@ class AuthRegisterView(APIView):
             SecurityAuditEvent.EventType.LOGIN,
             "registration succeeded",
             {"username": username, "role": role, "workspace_key": workspace_key},
+            actor=user.username,
+            role=profile.role,
+            workspace_key=profile.workspace_key,
         )
         return Response(
             {
@@ -110,6 +224,16 @@ class AuthRegisterView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class AuthCookieRegisterView(AuthRegisterView):
+    def post(self, request):
+        response = super().post(request)
+        if response.status_code == status.HTTP_201_CREATED:
+            refresh = response.data.pop("refresh")
+            _set_refresh_cookie(response, refresh)
+        return response
 
 
 class AuthMeView(APIView):

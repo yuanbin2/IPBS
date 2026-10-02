@@ -29,10 +29,6 @@ interface AuditEvent {
 const status = ref<SecurityStatus | null>(null);
 const events = ref<AuditEvent[]>([]);
 const loading = ref(false);
-const username = ref("");
-const password = ref("");
-const token = ref(localStorage.getItem("agent_auth_token") || "");
-
 onMounted(loadSecurity);
 
 async function loadSecurity() {
@@ -47,24 +43,8 @@ async function loadSecurity() {
   }
 }
 
-async function login() {
-  const payload = await requestJson("/api/agent/auth/login/", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: username.value, password: password.value })
-  });
-  token.value = payload.token;
-  localStorage.setItem("agent_auth_token", payload.token);
-  ElMessage.success("登录成功");
-  await loadSecurity();
-}
-
 async function requestJson(url: string, options: RequestInit = {}) {
-  const headers = new Headers(options.headers || {});
-  if (token.value) {
-    headers.set("Authorization", `Bearer ${token.value}`);
-  }
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, options);
   const text = await response.text();
   const payload = text ? JSON.parse(text) : null;
   if (!response.ok) {
@@ -79,14 +59,9 @@ async function requestJson(url: string, options: RequestInit = {}) {
     <section class="security-layout">
       <section class="security-panel">
         <header class="section-heading">
-          <h2><el-icon><User /></el-icon> 登录与身份</h2>
+          <h2><el-icon><User /></el-icon> 当前身份</h2>
           <el-button :icon="Refresh" :loading="loading" @click="loadSecurity">刷新</el-button>
         </header>
-        <div class="security-login">
-          <el-input v-model="username" placeholder="用户名" />
-          <el-input v-model="password" placeholder="密码" type="password" show-password />
-          <el-button type="primary" @click="login">登录</el-button>
-        </div>
         <dl v-if="status" class="security-context">
           <div>
             <dt>Actor</dt>

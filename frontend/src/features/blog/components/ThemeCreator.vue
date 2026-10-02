@@ -318,8 +318,8 @@ function handleCancel() {
 }
 
 .theme-preview-container pre {
-  background: var(--theme-code-bg, #1a2332);
-  color: var(--theme-code-text, #e0e8ec);
+  background: var(--theme-code-bg, #172420);
+  color: var(--theme-code-text, #dbe5e1);
 }
 
 .theme-preview-container pre code {

@@ -32,13 +32,22 @@ def create_pgvector_index(apps, schema_editor):
             CREATE INDEX IF NOT EXISTS agent_api_vectorindex_workspace_kb_idx
             ON agent_api_vectorindex (workspace_key, knowledge_base_id)
             """)
-        for dimensions in (384, 1536, 3072):
+        for dimensions in (384, 1536):
             cursor.execute(f"""
                 CREATE INDEX IF NOT EXISTS agent_api_vectorindex_embedding_{dimensions}_hnsw_idx
                 ON agent_api_vectorindex
                 USING hnsw ((embedding::vector({dimensions})) vector_cosine_ops)
                 WHERE vector_dimensions = {dimensions}
                 """)
+        # pgvector vector HNSW indexes support at most 2,000 dimensions.
+        # Keep the stored vector full precision and index 3,072-d vectors as
+        # halfvec (up to 4,000 dimensions) instead.
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS agent_api_vectorindex_embedding_3072_halfvec_hnsw_idx
+            ON agent_api_vectorindex
+            USING hnsw ((embedding::halfvec(3072)) halfvec_cosine_ops)
+            WHERE vector_dimensions = 3072
+            """)
 
         EmbeddingRecord = apps.get_model("agent_api", "EmbeddingRecord")
         for record in EmbeddingRecord.objects.select_related("chunk", "chunk__document").iterator():

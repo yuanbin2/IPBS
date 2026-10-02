@@ -43,7 +43,10 @@ function getStatusIcon(status: string) {
       <p>支持 Markdown、txt、PDF。上传后会自动抽取文本、切分片段并写入 embedding 记录。</p>
     </div>
     <div class="upload-controls">
-      <input type="file" accept=".md,.markdown,.txt,.pdf" @change="$emit('fileChange', $event)" />
+      <label class="upload-dropzone">
+        <input type="file" accept=".md,.markdown,.txt,.pdf" @change="$emit('fileChange', $event)" />
+        <span>点击选择 Markdown / txt / PDF 文件</span>
+      </label>
       <el-input
         :model-value="uploadTitle"
         placeholder="文档标题"
@@ -80,6 +83,9 @@ function getStatusIcon(status: string) {
             <span class="doc-type">{{ doc.content_type || "未知类型" }}</span>
             <span class="doc-chunks">{{ doc.chunk_count }} 片段</span>
           </div>
+          <p v-if="doc.ingestion_error_code" class="doc-error" role="status">
+            处理未完成（{{ doc.ingestion_error_code }}），可重新处理。
+          </p>
         </div>
         <div class="doc-actions">
           <el-button

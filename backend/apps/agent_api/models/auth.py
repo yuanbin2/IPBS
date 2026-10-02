@@ -27,6 +27,12 @@ class SecurityAuditEvent(models.Model):
         SENSITIVE_INPUT = "sensitive_input", "Sensitive input"
         OUTPUT_REDACTED = "output_redacted", "Output redacted"
         TOOL_BLOCKED = "tool_blocked", "Tool blocked"
+        COMMENT_MODERATED = "comment_moderated", "Comment moderated"
+        COMMENT_REPORT_REVIEWED = "comment_report_reviewed", "Comment report reviewed"
+        BLOG_INTERACTION_RESTRICTED = "blog_interaction_restricted", "Blog interaction restricted"
+        BLOG_INTERACTION_LIFTED = "blog_interaction_lifted", "Blog interaction lifted"
+        BLOG_INTERACTION_APPEALED = "blog_interaction_appealed", "Blog interaction appealed"
+        BLOG_INTERACTION_APPEAL_REVIEWED = "blog_interaction_appeal_reviewed", "Blog interaction appeal reviewed"
 
     event_type = models.CharField(max_length=40, choices=EventType.choices)
     actor = models.CharField(max_length=120, blank=True)

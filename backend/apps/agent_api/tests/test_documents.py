@@ -3,15 +3,17 @@
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import override_settings
+from django.utils import timezone
 
-from ..models import ApprovalRequest, Document, DocumentChunk, EmbeddingRecord, KnowledgeBase
+from ..models import ApprovalRequest, Document, DocumentChunk, DocumentIngestionJob, EmbeddingRecord, KnowledgeBase
+from ..services.ingestion_jobs import dispatch_ingestion_job
 from ..services.rag import LOCAL_EMBEDDING_DIMENSIONS, LOCAL_EMBEDDING_MODEL
 from ..services.vector_store import vector_literal
-from .support import NO_MODEL_ENV, TEST_MEDIA_ROOT
+from .support import NO_MODEL_ENV, TEST_MEDIA_ROOT, AdminApiTestCase, post_and_run_commit_callbacks
 
 
-class DocumentLifecycleTests(TestCase):
+class DocumentLifecycleTests(AdminApiTestCase):
 
     @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
     @patch.dict("os.environ", NO_MODEL_ENV)
@@ -25,7 +27,8 @@ class DocumentLifecycleTests(TestCase):
             content_type="text/plain",
         )
 
-        response = self.client.post(
+        response = post_and_run_commit_callbacks(
+            self,
             "/api/agent/documents/",
             {"file": upload, "title": "RAG Notes"},
             HTTP_HOST="localhost",
@@ -34,19 +37,26 @@ class DocumentLifecycleTests(TestCase):
         self.assertEqual(response.status_code, 202)
         payload = response.json()
         self.assertIn("task_id", payload)
-        self.assertEqual(payload["task_state"], "SUCCESS")
-        self.assertNotIn("task_url", payload)
+        self.assertEqual(payload["ingestion_job"]["status"], "pending")
+        self.assertTrue(payload["task_url"].endswith(payload["task_id"] + "/"))
+        self.assertEqual(payload["desired_ingestion_generation"], 1)
+        self.assertEqual(payload["active_ingestion_generation"], 0)
+        self.assertEqual(payload["ingestion_error_code"], "")
         document = Document.objects.get(pk=payload["id"])
+        job = DocumentIngestionJob.objects.get(pk=payload["task_id"])
         self.assertEqual(document.status, Document.Status.READY)
+        self.assertEqual(job.status, DocumentIngestionJob.Status.COMPLETED)
         self.assertGreaterEqual(document.chunk_count, 1)
+        self.assertEqual(document.desired_ingestion_generation, 1)
+        self.assertEqual(document.active_ingestion_generation, 1)
         self.assertEqual(KnowledgeBase.objects.count(), 1)
         self.assertEqual(DocumentChunk.objects.count(), document.chunk_count)
         self.assertEqual(EmbeddingRecord.objects.count(), document.chunk_count)
 
-    @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT, CELERY_TASK_ALWAYS_EAGER=False, DEBUG=True)
+    @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT, CELERY_TASK_ALWAYS_EAGER=False, DEBUG=False)
     @patch.dict("os.environ", NO_MODEL_ENV)
-    @patch("apps.agent_api.views.knowledge.ingest_document_task.delay", side_effect=ConnectionError("broker down"))
-    def test_document_upload_falls_back_to_inline_processing_when_broker_is_unavailable(self, _delay):
+    @patch("apps.agent_api.tasks.ingest_document_task.apply_async", side_effect=ConnectionError("broker down"))
+    def test_document_upload_is_durable_and_dispatcher_recovers_after_broker_failure(self, _apply_async):
         upload = SimpleUploadedFile(
             "local-upload.txt",
             b"Local development upload should work without a broker.",
@@ -61,12 +71,22 @@ class DocumentLifecycleTests(TestCase):
 
         self.assertEqual(response.status_code, 202)
         payload = response.json()
-        self.assertEqual(payload["task_state"], "SUCCESS")
-        self.assertNotIn("task_url", payload)
-        _delay.assert_not_called()
+        self.assertEqual(payload["task_url"], f"/api/agent/tasks/{payload['task_id']}/")
         document = Document.objects.get(pk=payload["id"])
-        self.assertEqual(document.status, Document.Status.READY)
-        self.assertGreaterEqual(document.chunk_count, 1)
+        job = DocumentIngestionJob.objects.get(pk=payload["task_id"])
+        dispatch_ingestion_job(str(job.pk))
+        job.refresh_from_db()
+        self.assertEqual(job.status, DocumentIngestionJob.Status.RETRY)
+        self.assertEqual(job.failure_code, "broker_unavailable")
+        self.assertEqual(document.status, Document.Status.PENDING)
+
+        job.next_attempt_at = timezone.now()
+        job.save(update_fields=["next_attempt_at", "updated_at"])
+        _apply_async.side_effect = None
+        _apply_async.return_value = None
+        self.assertTrue(dispatch_ingestion_job(str(job.pk)))
+        job.refresh_from_db()
+        self.assertEqual(job.status, DocumentIngestionJob.Status.QUEUED)
 
     @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
     @patch.dict("os.environ", NO_MODEL_ENV)
@@ -79,7 +99,8 @@ class DocumentLifecycleTests(TestCase):
             content_type="text/plain",
         )
 
-        response = self.client.post(
+        response = post_and_run_commit_callbacks(
+            self,
             "/api/agent/documents/",
             {"file": upload, "title": "pgvector sync"},
             HTTP_HOST="localhost",
@@ -92,6 +113,10 @@ class DocumentLifecycleTests(TestCase):
         record = EmbeddingRecord.objects.get(chunk__document=document)
         self.assertEqual(record.vector, [])
         self.assertEqual(record.vector_dimensions, LOCAL_EMBEDDING_DIMENSIONS)
+        self.assertEqual(record.status, EmbeddingRecord.Status.READY)
+        self.assertEqual(record.provider, "local")
+        self.assertEqual(record.model_version, "sha256-token-hash-v1")
+        self.assertEqual(record.algorithm_version, "sha256-token-hash-v1")
 
     def test_vector_literal_formats_pgvector_input(self):
         self.assertEqual(vector_literal([0, 0.25, -1.5]), "[0,0.25,-1.5]")
@@ -104,14 +129,16 @@ class DocumentLifecycleTests(TestCase):
             b"RAG reindex should rebuild document chunks.",
             content_type="text/plain",
         )
-        upload_response = self.client.post(
+        upload_response = post_and_run_commit_callbacks(
+            self,
             "/api/agent/documents/",
             {"file": upload, "title": "Reindex"},
             HTTP_HOST="localhost",
         )
         document_id = upload_response.json()["id"]
 
-        response = self.client.post(
+        response = post_and_run_commit_callbacks(
+            self,
             f"/api/agent/documents/{document_id}/reindex/",
             {},
             content_type="application/json",
@@ -119,10 +146,60 @@ class DocumentLifecycleTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 202)
-        self.assertIn("task_id", response.json())
+        payload = response.json()
+        self.assertIn("task_id", payload)
+        self.assertEqual(payload["desired_ingestion_generation"], 2)
+        self.assertEqual(payload["active_ingestion_generation"], 1)
+        self.assertEqual(payload["ingestion_error_code"], "")
         document = Document.objects.get(pk=document_id)
+        self.assertEqual(document.desired_ingestion_generation, 2)
+        self.assertEqual(document.active_ingestion_generation, 2)
         self.assertEqual(document.status, Document.Status.READY)
         self.assertGreaterEqual(document.chunk_count, 1)
+
+    def test_knowledge_base_list_and_patch_and_legacy_document_serialization(self):
+        knowledge_base = KnowledgeBase.objects.create(name="serialization-contract")
+        legacy_document = Document.objects.create(
+            knowledge_base=knowledge_base,
+            title="Legacy generation zero",
+            status=Document.Status.READY,
+            chunk_count=1,
+        )
+        DocumentChunk.objects.create(
+            document=legacy_document,
+            knowledge_base=knowledge_base,
+            chunk_index=0,
+            content="legacy chunks default to generation zero",
+        )
+
+        list_response = self.client.get("/api/agent/knowledge-bases/", HTTP_HOST="localhost")
+        self.assertEqual(list_response.status_code, 200)
+        base_payload = next(item for item in list_response.json() if item["id"] == knowledge_base.id)
+        self.assertEqual(base_payload["document_count"], 1)
+        self.assertEqual(base_payload["chunk_count"], 1)
+        self.assertNotIn("desired_ingestion_generation", base_payload)
+        self.assertNotIn("active_ingestion_generation", base_payload)
+        self.assertNotIn("ingestion_error_code", base_payload)
+
+        detail_response = self.client.patch(
+            f"/api/agent/knowledge-bases/{knowledge_base.id}/",
+            {"description": "updated through the detail endpoint"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.json()["description"], "updated through the detail endpoint")
+        self.assertNotIn("desired_ingestion_generation", detail_response.json())
+
+        document_response = self.client.get(
+            f"/api/agent/documents/?knowledge_base_id={knowledge_base.id}", HTTP_HOST="localhost"
+        )
+        self.assertEqual(document_response.status_code, 200)
+        document_payload = document_response.json()[0]
+        self.assertEqual(document_payload["id"], legacy_document.id)
+        self.assertEqual(document_payload["desired_ingestion_generation"], 0)
+        self.assertEqual(document_payload["active_ingestion_generation"], 0)
+        self.assertEqual(document_payload["ingestion_error_code"], "")
 
     def test_document_delete_removes_chunks_and_embeddings(self):
         knowledge_base = KnowledgeBase.objects.create(name="delete-doc")

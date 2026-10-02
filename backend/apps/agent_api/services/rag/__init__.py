@@ -4,6 +4,7 @@
 现有 ``from .services.rag import X`` 的导入方式不受影响。
 """
 
+from ..embedding_space import EmbeddingSpaceError
 from .ingest import (
     CHUNK_OVERLAP,
     CHUNK_SIZE,
@@ -52,6 +53,7 @@ from .text import (
 
 __all__ = [
     "BILINGUAL_QUERY_ALIASES",
+    "EmbeddingSpaceError",
     "CHUNK_OVERLAP",
     "CHUNK_SIZE",
     "DEFAULT_BAILIAN_EMBEDDING_BASE_URL",

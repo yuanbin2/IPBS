@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Lock, UserFilled } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
@@ -8,12 +8,24 @@ import { useAuthStore } from "../stores/auth";
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
-const mode = ref<"login" | "register">("login");
+const mode = ref<"login" | "register">(route.query.mode === "register" ? "register" : "login");
 const username = ref("");
 const password = ref("");
-const workspaceKey = ref("default");
-const role = ref("admin");
 const loading = ref(false);
+
+watch(
+  () => route.query.mode,
+  (requestedMode) => {
+    mode.value = requestedMode === "register" ? "register" : "login";
+  }
+);
+
+function switchMode(nextMode: "login" | "register") {
+  void router.replace({
+    path: "/login",
+    query: { ...route.query, mode: nextMode === "register" ? "register" : undefined }
+  });
+}
 
 async function submit() {
   loading.value = true;
@@ -22,7 +34,7 @@ async function submit() {
       await auth.login(username.value, password.value);
       ElMessage.success("登录成功");
     } else {
-      await auth.register(username.value, password.value, role.value, workspaceKey.value);
+      await auth.register(username.value, password.value);
       ElMessage.success("注册成功");
     }
     router.replace(typeof route.query.redirect === "string" ? route.query.redirect : "/");
@@ -55,29 +67,29 @@ async function submit() {
             <el-icon><Lock /></el-icon>
           </div>
           <p class="eyebrow">智能个人博客系统</p>
-          <h1>{{ mode === "login" ? "登录工作台" : "注册管理员账号" }}</h1>
+          <h1>{{ mode === "login" ? "登录工作台" : "注册账号" }}</h1>
+          <p class="auth-mode-description">
+            {{ mode === "login" ? "登录后管理文章和私有笔记。" : "创建账号后即可保存文章与私有笔记。" }}
+          </p>
         </header>
-
-        <el-radio-group v-model="mode" class="auth-tabs">
-          <el-radio-button label="login">登录</el-radio-button>
-          <el-radio-button label="register">注册</el-radio-button>
-        </el-radio-group>
 
         <form class="auth-form" @submit.prevent="submit">
           <el-input v-model="username" placeholder="用户名" :prefix-icon="UserFilled" />
           <el-input v-model="password" placeholder="密码，至少 8 位" type="password" show-password :prefix-icon="Lock" />
           <template v-if="mode === 'register'">
-            <el-input v-model="workspaceKey" placeholder="Workspace" />
-            <el-select v-model="role" style="width: 100%;">
-              <el-option label="管理员" value="admin" />
-              <el-option label="操作员" value="operator" />
-              <el-option label="访客" value="visitor" />
-            </el-select>
+            <p class="auth-security-note">新账号默认是访客角色；管理员权限由现有管理员单独授予。</p>
           </template>
           <el-button type="primary" native-type="submit" :loading="loading">
             {{ mode === "login" ? "登录" : "注册并进入" }}
           </el-button>
         </form>
+
+        <div class="auth-switch">
+          <span>{{ mode === "login" ? "还没有账号？" : "已有账号？" }}</span>
+          <button type="button" @click="switchMode(mode === 'login' ? 'register' : 'login')">
+            {{ mode === "login" ? "立即注册" : "返回登录" }}
+          </button>
+        </div>
 
         <p class="auth-security-note">
           <el-icon><Lock /></el-icon>

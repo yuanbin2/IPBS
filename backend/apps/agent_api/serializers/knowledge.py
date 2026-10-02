@@ -39,6 +39,9 @@ class DocumentSerializer(serializers.ModelSerializer):
             "status",
             "error_message",
             "chunk_count",
+            "desired_ingestion_generation",
+            "active_ingestion_generation",
+            "ingestion_error_code",
             "created_at",
             "updated_at",
         ]

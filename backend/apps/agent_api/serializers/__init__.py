@@ -32,9 +32,14 @@ from .blog import (
     serialize_tag,
 )
 from .evaluation import (
+    EvaluationBatchSerializer,
+    EvaluationCaseResultSerializer,
     EvaluationCaseSerializer,
+    EvaluationDatasetSerializer,
     EvaluationRunSerializer,
+    serialize_evaluation_batch,
     serialize_evaluation_case,
+    serialize_evaluation_dataset,
     serialize_evaluation_run,
 )
 from .governance import (
@@ -61,7 +66,10 @@ __all__ = [
     "BlogCommentSerializer",
     "ConversationSerializer",
     "DocumentSerializer",
+    "EvaluationBatchSerializer",
     "EvaluationCaseSerializer",
+    "EvaluationCaseResultSerializer",
+    "EvaluationDatasetSerializer",
     "EvaluationRunSerializer",
     "KnowledgeBaseSerializer",
     "MCPToolSerializer",
@@ -76,7 +84,9 @@ __all__ = [
     "serialize_conversation",
     "serialize_project",
     "serialize_document",
+    "serialize_evaluation_batch",
     "serialize_evaluation_case",
+    "serialize_evaluation_dataset",
     "serialize_evaluation_run",
     "serialize_knowledge_base",
     "serialize_mcp_tool",

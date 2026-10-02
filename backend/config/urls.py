@@ -5,6 +5,8 @@ from django.http import FileResponse, JsonResponse
 from django.urls import include, path, re_path
 from django.views.static import serve as serve_static
 
+from apps.agent_api.views.blog_articles import BlogImageReadView
+
 
 def spa_index(request):
     """Serve the built SPA or return an actionable response instead of a 500."""
@@ -22,6 +24,13 @@ def spa_index(request):
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # Stable legacy /media/blog/... URLs now pass through a strict public-image
+    # allowlist and the configured private storage backend in every environment.
+    re_path(
+        r"^media/blog/(?P<filename>[^/]+)$",
+        BlogImageReadView.as_view(),
+        name="blog-image-read",
+    ),
     path("api/agent/", include("apps.agent_api.urls")),
     path("api/", include("apps.core.urls")),
     # The Docker frontend serves this path directly. Django keeps a local

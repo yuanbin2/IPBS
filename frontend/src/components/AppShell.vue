@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
 import {
   ChatDotRound,
   DataAnalysis,
   Files,
   House,
+  Lock,
   Menu,
   Operation,
   Tools,
@@ -26,7 +28,10 @@ const navItems = computed(() => [
   { path: "/mcp-tools", label: "MCP 工具", icon: Tools },
   { path: "/observability", label: "观测评估", icon: DataAnalysis },
   ...(auth.session.role === "admin"
-    ? [{ path: "/admin-approvals", label: "审批", icon: Operation }]
+    ? [
+        { path: "/admin-approvals", label: "审批", icon: Operation },
+        { path: "/security", label: "安全", icon: Lock }
+      ]
     : [])
 ]);
 
@@ -43,9 +48,13 @@ const activePath = computed(() => {
   return route.path;
 });
 
-function logout() {
-  auth.logout();
-  router.replace("/login");
+async function logout() {
+  try {
+    await auth.logout();
+    await router.replace("/login");
+  } catch {
+    ElMessage.error("退出未完成，请检查网络后重试。");
+  }
 }
 
 function toggleSidebar() {
@@ -82,7 +91,7 @@ function closeSidebar() {
         <div class="sidebar-logo">B</div>
         <div class="sidebar-brand">
           <strong>智能个人博客系统</strong>
-          <small>Agentic RAG · 智能问答</small>
+          <small>Agentic RAG Platform</small>
         </div>
       </div>
 
