@@ -65,12 +65,18 @@ class BlogAgentChatView(APIView):
         rag_source = str(request.data.get("rag_source", "legacy")).strip().lower()
         if rag_source == "ragagent":
             # B051：RAG-Agent 外部知识源；任何失败降级回站内检索（fail-open）
+            from dataclasses import replace
             from ..services.rag_agent_client import RagAgentError, answer_via_rag_agent
             try:
                 answer = answer_via_rag_agent(message)
             except RagAgentError as exc:
-                answer = agent.answer(message, history=history)
-                answer.trace = [f"rag_agent -> degraded to legacy: {exc}", *answer.trace]
+                # 降级回站内检索；BlogAgentAnswer 是 frozen dataclass，
+                # 用 replace 生成带降级 trace 的新实例
+                legacy = agent.answer(message, history=history)
+                answer = replace(
+                    legacy,
+                    trace=[f"rag_agent -> degraded to legacy: {exc}", *legacy.trace],
+                )
         else:
             answer = agent.answer(message, history=history)
         payload = _redact_public_payload(answer.to_dict())
