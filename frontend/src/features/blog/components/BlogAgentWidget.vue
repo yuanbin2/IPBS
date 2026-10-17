@@ -8,11 +8,13 @@ defineProps<{
   loading: boolean;
   messages: BlogAgentChatMessage[];
   suggestions: string[];
+  source: "legacy" | "ragagent";
 }>();
 
 const emit = defineEmits<{
   "update:open": [value: boolean];
   "update:input": [value: string];
+  "update:source": [value: "legacy" | "ragagent"];
   send: [prompt?: string];
   keydown: [event: KeyboardEvent];
 }>();
@@ -30,6 +32,25 @@ const emit = defineEmits<{
         <div><strong>博客智能体</strong><small>仅回答公开博客、简历和 README 内容</small></div>
         <button type="button" @click="emit('update:open', false)">×</button>
       </header>
+
+      <div class="blog-agent-source-toggle" role="group" aria-label="知识来源切换">
+        <button
+          type="button"
+          :class="{ active: source === 'legacy' }"
+          title="使用博客站内知识库检索"
+          @click="emit('update:source', 'legacy')"
+        >
+          站内检索
+        </button>
+        <button
+          type="button"
+          :class="{ active: source === 'ragagent' }"
+          title="使用 RAG-Agent 服务检索本站隔离知识（需本机 18080 服务在线）"
+          @click="emit('update:source', 'ragagent')"
+        >
+          RAG-Agent
+        </button>
+      </div>
 
       <div class="blog-agent-messages">
         <article

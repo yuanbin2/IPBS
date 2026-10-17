@@ -12,6 +12,7 @@ import { useAuthStore } from "../stores/auth";
 import BlogSidebar from "../features/blog/components/BlogSidebar.vue";
 import BlogAgentWidget from "../features/blog/components/BlogAgentWidget.vue";
 import BlogWriter from "../features/blog/components/BlogWriter.vue";
+import HtmlImportDialog from "../features/blog/components/HtmlImportDialog.vue";
 import ArticleDetail from "../features/blog/components/ArticleDetail.vue";
 import ArticleList from "../features/blog/components/ArticleList.vue";
 import PrivateNotesDrawer from "../features/blog/components/PrivateNotesDrawer.vue";
@@ -24,10 +25,26 @@ import type {
   BlogDraft,
   BlogCategory,
   BlogTag,
+  CollectionArticleContext,
   WritingAssistantRequest,
   WritingAssistantResult
 } from "../features/blog/types";
 import type { ParsedMarkdown } from "../features/blog/utils/parseMarkdownFile";
+import { normalizeTagList } from "../features/blog/utils/tagInput";
+import { defaultCoverImage } from "../features/blog/utils/articleCover";
+import {
+  clearWebClipFragment,
+  consumeWebClip,
+  readWebClipFragment,
+} from "../features/blog/utils/webClipHandoff";
+import type { WebClipNoteDraft } from "../features/blog/components/PrivateNotesDrawer.vue";
+import ScreenshotOcrDialog, { type ScreenshotJobInput } from "../features/blog/components/ScreenshotOcrDialog.vue";
+import {
+  clearScreenshotFragment,
+  consumeScreenshotHandoff,
+  readScreenshotFragment,
+} from "../features/blog/utils/screenshotHandoff";
+
 import {
   getDraftCacheStatus,
   getDraftOwner,
@@ -55,7 +72,8 @@ onBeforeRouteLeave(() => articleDetailRef.value?.confirmLeave() ?? true);
 const tags = ref<BlogTag[]>([]);
 const categories = ref<BlogCategory[]>([]);
 const archive = ref<ArchiveGroup[]>([]);
-const about = ref<{ title: string; content: string; highlights: string[] } | null>(null);
+const about = ref<{ title: string; content: string; highlights: string[]; author_name?: string } | null>(null);
+const siteSettings = ref<{ site_title: string; site_tagline: string; footer_text: string } | null>(null);
 const loading = ref(false);
 const publishing = ref(false);
 const submittingComment = ref(false);
@@ -79,6 +97,9 @@ const reviewNote = ref("");
 const blogAgentOpen = ref(false);
 const blogAgentLoading = ref(false);
 const blogAgentInput = ref("这个博客项目的技术栈是什么？");
+const blogAgentSource = ref<"legacy" | "ragagent">(
+  localStorage.getItem("blogAgentSource") === "ragagent" ? "ragagent" : "legacy"
+);
 const blogAgentSessionKey = ref(localStorage.getItem("blogAgentSessionKey") || "");
 const blogAgentMessages = ref<BlogAgentChatMessage[]>([
   {
@@ -149,12 +170,22 @@ const editingArticle = ref<BlogArticle | null>(null);
 const updatingArticle = ref(false);
 const relatedArticles = ref<BlogArticle[]>([]);
 const relatedLoading = ref(false);
+const collectionContext = ref<CollectionArticleContext | null>(null);
+const htmlClipFile = ref<File | null>(null);
+const noteClipFile = ref<File | null>(null);
+const noteClipApplying = ref(false);
+const webClipSource = ref<{ sourceUrl: string; title: string; site: string; ownNote: string; captureTarget: string } | null>(null);
+const webClipNoteDraft = ref<WebClipNoteDraft | null>(null);
+/** B-045：截图识别对话框（本地 OCR + 校对），写作台与私有笔记抽屉都可打开。 */
+const screenshotOcrOpen = ref(false);
+const screenshotOcrJob = ref<ScreenshotJobInput | null>(null);
+const clipStatus = ref<{ kind: "ok" | "error" | "info"; text: string } | null>(null);
 const activeCategory = ref("");
 const activeTag = ref("");
 const articleTotal = ref(0);
 const articlePage = ref(1);
 const articlePages = ref(0);
-const articlePageSize = 12;
+const articlePageSize = ref(12);
 const myOnly = ref(false);
 let discoveryLoadSequence = 0;
 const showWriter = ref(false);
@@ -182,7 +213,7 @@ const libraryArticleCount = computed(() => {
 const draft = ref<BlogDraft>(emptyBlogDraft());
 
 function emptyBlogDraft(): BlogDraft {
-  return { title: "", summary: "", cover_image: "", category: "", tags: "", content: "" };
+  return { title: "", summary: "", cover_image: "", category: "", tags: [], content: "" };
 }
 
 const noteTemplates = [
@@ -229,6 +260,7 @@ const editorStats = computed(() => {
 });
 
 const activeSlug = computed(() => String(route.params.slug ?? ""));
+const articleListScrollY = ref(0);
 function routeFilter(name: string): string {
   const value = route.query[name];
   return String(Array.isArray(value) ? value[0] ?? "" : value ?? "").trim();
@@ -303,6 +335,11 @@ onMounted(async () => {
     await loadMyArticles();
     await loadOwnRestriction();
   }
+  // 扩展交接放在登录态确定之后：未登录不消费、不在跳转链上带笔记。
+  await consumeExtensionClip();
+  // 扩展在已打开的 /blog 上追加 fragment 时（同文档导航不重挂载）也要能消费；
+  // consumeExtensionClip 会立刻清掉 fragment，因此不会重复消费。
+  window.addEventListener("hashchange", consumeExtensionClip);
   window.addEventListener("online", updateOnlineStatus);
   window.addEventListener("offline", updateOnlineStatus);
   conflictListener = handleDraftStorageConflict;
@@ -346,6 +383,7 @@ watch([rightPanelWidth, rightPanelVisible], () => {
 onBeforeUnmount(() => {
   persistCurrentDraft();
   if (conflictListener) window.removeEventListener("storage", conflictListener);
+  window.removeEventListener("hashchange", consumeExtensionClip);
   window.removeEventListener("online", updateOnlineStatus);
   window.removeEventListener("offline", updateOnlineStatus);
   stopPanelResize();
@@ -433,7 +471,7 @@ function articleToDraft(article: BlogArticle): BlogDraft {
       summary: pending.summary,
       cover_image: pending.cover_image,
       category: pending.category,
-      tags: pending.tags.join(","),
+      tags: normalizeTagList(pending.tags),
       content: pending.content
     };
   }
@@ -442,7 +480,7 @@ function articleToDraft(article: BlogArticle): BlogDraft {
     summary: article.summary || "",
     cover_image: article.cover_image || "",
     category: article.category?.name || "",
-    tags: article.tags?.map((tag) => tag.name).join(",") || "",
+    tags: normalizeTagList(article.tags?.map((tag) => tag.name)),
     content: article.content || ""
   };
 }
@@ -488,7 +526,7 @@ async function loadArticles() {
   const sequence = ++discoveryLoadSequence;
   loading.value = true;
   try {
-    const params = new URLSearchParams({ page: String(articlePage.value), page_size: String(articlePageSize) });
+    const params = new URLSearchParams({ page: String(articlePage.value), page_size: String(articlePageSize.value) });
     if (searchQuery.value.trim()) params.set("q", searchQuery.value.trim());
     if (activeCategory.value) params.set("category", activeCategory.value);
     if (activeTag.value) params.set("tag", activeTag.value);
@@ -506,6 +544,244 @@ async function loadArticles() {
 async function loadArticle(slug: string) {
   currentArticle.value = await requestJson(`/api/agent/blog/articles/${encodeURIComponent(slug)}/?include_comments=0`);
   loadRelatedArticles(slug);
+  loadCollectionContext(slug);
+}
+
+async function loadCollectionContext(slug: string) {
+  collectionContext.value = null;
+  const requested = route.query.collection;
+  try {
+    const params = new URLSearchParams();
+    params.set("article", String(currentArticle.value?.id ?? ""));
+    if (typeof requested === "string" && requested) params.set("collection", requested);
+    if (currentArticle.value?.id) {
+      collectionContext.value = await requestJson(`/api/agent/blog/collections/context/?${params.toString()}`);
+    }
+  } catch {
+    collectionContext.value = null;
+  }
+}
+
+function clearCollectionContext() {
+  collectionContext.value = null;
+}
+
+/**
+ * B-043：消费浏览器扩展的一次性交接。fragment 里只有随机 nonce 与扩展 ID；
+ * 页面负责尽快清掉它，等登录态就绪后才向扩展取值，并只把它当作不可信输入。
+ */
+async function consumeExtensionClip() {
+  // screenshot-v1 截图交接优先，v2 通用网页剪藏其次。
+  // 注：v1 力扣链接交接（#clip=）已于 2026-10-07 随「力扣导入」功能一并移除。
+  const shotFragment = readScreenshotFragment(window.location.hash ?? "");
+  if (shotFragment) {
+    clearScreenshotFragment();
+    if (!auth.isAuthenticated) {
+      clipStatus.value = {
+        kind: "error",
+        text: "请先登录博客，再从浏览器扩展重新发送一次。截图只保存在扩展的本地暂存里（15 分钟），地址栏已清除。"
+      };
+      ElMessage.error("请先登录博客，再从浏览器扩展重新发送一次。");
+      return;
+    }
+    clipStatus.value = { kind: "info", text: "正在接收截图…" };
+    const outcome = await consumeScreenshotHandoff(shotFragment.nonce, shotFragment.extensionId);
+    if (outcome.status === "failed") {
+      clipStatus.value = { kind: "error", text: outcome.failure.detail };
+      ElMessage.error(outcome.failure.detail);
+      return;
+    }
+    const { meta, tiles } = outcome.payload;
+    screenshotOcrJob.value = {
+      tiles: tiles.map((tile) => ({
+        file: tile.file,
+        width: tile.meta.width,
+        height: tile.meta.height,
+        scrollX: tile.meta.scrollX,
+        scrollY: tile.meta.scrollY,
+        imageCandidates: tile.meta.imageCandidates,
+      })),
+      mode: meta.mode,
+      sourceUrl: meta.sourceUrl,
+      titleCandidate: meta.titleCandidate,
+      capturedAt: meta.capturedAt,
+      covered: meta.covered,
+      truncated: meta.truncated,
+      selection: meta.selection,
+      viewport: meta.viewport,
+      warnings: meta.warnings,
+      cropRequired: meta.mode === "region",
+    };
+    screenshotOcrOpen.value = true;
+    clipStatus.value = {
+      kind: "ok",
+      text: meta.truncated
+        ? "已接收截图（未覆盖完整范围）：识别后请核对覆盖范围。"
+        : "已接收截图：正在本地识别，请在校对页核对内容。",
+    };
+    return;
+  }
+
+  const webFragment = readWebClipFragment(window.location.hash ?? "");
+  if (webFragment) {
+    clearWebClipFragment();
+    if (!auth.isAuthenticated) {
+      clipStatus.value = {
+        kind: "error",
+        text: "请先登录博客，再从浏览器扩展重新发送一次。交接正文只保存在扩展的临时存储里，地址栏已清除。"
+      };
+      ElMessage.error("请先登录博客，再从浏览器扩展重新发送一次。");
+      return;
+    }
+    clipStatus.value = { kind: "info", text: "正在接收网页剪藏…" };
+    const outcome = await consumeWebClip(webFragment.nonce, webFragment.extensionId);
+    if (outcome.status === "failed") {
+      clipStatus.value = { kind: "error", text: outcome.detail };
+      ElMessage.error(outcome.detail);
+      return;
+    }
+    const { meta, html } = outcome.payload;
+    webClipSource.value = {
+      sourceUrl: meta.sourceUrl,
+      title: meta.titleCandidate,
+      site: meta.siteCandidate,
+      ownNote: meta.ownNote,
+      captureTarget: meta.captureTarget,
+    };
+    if (meta.captureTarget === "private_note") {
+      // 默认目标：先经过与文章相同的服务端 HTML 安全预览与逐块选择。
+      noteClipFile.value = new File([html], "web-clip.html", { type: "text/html" });
+    } else {
+      // 显式选择博客草稿：走既有 HTML 导入预览与覆盖确认。
+      htmlClipFile.value = new File([html], "web-clip.html", { type: "text/html" });
+      if (!showWriter.value) openWriterForNew();
+    }
+    clipStatus.value = {
+      kind: "ok",
+      text: meta.captureTarget === "article_draft"
+        ? "已带入网页剪藏：请在导入预览里核对后应用为博客草稿。"
+        : "已带入网页剪藏：请在预览里选好区块，再放入私有笔记编辑器。"
+    };
+    return;
+  }
+}
+
+function dismissClipStatus() {
+  clipStatus.value = null;
+}
+
+/** 用户确认区块后才把图片下载到私有存储；任何失败都保留预览供重试。 */
+async function applyWebClipToPrivateNote(
+  data: { title: string; content: string; source_url: string },
+  localImages: Array<{ reference: string; alt: string; file: File }>,
+  remoteImages: Array<{ reference: string; alt: string }>,
+) {
+  if (noteClipApplying.value) return;
+  noteClipApplying.value = true;
+  try {
+    if (localImages.length + remoteImages.length > 20) throw new Error("单次最多处理 20 张图片，请先减少区块");
+    let content = data.content;
+    const imageIds: number[] = [];
+    const replaceImage = (reference: string, url: string) => {
+      content = content.split(reference).join(url);
+    };
+    for (const image of localImages) {
+      const form = new FormData();
+      form.append("image", image.file);
+      const response = await fetch("/api/agent/blog/notes/images/", { method: "POST", body: form });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail ?? `私有图片上传失败 (${response.status})`);
+      imageIds.push(result.id);
+      replaceImage(image.reference, result.url);
+    }
+    for (const image of remoteImages) {
+      const response = await fetch("/api/agent/blog/notes/images/fetch/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: image.reference }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail ?? `远程图片保存失败 (${response.status})`);
+      imageIds.push(result.id);
+      replaceImage(image.reference, result.url);
+    }
+    const source = webClipSource.value;
+    const ownNote = source?.ownNote?.trim();
+    if (ownNote) content = `> 来源说明：${ownNote}\n\n${content}`;
+    if (content.length > 50_000) throw new Error("选中内容超过私有笔记 50,000 字上限，请减少区块");
+    webClipNoteDraft.value = {
+      title: data.title,
+      content,
+      source_url: data.source_url || source?.sourceUrl || "",
+      source_title: source?.site ? `${data.title} · ${source.site}`.slice(0, 200) : data.title,
+      imageIds,
+    };
+    noteClipFile.value = null;
+    showPrivateNotes.value = true;
+    clipStatus.value = { kind: "ok", text: "剪藏已进入私有笔记编辑器；核对并点击保存后才会落库。" };
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : "剪藏处理失败，请重试";
+    ElMessage.error(detail);
+    clipStatus.value = { kind: "error", text: detail };
+  } finally {
+    noteClipApplying.value = false;
+  }
+}
+
+/**
+ * B-045：截图识别校对完成后的落点。默认进入私有笔记草稿（仅内存，
+ * 用户点击保存才落库）；选择博客草稿时只覆盖写作台未提交草稿，
+ * 且在已有内容时必须确认，不自动发布。
+ */
+function applyScreenshotOcrContent(payload: { title: string; content: string; target: "private_note" | "article_draft" }) {
+  const source = screenshotOcrJob.value;
+  const sourceTitle = source?.titleCandidate ?? "";
+  const sourceUrl = source?.sourceUrl ?? "";
+  if (payload.target === "article_draft") {
+    void applyScreenshotToDraft(payload, sourceTitle, sourceUrl);
+    return;
+  }
+  screenshotOcrOpen.value = false;
+  webClipNoteDraft.value = {
+    title: payload.title || "截图笔记",
+    content: payload.content,
+    source_url: sourceUrl,
+    source_title: sourceTitle,
+  };
+  showPrivateNotes.value = true;
+  ElMessage.success("识别内容已带入私有笔记编辑器；核对后点击“保存私有笔记”。");
+}
+
+async function applyScreenshotToDraft(
+  payload: { title: string; content: string },
+  sourceTitle: string,
+  sourceUrl: string,
+) {
+  const sourceLine = [
+    payload.title,
+    sourceUrl,
+    "截图识别（OCR），内容需人工校对",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const content = `> 来源：${sourceLine}\n\n${payload.content}`;
+  if (draft.value.content.trim()) {
+    try {
+      await ElMessageBox.confirm(
+        "写作台当前草稿已有内容，应用截图识别会覆盖正文（标题与本机草稿缓存仍保留）。是否继续？",
+        "应用为博客草稿",
+        { type: "warning", confirmButtonText: "覆盖草稿", cancelButtonText: "取消" },
+      );
+    } catch {
+      return;
+    }
+  }
+  if (!showWriter.value) openWriterForNew();
+  draft.value.title = payload.title || "截图笔记";
+  draft.value.content = content;
+  screenshotOcrOpen.value = false;
+  showWriter.value = true;
+  ElMessage.success("已应用到写作台草稿；只有你主动提交才会进入审核。");
 }
 
 async function loadRelatedArticles(slug: string) {
@@ -534,6 +810,17 @@ async function loadArchive() {
 
 async function loadAbout() {
   about.value = await requestJson("/api/agent/blog/about/");
+  try {
+    const settings = await requestJson("/api/agent/blog/settings/");
+    siteSettings.value = settings;
+    // 设置里的每页数量生效（显式查询参数优先，这里只在用户未指定时跟随）
+    const perPage = Number(settings.articles_per_page);
+    if (Number.isFinite(perPage) && perPage >= 4 && perPage <= 24 && articlePage.value === 1) {
+      articlePageSize.value = perPage;
+    }
+  } catch {
+    siteSettings.value = null; // 设置读取失败不影响页面：回退到内置文案
+  }
 }
 
 async function loadMyArticles() {
@@ -561,7 +848,15 @@ async function loadMyArticles() {
 }
 
 async function openArticle(article: BlogArticle) {
+  if (!currentArticle.value) articleListScrollY.value = window.scrollY;
   await router.push({ name: "blog", params: { slug: article.slug }, query: route.query });
+}
+
+async function returnToArticleList() {
+  currentArticle.value = null;
+  await router.push({ name: "blog", query: route.query });
+  await nextTick();
+  requestAnimationFrame(() => window.scrollTo({ top: articleListScrollY.value, behavior: "auto" }));
 }
 
 async function handleInlineRevisionSubmitted() {
@@ -667,7 +962,7 @@ async function handleCoverImageUpload(file: File) {
   }
 }
 
-async function publishDraft() {
+async function publishDraft(addToKnowledgeBase = false) {
   editorError.value = "";
   if (!draft.value.title.trim() || !draft.value.content.trim()) {
     editorError.value = "标题和正文不能为空。";
@@ -681,13 +976,20 @@ async function publishDraft() {
 
   publishing.value = true;
   try {
+    // 没填封面就用正文第一张图片（后端也会兜底，这里让作者在提交前立刻看到结果）。
+    const autoCover = defaultCoverImage(draft.value.cover_image, draft.value.content);
+    if (autoCover) {
+      draft.value.cover_image = autoCover;
+      ElMessage.info("未填写封面，已自动使用正文中的第一张图片");
+    }
     const payload = await requestJson("/api/agent/blog/articles/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...draft.value,
-        tags: draft.value.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
-        publish: true
+        tags: normalizeTagList(draft.value.tags),
+        publish: true,
+        add_to_knowledge_base: addToKnowledgeBase
       })
     });
     clearActiveDraftAfterServerSave();
@@ -713,7 +1015,11 @@ async function publishDraft() {
 async function syncArticleKnowledge(article: BlogArticle) {
   publishing.value = true;
   try {
-    const payload = await requestJson(`/api/agent/blog/articles/${encodeURIComponent(article.slug)}/publish/`, { method: "POST" });
+    const payload = await requestJson(`/api/agent/blog/articles/${encodeURIComponent(article.slug)}/publish/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ add_to_knowledge_base: true })
+    });
     await Promise.all([loadArticles(), loadArchive()]);
     if (payload.approval_required) {
       openApprovalDialog(payload.approval);
@@ -729,7 +1035,7 @@ async function syncArticleKnowledge(article: BlogArticle) {
 async function deleteArticle(article: BlogArticle) {
   try {
     await ElMessageBox.confirm(
-      `确定删除文章「${article.title}」吗？如果它已经进入知识库，对应的知识库文档也会一起删除。`,
+      `确定提交删除文章「${article.title}」的审批吗？批准后会删除对应知识库文档，并清理没有被其他文章或笔记引用的图片。`,
       "删除文章",
       {
         confirmButtonText: "删除",
@@ -870,7 +1176,7 @@ async function importMarkdownFile(data: ParsedMarkdown, confirmed = false) {
   draft.value.title = data.title;
   draft.value.summary = data.summary;
   draft.value.category = data.category;
-  draft.value.tags = data.tags;
+  draft.value.tags = normalizeTagList(data.tags);
   draft.value.content = data.content;
   ElMessage.success("文件已导入，请检查并编辑后发布。");
 }
@@ -954,7 +1260,7 @@ async function updatePendingArticle() {
       body: JSON.stringify({
         ...draft.value,
         publication_version: editingArticle.value.publication_version,
-        tags: draft.value.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
+        tags: normalizeTagList(draft.value.tags)
       })
     });
     await loadArticles();
@@ -1213,6 +1519,10 @@ async function sendBlogAgentMessage(prompt?: string) {
     content: "正在根据公开博客资料检索...",
     pending: true
   };
+  const pendingText =
+    blogAgentSource.value === "ragagent"
+      ? "正在通过 RAG-Agent 检索本站隔离知识..."
+      : "正在根据公开博客资料检索...";
   blogAgentMessages.value.push(pendingMessage);
   blogAgentInput.value = "";
   blogAgentLoading.value = true;
@@ -1223,7 +1533,8 @@ async function sendBlogAgentMessage(prompt?: string) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message,
-        session_key: blogAgentSessionKey.value
+        session_key: blogAgentSessionKey.value,
+        rag_source: blogAgentSource.value
       })
     });
     blogAgentSessionKey.value = payload.session_key;
@@ -1330,8 +1641,8 @@ async function requestJson(url: string, options: RequestInit = {}) {
           <section v-if="!currentArticle" class="blog-library-hero">
             <div class="library-hero-copy">
               <span class="section-eyebrow">ENGINEERING · ALGORITHMS · AGENTS</span>
-              <h1>技术笔记与项目实践</h1>
-              <p>沉淀可检索、可复用的工程经验。按分类进入主题，按标签定位具体知识点。</p>
+              <h1>{{ siteSettings?.site_title || "技术笔记与项目实践" }}</h1>
+              <p>{{ siteSettings?.site_tagline || "沉淀可检索、可复用的工程经验。按分类进入主题，按标签定位具体知识点。" }}</p>
             </div>
             <dl class="library-hero-stats">
               <div><dt>{{ libraryArticleCount }}</dt><dd>公开文章</dd></div>
@@ -1367,6 +1678,12 @@ async function requestJson(url: string, options: RequestInit = {}) {
             <div class="blog-toolbar-actions">
               <el-button
                 v-if="auth.isAuthenticated && auth.session.role === 'admin'"
+                @click="router.push('/blog/settings')"
+              >
+                站点设置
+              </el-button>
+              <el-button
+                v-if="auth.isAuthenticated && auth.session.role === 'admin'"
                 @click="moderationOpen = true; moderationStatus = 'approved'; loadModerationComments()"
               >
                 评论管理
@@ -1378,6 +1695,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
               >
                 我的文章
               </el-button>
+              <el-button @click="router.push('/blog/collections')">领域目录</el-button>
               <el-button v-if="auth.isAuthenticated" @click="openPrivateNotes()">我的笔记</el-button>
               <el-button v-if="myRestriction?.active" type="warning" plain @click="restrictionDialogOpen = true">评论限制与申诉</el-button>
               <el-button
@@ -1397,6 +1715,14 @@ async function requestJson(url: string, options: RequestInit = {}) {
           </section>
 
           <!-- 编辑器覆盖层 -->
+          <el-alert
+            v-if="clipStatus"
+            class="clip-status-alert"
+            :type="clipStatus.kind === 'error' ? 'error' : clipStatus.kind === 'ok' ? 'success' : 'info'"
+            :closable="true"
+            :title="clipStatus.text"
+            @close="dismissClipStatus"
+          />
           <div v-if="showWriter" class="writer-overlay">
             <div class="writer-overlay-header">
               <h2>{{ editingArticle ? `编辑: ${editingArticle.title}` : '写新博客' }}</h2>
@@ -1408,7 +1734,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
                 <el-button
                   type="primary"
                   :loading="editingArticle ? updatingArticle : publishing"
-                  @click="editingArticle ? updatePendingArticle() : publishDraft()"
+                  @click="editingArticle ? updatePendingArticle() : publishDraft(true)"
                 >
                   {{ editingArticle ? '更新并重新提交' : '发布并加入知识库' }}
                 </el-button>
@@ -1422,6 +1748,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
               :draft-conflict="draftConflict"
               :templates="noteTemplates"
               :categories="categories"
+              :tag-options="tags.map((tag) => tag.name)"
               :stats="editorStats"
               :publishing="publishing"
               :uploading-image="uploadingImage"
@@ -1433,6 +1760,11 @@ async function requestJson(url: string, options: RequestInit = {}) {
               :writing-assistant-loading="writingAssistantLoading"
               :writing-assistant-error="writingAssistantError"
               :writing-assistant-result="writingAssistantResult"
+              :html-clip-file="htmlClipFile"
+              :html-clip-source-url="webClipSource?.sourceUrl"
+              :html-clip-title="webClipSource?.title"
+              :html-clip-own-note="webClipSource?.ownNote"
+              @update:html-clip-file="htmlClipFile = $event"
               @publish="publishDraft"
               @update="updatePendingArticle"
               @cancel-edit="closeWriter"
@@ -1446,6 +1778,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
               @clear-assistant-result="writingAssistantResult = null; writingAssistantError = ''"
               @resolve-draft-conflict="resolveDraftConflict"
               @reload-conflicting-draft="reloadConflictingDraft"
+              @open-screenshot-ocr="screenshotOcrOpen = true"
             />
           </div>
 
@@ -1497,13 +1830,36 @@ async function requestJson(url: string, options: RequestInit = {}) {
             </section>
           </el-dialog>
 
+          <HtmlImportDialog
+            v-if="auth.isAuthenticated"
+            :file="null"
+            :clip-file="noteClipFile"
+            :visible="Boolean(noteClipFile)"
+            :applying="noteClipApplying"
+            :clip-source-url="webClipSource?.sourceUrl"
+            :clip-title="webClipSource?.title"
+            destination="private_note"
+            @close="noteClipFile = null"
+            @apply-note="applyWebClipToPrivateNote"
+          />
+
           <PrivateNotesDrawer
             v-if="auth.isAuthenticated"
             :key="`${auth.session.actor}:${auth.session.workspace_key}`"
             v-model="showPrivateNotes"
             :source-article="noteSourceArticle"
             :selected-quote="noteQuote"
+            :web-clip-draft="webClipNoteDraft"
             @open-source="(slug) => { showPrivateNotes = false; router.push({ name: 'blog', params: { slug } }) }"
+            @clip-draft-applied="webClipNoteDraft = null"
+            @import-screenshot="screenshotOcrOpen = true"
+          />
+
+          <ScreenshotOcrDialog
+            v-if="auth.isAuthenticated"
+            v-model="screenshotOcrOpen"
+            :initial-job="screenshotOcrJob"
+            @apply-content="applyScreenshotOcrContent"
           />
 
           <el-dialog v-model="restrictionDialogOpen" title="评论与举报状态" width="480px" align-center>
@@ -1607,7 +1963,8 @@ async function requestJson(url: string, options: RequestInit = {}) {
             :deleting-slug="deletingArticleSlug"
             :related-articles="relatedArticles"
             :related-loading="relatedLoading"
-            @back="currentArticle = null; router.push({ name: 'blog', query: route.query })"
+            :collection-context="collectionContext"
+            @back="returnToArticleList"
             @ask-agent="askAgent"
             @sync="syncArticleKnowledge"
             @remove="deleteArticle"
@@ -1650,12 +2007,8 @@ async function requestJson(url: string, options: RequestInit = {}) {
 
         <BlogSidebar
           v-show="rightPanelVisible && !currentArticle"
-          :tags="tags"
-          :categories="categories"
           :archive="archive"
           :about="about"
-          :active-category="activeCategory"
-          @filter="applyFilter"
         />
       </section>
 
@@ -1681,9 +2034,11 @@ async function requestJson(url: string, options: RequestInit = {}) {
       </el-dialog>
     </section>
 
+    <footer v-if="siteSettings?.footer_text" class="blog-site-footer">{{ siteSettings.footer_text }}</footer>
     <BlogAgentWidget
       v-model:open="blogAgentOpen"
       v-model:input="blogAgentInput"
+      v-model:source="blogAgentSource"
       :loading="blogAgentLoading"
       :messages="blogAgentMessages"
       :suggestions="blogAgentSuggestions"
@@ -1692,3 +2047,14 @@ async function requestJson(url: string, options: RequestInit = {}) {
     />
   </div>
 </template>
+
+<style scoped>
+.blog-site-footer {
+  padding: 20px 16px 28px;
+  text-align: center;
+  color: var(--color-text-secondary, #6b7a72);
+  font-size: 12px;
+  border-top: 1px solid var(--color-divider, #e4e8e2);
+}
+.clip-status-alert { margin-bottom: 10px; }
+</style>

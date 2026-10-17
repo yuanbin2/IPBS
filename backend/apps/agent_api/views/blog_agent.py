@@ -62,8 +62,19 @@ class BlogAgentChatView(APIView):
         )
 
         agent = PublicBlogAgent(Path(settings.BASE_DIR).parent)
-        answer = agent.answer(message, history=history)
+        rag_source = str(request.data.get("rag_source", "legacy")).strip().lower()
+        if rag_source == "ragagent":
+            # B051：RAG-Agent 外部知识源；任何失败降级回站内检索（fail-open）
+            from ..services.rag_agent_client import RagAgentError, answer_via_rag_agent
+            try:
+                answer = answer_via_rag_agent(message)
+            except RagAgentError as exc:
+                answer = agent.answer(message, history=history)
+                answer.trace = [f"rag_agent -> degraded to legacy: {exc}", *answer.trace]
+        else:
+            answer = agent.answer(message, history=history)
         payload = _redact_public_payload(answer.to_dict())
+        payload["rag_source"] = rag_source if rag_source in ("legacy", "ragagent") else "legacy"
 
         if answer.blocked:
             BlogAgentSecurityEvent.objects.create(

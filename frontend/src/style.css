@@ -430,8 +430,6 @@
 }
 
 .blog-panel {
-  position: sticky;
-  top: var(--space-4);
   gap: var(--space-3);
 }
 
@@ -504,46 +502,10 @@
   font-size: 11px;
 }
 
-.category-list,
-.topic-list,
 .archive-list {
   gap: 2px;
 }
 
-.category-item,
-.topic-list button {
-  min-height: 36px;
-  border-radius: var(--radius-sm);
-}
-
-.category-item.active {
-  box-shadow: inset 3px 0 0 var(--color-primary);
-}
-
-.topic-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.topic-list button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  border: 0;
-  background: transparent;
-  padding: var(--space-2) var(--space-3);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  text-align: left;
-}
-
-.topic-list button:hover {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-}
-
-.topic-list strong,
 .archive-item strong {
   color: var(--color-text-muted);
   font-family: var(--font-mono);
@@ -1167,7 +1129,28 @@ img {
 
 .main-content {
   flex: 1;
+  width: 100%;
+  /* 超宽屏下工具页内容不再被拉散；锁高页负边距只作用上下，与此无冲突。 */
+  max-width: 1560px;
+  margin-inline: auto;
   padding: var(--space-6) var(--space-8);
+}
+
+/* --- 页面可用高度 ---------------------------------------------------- */
+/*
+ * 页面需要「锁定高度、内部各自滚动」时用这两个变量，避免整页随内容无限变长。
+ * 有应用外壳时：可用高度 = 视口 - 顶栏（顶栏常驻在内容区之上），
+ * 并给出与 main-content 内边距等量的负外边距，使页面精确铺满内容区。
+ * 无外壳时（未登录访客看到的公开裸页）：回退为满视口、无需抵消内边距。
+ */
+:root {
+  --page-available-height: 100vh;
+  --page-bleed-block: 0px;
+}
+
+.shell {
+  --page-available-height: calc(100vh - var(--topbar-height));
+  --page-bleed-block: var(--space-6);
 }
 
 /* --- Page Header Pattern -------------------------------------------- */
@@ -2584,13 +2567,15 @@ img {
 
 .knowledge-panel {
   position: sticky;
-  top: var(--space-5);
+  /* 顶栏是常驻的，sticky 偏移必须避开它，否则面板顶部会被顶栏压住。 */
+  top: calc(var(--topbar-height) + var(--space-5));
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - var(--topbar-height) - var(--space-5) * 2);
   overflow-y: auto;
   padding-right: var(--space-1);
+  scrollbar-gutter: stable;
 }
 
 /* Panel header (scoped to knowledge workspace) */
@@ -2679,13 +2664,15 @@ img {
   flex: 1;
 }
 
+/* 知识库侧栏的分类计数徽标复用此类名。博客侧栏里同名的规则已随 B-053 移除，
+   这里保留的是此前实际生效的那组值（原先由文件靠后的块覆盖），
+   以免清理博客侧栏时顺手改掉知识库页面的样式。 */
 .category-count {
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   background: var(--color-bg-page);
   padding: 1px var(--space-2);
   border-radius: 999px;
   font-size: var(--font-size-xs);
-  font-variant-numeric: tabular-nums;
 }
 
 .category-items,
@@ -3584,7 +3571,19 @@ img {
 .mcp-switches {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4);
+  gap: var(--space-3) var(--space-6);
+  border-top: 1px dashed var(--color-divider);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+}
+
+/* 开关文案用次要色，避免和卡内标题抢层级 */
+.mcp-switches .el-switch__label {
+  color: var(--color-text-secondary);
+}
+
+.mcp-switches .el-switch__label.is-active {
+  color: var(--color-primary);
 }
 
 .mcp-output {
@@ -3987,13 +3986,82 @@ img {
   font-size: var(--font-size-sm);
 }
 
-/* --- Blog ----------------------------------------------------------- */
-.blog-workspace {
-  min-height: auto;
+/* 安全审计：独立滚动框内滚动到底再加载下一页，页面整体高度不变 */
+.audit-count {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
 }
 
+.audit-scroll {
+  /* 锁高：上面两个面板保持原位，只有这个框自己滚 */
+  max-height: min(520px, calc(var(--page-available-height, 100vh) - 340px));
+  min-height: 200px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
+}
+
+/* 行与行、行与底部提示之间留出间距（滚动框不是 gap 容器） */
+.audit-scroll .audit-row,
+.audit-scroll .audit-feed-footer {
+  margin-top: var(--space-3);
+}
+
+.audit-scroll .audit-row:first-of-type {
+  margin-top: 0;
+}
+
+.audit-feed-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-top: 1px dashed var(--color-divider);
+  padding-top: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.audit-feed-footer .is-error {
+  color: var(--color-danger);
+}
+
+.audit-spinner {
+  animation: audit-spin 0.9s linear infinite;
+}
+
+@keyframes audit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Blog ----------------------------------------------------------- */
+.blog-workspace {
+  flex: 1;
+  min-height: 0;
+}
+
+/*
+ * 整页高度锁定：主栏与右侧辅助栏各自滚动，互不带动，页面也不再随内容无限变长。
+ * 未登录访客看到的是裸页，--page-available-height / --page-bleed-block 会回退成满视口。
+ */
 .blog-shell {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  box-sizing: border-box;
+  height: var(--page-available-height);
+  min-height: 0;
+  margin: calc(-1 * var(--page-bleed-block)) 0;
+  padding: var(--space-6) 0;
+}
+
+.blog-visitor-header,
+.blog-site-footer {
+  flex: none;
 }
 
 .blog-visitor-header {
@@ -4039,6 +4107,8 @@ img {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 10px var(--blog-panel-width, 360px);
   gap: 0 4px;
+  height: 100%;
+  min-height: 0;
 }
 
 .blog-shell.right-panel-hidden .blog-layout {
@@ -4119,6 +4189,18 @@ img {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+}
+
+/*
+ * 限高容器里的 flex 子项默认 flex-shrink:1，会被压扁而不是撑出滚动条。
+ * 这里禁止收缩，让内容保持原始高度、由容器滚动。
+ */
+.blog-main > * {
+  flex-shrink: 0;
 }
 
 .write-box {
@@ -4163,6 +4245,15 @@ img {
      renderer's formatting whitespace expands code-block summaries and tables. */
   white-space: normal;
   line-height: 1.8;
+
+/* 长文性能：预览的每个顶层块独立启用跳过渲染——视口外的段落/表格/代码块
+   不参与布局与绘制，万字文章的打开与滚动显著流畅。滚动到即渲染，
+   contain-intrinsic-size 提供占位估算以减少滚动条跳动。 */
+.article-content .md-editor-preview > *,
+.article-content .md-editor-preview-only > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}
 }
 
 /* Theme Container - Article Content */
@@ -4304,8 +4395,12 @@ img {
 .blog-panel {
   display: flex;
   flex-direction: column;
-  align-self: start;
+  align-self: stretch;
   gap: var(--space-4);
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .write-box,
@@ -5298,9 +5393,35 @@ img {
   font-size: 20px;
 }
 
+
+.blog-agent-source-toggle {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 0;
+}
+
+.blog-agent-source-toggle button {
+  flex: 1;
+  padding: 5px 10px;
+  font-size: 12px;
+  border: 0.5px solid var(--border, #B4B2A9);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.65;
+}
+
+.blog-agent-source-toggle button.active {
+  background: var(--accent, #174B46);
+  border-color: var(--accent, #174B46);
+  color: #fff;
+  opacity: 1;
+}
+
 .blog-agent-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   width: min(420px, calc(100vw - 32px));
   height: min(620px, calc(100vh - 120px));
   overflow: hidden;
@@ -5666,6 +5787,24 @@ img {
     grid-template-columns: 1fr;
   }
 
+  /* 窄屏改为整页自然滚动，避免出现「页内滚动 + 页滚动」的双层滚动条。 */
+  .blog-shell {
+    height: auto;
+    min-height: var(--page-available-height);
+    margin: 0;
+    padding: 0;
+  }
+
+  .blog-layout {
+    height: auto;
+  }
+
+  .blog-main,
+  .blog-panel {
+    overflow-y: visible;
+    padding-right: 0;
+  }
+
   .blog-layout-controls {
     justify-content: flex-start;
   }
@@ -5978,51 +6117,6 @@ img {
   text-align: center;
   padding: var(--space-8);
   color: var(--color-text-secondary);
-}
-
-/* === Blog Enhancement: Category List in Sidebar === */
-.category-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.category-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-2) var(--space-3);
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-  text-align: left;
-  width: 100%;
-}
-
-.category-item:hover {
-  background: var(--color-primary-soft);
-}
-
-.category-item.active {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-  font-weight: 500;
-}
-
-.category-count {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  background: var(--color-bg-page);
-  padding: 1px var(--space-2);
-  border-radius: 999px;
-}
-
-.category-item.active .category-count {
-  background: var(--color-primary);
-  color: #fff;
 }
 
 /* === Blog Enhancement: Article Cover Image in Detail === */
@@ -6433,8 +6527,6 @@ img {
 }
 
 #app .blog-shell .blog-panel {
-  position: sticky;
-  top: var(--space-4);
   gap: var(--space-3);
 }
 
@@ -6451,14 +6543,8 @@ img {
   color: var(--color-bg-surface);
 }
 
-#app .blog-shell .category-list,
-#app .blog-shell .topic-list,
 #app .blog-shell .archive-list {
   gap: 2px;
-}
-
-#app .blog-shell .category-item.active {
-  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 #app .blog-shell .article-header {
@@ -6865,4 +6951,70 @@ img {
     width: 100%;
     min-height: 0;
   }
+}
+
+/* ============================================================
+   UX Polish（2026-10 全站布局体验统一提升）
+   ============================================================ */
+
+/* --- 统一分类筛选 chips ----------------------------------------------
+ * KB 侧栏 / MCP 工具页的 el-radio-button 组默认是连体分段控件，
+ * 在浅色主题下边框几乎不可见、文字挤成一行。统一覆盖为
+ * 「灰底 pill chip」——与博客页 .category-chip 同一视觉语言：
+ * 默认灰底、hover 浅绿、选中深色底白字。
+ * -------------------------------------------------------------------- */
+.filter-chips .el-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.filter-chips .el-radio-button {
+  --el-radio-button-checked-bg-color: var(--color-text-primary);
+  --el-radio-button-checked-text-color: #ffffff;
+  --el-radio-button-checked-border-color: var(--color-text-primary);
+}
+
+.filter-chips .el-radio-button__inner {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-page);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  padding: 7px 14px;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.filter-chips .el-radio-button__inner:hover {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.filter-chips .el-radio-button__original-radio:checked + .el-radio-button__inner {
+  background: var(--color-text-primary);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+/* --- 快捷入口卡片：箭头随 hover 轻移，强化「可进入」感 ---------------- */
+.link-card .link-arrow {
+  transition: transform var(--transition-base);
+}
+
+.link-card:hover .link-arrow {
+  transform: translateX(4px);
+}
+
+/* --- 通用空态：给 el-empty 一个更克制的默认观感 ---------------------- */
+.el-empty__description p {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* --- 下拉/弹层圆角与阴影统一（popper 挂在 body 下，scoped 管不到）---- */
+.el-popper.is-light {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
 }
