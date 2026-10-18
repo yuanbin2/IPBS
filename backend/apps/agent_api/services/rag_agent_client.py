@@ -13,7 +13,13 @@ from dataclasses import dataclass, field
 
 import requests
 
+# 对本机 rag-agent 的调用禁止走系统/环境代理（Clash、沙箱注入的
+# HTTP_PROXY 等）；127.0.0.1 永远直连。
+_session = requests.Session()
+_session.trust_env = False
+
 from ..services.blog_agent import BlogAgentAnswer
+from ..services.blog_public_retrieval import BlogAgentSource
 from .llm_support import empty_token_usage
 
 
@@ -49,7 +55,7 @@ def query_rag_agent(question: str, top_k: int = 5) -> RagAgentResult:
     if not cfg.api_key:
         raise RagAgentError("RAG_AGENT_API_KEY not configured")
     try:
-        response = requests.post(
+        response = _session.post(
             cfg.base_url + "/query",
             headers={"X-API-Key": cfg.api_key},
             json={"question": question, "top_k": top_k},
@@ -82,7 +88,7 @@ def upload_document_to_rag_agent(filename: str, content: bytes,
     if not cfg.api_key:
         raise RagAgentError("RAG_AGENT_API_KEY not configured")
     try:
-        response = requests.post(
+        response = _session.post(
             cfg.base_url + "/documents/upload",
             headers={"X-API-Key": cfg.api_key},
             files={"file": (filename, content, content_type or "application/octet-stream")},
@@ -102,16 +108,17 @@ def upload_document_to_rag_agent(filename: str, content: bytes,
 def answer_via_rag_agent(question: str) -> BlogAgentAnswer:
     """rag-agent 结果 → BlogAgentAnswer 同构；citations 转为展示用 sources。"""
     result = query_rag_agent(question)
+    # 必须用 BlogAgentSource dataclass：to_dict() 对 sources 做 dataclasses.asdict
     sources = [
-        {
-            "title": str(c.get("citation") or f"rag-agent 引用 {c.get('n', i + 1)}"),
-            "kind": "rag-agent",
-            "content": str(c.get("citation") or ""),
-            "score": 0.0,
-            "url": "",
-            "document_id": None,
-            "chunk_index": c.get("n"),
-        }
+        BlogAgentSource(
+            title=str(c.get("citation") or f"rag-agent 引用 {c.get('n', i + 1)}"),
+            kind="rag-agent",
+            content=str(c.get("citation") or ""),
+            score=0.0,
+            url="",
+            document_id=None,
+            chunk_index=c.get("n"),
+        )
         for i, c in enumerate(result.sources)
     ]
     trace = [
