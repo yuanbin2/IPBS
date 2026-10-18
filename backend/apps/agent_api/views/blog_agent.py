@@ -63,6 +63,10 @@ class BlogAgentChatView(APIView):
 
         agent = PublicBlogAgent(Path(settings.BASE_DIR).parent)
         rag_source = str(request.data.get("rag_source", "legacy")).strip().lower()
+        if rag_source not in ("legacy", "ragagent"):
+            rag_source = "legacy"
+        degraded = False
+        degraded_reason = ""
         if rag_source == "ragagent":
             # B051：RAG-Agent 外部知识源；任何失败降级回站内检索（fail-open）
             from dataclasses import replace
@@ -77,10 +81,17 @@ class BlogAgentChatView(APIView):
                     legacy,
                     trace=[f"rag_agent -> degraded to legacy: {exc}", *legacy.trace],
                 )
+                # B052：降级必须对用户可见，附带原因短句
+                degraded = True
+                degraded_reason = str(exc)[:120]
         else:
             answer = agent.answer(message, history=history)
         payload = _redact_public_payload(answer.to_dict())
-        payload["rag_source"] = rag_source if rag_source in ("legacy", "ragagent") else "legacy"
+        payload["rag_source"] = rag_source
+        # B052：透明性字段——实际生效来源 + 降级标记/原因
+        payload["rag_source_effective"] = "ragagent" if (rag_source == "ragagent" and not degraded) else "legacy"
+        payload["degraded"] = degraded
+        payload["degraded_reason"] = degraded_reason
 
         if answer.blocked:
             BlogAgentSecurityEvent.objects.create(

@@ -60,6 +60,10 @@ const emit = defineEmits<{
           :class="[message.role, { blocked: message.blocked, pending: message.pending }]"
         >
           <p>{{ message.content }}</p>
+          <div v-if="message.degraded" class="blog-agent-degraded" role="status">
+            ⚠ RAG-Agent 未响应，本次回答已自动回退站内检索{{ message.degraded_reason ? `（${message.degraded_reason}）` : "" }}
+          </div>
+          <div v-else-if="message.rag_source_effective === 'ragagent'" class="blog-agent-source-badge">来源：RAG-Agent</div>
           <div v-if="message.sources?.length" class="blog-agent-sources">
             <span v-for="(source, sourceIndex) in message.sources" :key="source.title + sourceIndex">
               [{{ sourceIndex + 1 }}] {{ source.title }}

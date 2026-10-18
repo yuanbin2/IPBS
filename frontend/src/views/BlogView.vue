@@ -1543,7 +1543,10 @@ async function sendBlogAgentMessage(prompt?: string) {
       content: payload.answer,
       sources: payload.sources,
       blocked: payload.blocked,
-      pending: false
+      pending: false,
+      rag_source_effective: payload.rag_source_effective,
+      degraded: payload.degraded,
+      degraded_reason: payload.degraded_reason
     });
   } catch (error) {
     Object.assign(pendingMessage, {
