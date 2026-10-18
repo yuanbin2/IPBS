@@ -1,7 +1,13 @@
 ﻿import { onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiUrl, refreshAccessToken } from "../../../api/client";
-import type { KnowledgeBase, KnowledgeDocument, SearchResult } from "../types";
+import type {
+  KnowledgeBase,
+  KnowledgeDocument,
+  RagAgentDocument,
+  RagAgentDocumentListPayload,
+  SearchResult
+} from "../types";
 
 async function readPayload(response: Response) {
   if (response.status === 204) return null;
@@ -28,6 +34,12 @@ async function errorMessage(response: Response, fallback: string) {
 export function useKnowledgeBase() {
   const knowledgeBases = ref<KnowledgeBase[]>([]);
   const documents = ref<KnowledgeDocument[]>([]);
+  const ragAgentDocuments = ref<RagAgentDocumentListPayload>({
+    available: false,
+    error: "",
+    documents: [],
+  });
+  const activeListSource = ref<"local" | "ragagent">("local");
   const selectedKnowledgeBaseId = ref<number | null>(null);
   const uploadFile = ref<File | null>(null);
   const uploadTitle = ref("");
@@ -65,6 +77,25 @@ export function useKnowledgeBase() {
     const query = params.toString();
     const response = await fetch(`/api/agent/documents/${query ? `?${query}` : ""}`);
     documents.value = await response.json();
+  }
+
+  async function loadRagAgentDocuments() {
+    try {
+      const response = await fetch("/api/agent/ragagent-documents/");
+      if (!response.ok) {
+        ragAgentDocuments.value = { available: false, error: "RAG-Agent 服务不可达（未启动或异常）", documents: [] };
+        return;
+      }
+      const payload = await response.json() as Partial<RagAgentDocumentListPayload> | null;
+      const documents = Array.isArray(payload?.documents) ? payload!.documents : [];
+      ragAgentDocuments.value = {
+        available: Boolean(payload?.available),
+        error: typeof payload?.error === "string" ? payload.error : "",
+        documents: documents as RagAgentDocument[],
+      };
+    } catch {
+      ragAgentDocuments.value = { available: false, error: "RAG-Agent 服务不可达（未启动或异常）", documents: [] };
+    }
   }
 
   async function selectKnowledgeBase(id: number) {
@@ -173,7 +204,8 @@ export function useKnowledgeBase() {
         uploadFile.value = null;
         uploadTitle.value = "";
         uploadProgress.value = 100;
-        await loadDocuments();
+        await loadRagAgentDocuments();
+        activeListSource.value = "ragagent";
         ElMessage.success("已上传到 RAG-Agent（blog 租户隔离知识库）");
         return;
       }
@@ -333,14 +365,15 @@ export function useKnowledgeBase() {
 
   onMounted(async () => {
     await loadKnowledgeBases();
-    await loadDocuments();
+    await Promise.all([loadDocuments(), loadRagAgentDocuments()]);
   });
 
   return {
-    knowledgeBases, documents, selectedKnowledgeBaseId, uploadFile, uploadTitle, uploadTarget,
+    knowledgeBases, documents, ragAgentDocuments, activeListSource,
+    selectedKnowledgeBaseId, uploadFile, uploadTitle, uploadTarget,
     searchQuery, searchResults, loading, uploading, uploadProgress, uploadStage, searching,
     reindexingDocumentId, deletingKnowledgeBaseId, deletingDocumentId,
-    loadKnowledgeBases, loadDocuments, selectKnowledgeBase, handleFileChange,
+    loadKnowledgeBases, loadDocuments, loadRagAgentDocuments, selectKnowledgeBase, handleFileChange,
     uploadDocument, searchKnowledge, reindexDocument, deleteKnowledgeBase, deleteDocument,
     archiveKnowledgeBase, createKnowledgeBase
   };

@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { Delete, Document, Refresh, UploadFilled } from "@element-plus/icons-vue";
-import type { KnowledgeDocument } from "../types";
+import type { KnowledgeDocument, RagAgentDocument } from "../types";
 
 const props = defineProps<{
   documents: KnowledgeDocument[];
+  ragAgentDocuments: RagAgentDocument[];
+  ragAgentAvailable: boolean;
+  ragAgentError: string;
+  activeListSource: "local" | "ragagent";
   uploadTitle: string;
   uploadTarget: "local" | "ragagent";
   hasFile: boolean;
@@ -18,6 +22,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:uploadTitle": [value: string];
   "update:uploadTarget": [value: "local" | "ragagent"];
+  "update:activeListSource": [value: "local" | "ragagent"];
   fileChange: [event: Event];
   upload: [];
   refresh: [];
@@ -28,6 +33,11 @@ const emit = defineEmits<{
 const uploadTargetProxy = computed({
   get: () => props.uploadTarget,
   set: (value: "local" | "ragagent") => emit("update:uploadTarget", value),
+});
+
+const activeListSourceProxy = computed({
+  get: () => props.activeListSource,
+  set: (value: "local" | "ragagent") => emit("update:activeListSource", value),
 });
 
 function getStatusIcon(status: string) {
@@ -41,6 +51,10 @@ function getStatusIcon(status: string) {
     default:
       return "○";
   }
+}
+
+function ragStatusText(status: string) {
+  return status || "unknown";
 }
 </script>
 
@@ -84,6 +98,30 @@ function getStatusIcon(status: string) {
       <el-button :icon="Refresh" @click="$emit('refresh')">刷新</el-button>
     </div>
 
+    <div class="list-source-toggle" role="tablist" aria-label="文档列表来源">
+      <button
+        type="button"
+        class="list-source-tab"
+        :class="{ active: activeListSourceProxy === 'local' }"
+        role="tab"
+        :aria-selected="activeListSourceProxy === 'local'"
+        @click="activeListSourceProxy = 'local'"
+      >
+        博客知识库
+      </button>
+      <button
+        type="button"
+        class="list-source-tab"
+        :class="{ active: activeListSourceProxy === 'ragagent' }"
+        role="tab"
+        :aria-selected="activeListSourceProxy === 'ragagent'"
+        @click="activeListSourceProxy = 'ragagent'"
+      >
+        RAG-Agent
+      </button>
+    </div>
+
+    <template v-if="activeListSourceProxy === 'local'">
     <div class="document-grid">
       <article v-for="doc in documents" :key="doc.id" class="document-card">
         <div class="doc-status-icon" :class="doc.status">
@@ -125,5 +163,58 @@ function getStatusIcon(status: string) {
         <span>还没有上传文档</span>
       </div>
     </div>
+    </template>
+
+    <template v-else>
+      <div class="document-grid ragagent-grid">
+        <article v-for="doc in ragAgentDocuments" :key="doc.document_id" class="document-card ragagent-card">
+          <div class="doc-status-icon processing">{{ getStatusIcon(ragStatusText(doc.status)) }}</div>
+          <div class="doc-info">
+            <h3>{{ doc.filename }}</h3>
+            <div class="doc-meta">
+              <span class="doc-type">状态：{{ ragStatusText(doc.status) }}</span>
+              <span class="doc-chunks">来源：{{ doc.source || "rag-agent" }}</span>
+            </div>
+            <p class="doc-meta">文档 ID：{{ doc.document_id }}</p>
+          </div>
+        </article>
+
+        <div v-if="ragAgentDocuments.length === 0" class="doc-empty">
+          <el-icon><Document /></el-icon>
+          <span>{{ ragAgentAvailable ? "RAG-Agent 知识库暂无文档" : "RAG-Agent 服务不可达（未启动或异常）" }}</span>
+        </div>
+      </div>
+      <p v-if="!ragAgentAvailable && ragAgentError" class="ragagent-error" role="status">{{ ragAgentError }}</p>
+    </template>
   </section>
 </template>
+
+<style scoped>
+.list-source-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.list-source-tab {
+  padding: 6px 16px;
+  border: 1px solid var(--el-border-color, #dcdfe6);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--el-text-color-regular, #606266);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.list-source-tab.active {
+  background: var(--el-color-primary, #409eff);
+  border-color: var(--el-color-primary, #409eff);
+  color: #fff;
+}
+
+.ragagent-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--el-color-danger, #f56c6c);
+}
+</style>

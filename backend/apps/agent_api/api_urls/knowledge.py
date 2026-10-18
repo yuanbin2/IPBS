@@ -8,6 +8,7 @@ from ..views.knowledge import (
     KnowledgeBaseDetailView,
     KnowledgeBaseListView,
     KnowledgeSearchView,
+    RagAgentDocumentListView,
     TaskStatusView,
 )
 
@@ -18,6 +19,7 @@ urlpatterns = [
     path("documents/", DocumentListUploadView.as_view(), name="document-list-upload"),
     path("documents/<int:pk>/", DocumentDetailView.as_view(), name="document-detail"),
     path("documents/<int:pk>/reindex/", DocumentReindexView.as_view(), name="document-reindex"),
+    path("ragagent-documents/", RagAgentDocumentListView.as_view(), name="ragagent-document-list"),
     path("knowledge-search/", KnowledgeSearchView.as_view(), name="knowledge-search"),
     path("tasks/<str:task_id>/", TaskStatusView.as_view(), name="task-status"),
 ]

@@ -264,6 +264,41 @@ class DocumentListUploadView(APIView):
         )
 
 
+class RagAgentDocumentListView(APIView):
+    """RAG-Agent 外部知识库文档列表（只读展示）。
+
+    fail-open 契约：rag-agent 不可达时返回 200 + available=false，
+    前端据此展示"服务不可达"占位而不是报错炸页。
+    """
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
+        from ..services.rag_agent_client import RagAgentError, list_documents_from_rag_agent
+
+        try:
+            remote_documents = list_documents_from_rag_agent()
+        except RagAgentError:
+            return Response(
+                {"available": False, "error": "RAG-Agent 服务不可达（未启动或异常）", "documents": []}
+            )
+        documents = [
+            {
+                "document_id": str(item.get("id") or item.get("document_id") or ""),
+                "filename": str(item.get("filename") or ""),
+                "status": str(item.get("status") or ""),
+                "source": str(item.get("source") or ""),
+            }
+            for item in remote_documents
+            if isinstance(item, dict)
+        ]
+        return Response({"available": True, "error": "", "documents": documents})
+
+
 class DocumentDetailView(APIView):
     authentication_classes = []
     permission_classes = []

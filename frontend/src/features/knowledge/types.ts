@@ -37,6 +37,19 @@ export interface KnowledgeDocument {
   created_at: string;
 }
 
+export interface RagAgentDocument {
+  document_id: string;
+  filename: string;
+  status: string;
+  source: string;
+}
+
+export interface RagAgentDocumentListPayload {
+  available: boolean;
+  error: string;
+  documents: RagAgentDocument[];
+}
+
 export interface SearchResult {
   document_id: number;
   document_title: string;

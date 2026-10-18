@@ -76,6 +76,35 @@ def query_rag_agent(question: str, top_k: int = 5) -> RagAgentResult:
     )
 
 
+def list_documents_from_rag_agent() -> list[dict]:
+    """调用 rag-agent GET /documents，返回 blog 租户的文档列表。
+
+    每个条目至少包含 id/filename/status/source 字段；字段缺失时用空串
+    兜底，保证下游视图可以做统一的 str() 映射。失败抛 RagAgentError。
+    """
+    cfg = RagAgentSettings.from_env()
+    if not cfg.api_key:
+        raise RagAgentError("RAG_AGENT_API_KEY not configured")
+    try:
+        response = _session.get(
+            cfg.base_url + "/documents",
+            headers={"X-API-Key": cfg.api_key},
+            timeout=cfg.timeout_seconds,
+        )
+    except requests.RequestException as exc:
+        raise RagAgentError(f"rag-agent unreachable: {exc}") from exc
+    if response.status_code != 200:
+        raise RagAgentError(f"rag-agent HTTP {response.status_code}")
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise RagAgentError("rag-agent returned non-JSON") from exc
+    documents = data.get("documents") if isinstance(data, dict) else data
+    if not isinstance(documents, list):
+        raise RagAgentError("rag-agent returned malformed documents payload")
+    return documents
+
+
 def upload_document_to_rag_agent(filename: str, content: bytes,
                                  content_type: str = "text/markdown",
                                  visibility: str = "private") -> dict:

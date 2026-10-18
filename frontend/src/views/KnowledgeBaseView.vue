@@ -16,6 +16,11 @@ const docCount = computed(() =>
 const chunkCount = computed(() =>
   knowledge.knowledgeBases.value.reduce((sum, kb) => sum + (kb.chunk_count || 0), 0)
 );
+
+function refreshDocumentLists() {
+  void knowledge.loadDocuments();
+  void knowledge.loadRagAgentDocuments();
+}
 </script>
 
 <template>
@@ -56,6 +61,10 @@ const chunkCount = computed(() =>
       <section class="knowledge-main">
         <DocumentManager
           :documents="knowledge.documents.value"
+          :rag-agent-documents="knowledge.ragAgentDocuments.value.documents"
+          :rag-agent-available="knowledge.ragAgentDocuments.value.available"
+          :rag-agent-error="knowledge.ragAgentDocuments.value.error"
+          v-model:active-list-source="knowledge.activeListSource.value"
           :upload-title="knowledge.uploadTitle.value"
           v-model:upload-target="knowledge.uploadTarget.value"
           :has-file="Boolean(knowledge.uploadFile.value)"
@@ -67,9 +76,10 @@ const chunkCount = computed(() =>
           @update:upload-title="knowledge.uploadTitle.value = $event"
           @file-change="knowledge.handleFileChange"
           @upload="knowledge.uploadDocument"
-          @refresh="knowledge.loadDocuments"
+          @refresh="refreshDocumentLists"
           @reindex="knowledge.reindexDocument"
           @remove="knowledge.deleteDocument"
+          @update:active-list-source="knowledge.activeListSource.value = $event"
         />
         <KnowledgeSearchPanel
           :query="knowledge.searchQuery.value"
