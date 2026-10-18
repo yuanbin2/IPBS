@@ -31,6 +31,7 @@ export function useKnowledgeBase() {
   const selectedKnowledgeBaseId = ref<number | null>(null);
   const uploadFile = ref<File | null>(null);
   const uploadTitle = ref("");
+  const uploadTarget = ref<"local" | "ragagent">("local");
   const searchQuery = ref("RAG 如何结合 LangGraph");
   const searchResults = ref<SearchResult[]>([]);
   const loading = ref(false);
@@ -152,18 +153,29 @@ export function useKnowledgeBase() {
       const form = new FormData();
       form.append("file", uploadFile.value);
       form.append("title", uploadTitle.value || uploadFile.value.name);
-      if (selectedKnowledgeBaseId.value) {
+      form.append("target", uploadTarget.value);
+      if (uploadTarget.value === "local" && selectedKnowledgeBaseId.value) {
         form.append("knowledge_base_id", String(selectedKnowledgeBaseId.value));
       }
       const payload = await uploadFormData("/api/agent/documents/", form) as {
         task_state?: string;
         task_error?: string;
         task_url?: string;
+        target?: string;
+        ragagent_error?: string;
       };
       uploadProgress.value = Math.max(uploadProgress.value, 95);
       uploadStage.value = "processing";
       if (payload.task_state === "FAILURE") {
         throw new Error(payload.task_error ?? "文档处理失败");
+      }
+      if (payload.target === "ragagent") {
+        uploadFile.value = null;
+        uploadTitle.value = "";
+        uploadProgress.value = 100;
+        await loadDocuments();
+        ElMessage.success("已上传到 RAG-Agent（blog 租户隔离知识库）");
+        return;
       }
       uploadFile.value = null;
       uploadTitle.value = "";
@@ -325,7 +337,7 @@ export function useKnowledgeBase() {
   });
 
   return {
-    knowledgeBases, documents, selectedKnowledgeBaseId, uploadFile, uploadTitle,
+    knowledgeBases, documents, selectedKnowledgeBaseId, uploadFile, uploadTitle, uploadTarget,
     searchQuery, searchResults, loading, uploading, uploadProgress, uploadStage, searching,
     reindexingDocumentId, deletingKnowledgeBaseId, deletingDocumentId,
     loadKnowledgeBases, loadDocuments, selectKnowledgeBase, handleFileChange,

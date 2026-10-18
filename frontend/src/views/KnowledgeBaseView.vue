@@ -57,6 +57,7 @@ const chunkCount = computed(() =>
         <DocumentManager
           :documents="knowledge.documents.value"
           :upload-title="knowledge.uploadTitle.value"
+          v-model:upload-target="knowledge.uploadTarget.value"
           :has-file="Boolean(knowledge.uploadFile.value)"
           :uploading="knowledge.uploading.value"
           :upload-progress="knowledge.uploadProgress.value"

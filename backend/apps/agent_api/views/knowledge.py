@@ -213,6 +213,32 @@ class DocumentListUploadView(APIView):
                 status.HTTP_400_BAD_REQUEST,
             )
 
+        # B052：target=ragagent 时转发到 rag-agent（blog 租户隔离知识库），
+        # 不落本地 Document/摄入任务；失败返回 502 并带原因
+        if str(request.data.get("target", "local")).strip().lower() == "ragagent":
+            from ..services.rag_agent_client import RagAgentError, upload_document_to_rag_agent
+            content_type = getattr(upload, "content_type", "") or suffix.lstrip(".")
+            try:
+                remote = upload_document_to_rag_agent(
+                    upload.name, upload.read(), content_type=content_type)
+            except RagAgentError as exc:
+                return error_response(
+                    f"RAG-Agent 上传失败：{exc}",
+                    ErrorCode.VALIDATION_ERROR,
+                    status.HTTP_502_BAD_GATEWAY,
+                )
+            return Response(
+                {
+                    "target": "ragagent",
+                    "document_id": remote.get("document_id"),
+                    "filename": remote.get("filename"),
+                    "status": remote.get("status"),
+                    "task_state": "SUCCESS",
+                    "task_url": "",
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
         knowledge_base_id = request.data.get("knowledge_base_id")
         if knowledge_base_id:
             knowledge_base = get_object_or_404(

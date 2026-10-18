@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { Delete, Document, Refresh, UploadFilled } from "@element-plus/icons-vue";
 import type { KnowledgeDocument } from "../types";
 
-defineProps<{
+const props = defineProps<{
   documents: KnowledgeDocument[];
   uploadTitle: string;
+  uploadTarget: "local" | "ragagent";
   hasFile: boolean;
   uploading: boolean;
   uploadProgress: number;
@@ -13,14 +15,20 @@ defineProps<{
   deletingId: number | null;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   "update:uploadTitle": [value: string];
+  "update:uploadTarget": [value: "local" | "ragagent"];
   fileChange: [event: Event];
   upload: [];
   refresh: [];
   reindex: [document: KnowledgeDocument];
   remove: [document: KnowledgeDocument];
 }>();
+
+const uploadTargetProxy = computed({
+  get: () => props.uploadTarget,
+  set: (value: "local" | "ragagent") => emit("update:uploadTarget", value),
+});
 
 function getStatusIcon(status: string) {
   switch (status) {
@@ -41,6 +49,10 @@ function getStatusIcon(status: string) {
     <div>
       <h2><el-icon><UploadFilled /></el-icon> 上传文档</h2>
       <p>支持 Markdown、txt、PDF。上传后会自动抽取文本、切分片段并写入 embedding 记录。</p>
+      <div class="upload-target-toggle">
+        <label><input type="radio" value="local" v-model="uploadTargetProxy" /> 博客知识库（站内）</label>
+        <label><input type="radio" value="ragagent" v-model="uploadTargetProxy" /> RAG-Agent（隔离知识库）</label>
+      </div>
     </div>
     <div class="upload-controls">
       <label class="upload-dropzone">

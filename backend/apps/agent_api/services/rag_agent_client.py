@@ -70,6 +70,35 @@ def query_rag_agent(question: str, top_k: int = 5) -> RagAgentResult:
     )
 
 
+def upload_document_to_rag_agent(filename: str, content: bytes,
+                                 content_type: str = "text/markdown",
+                                 visibility: str = "private") -> dict:
+    """把文件转发到 rag-agent /documents/upload（blog 租户隔离知识）。
+
+    返回 rag-agent 的响应 dict（含 document_id/status）。
+    失败抛 RagAgentError，由调用方决定提示方式。
+    """
+    cfg = RagAgentSettings.from_env()
+    if not cfg.api_key:
+        raise RagAgentError("RAG_AGENT_API_KEY not configured")
+    try:
+        response = requests.post(
+            cfg.base_url + "/documents/upload",
+            headers={"X-API-Key": cfg.api_key},
+            files={"file": (filename, content, content_type or "application/octet-stream")},
+            data={"visibility": visibility, "source": "blog-upload"},
+            timeout=cfg.timeout_seconds,
+        )
+    except requests.RequestException as exc:
+        raise RagAgentError(f"rag-agent unreachable: {exc}") from exc
+    if response.status_code != 200:
+        raise RagAgentError(f"rag-agent HTTP {response.status_code}: {response.text[:120]}")
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise RagAgentError("rag-agent returned non-JSON") from exc
+
+
 def answer_via_rag_agent(question: str) -> BlogAgentAnswer:
     """rag-agent 结果 → BlogAgentAnswer 同构；citations 转为展示用 sources。"""
     result = query_rag_agent(question)
