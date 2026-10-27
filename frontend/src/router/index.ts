@@ -64,7 +64,8 @@ const router = createRouter({
     {
       path: "/observability",
       name: "observability",
-      component: ObservabilityView
+      component: ObservabilityView,
+      meta: { requiresOperator: true }
     },
     {
       path: "/security",
@@ -90,6 +91,9 @@ router.beforeEach(async (to) => {
       return { path: "/landing" };
     }
     return { path: "/login", query: { redirect: to.fullPath } };
+  }
+  if (to.meta.requiresOperator && !auth.canViewObservability) {
+    return "/";
   }
   if (to.meta.requiresAdmin && auth.session.role !== "admin") {
     return "/";

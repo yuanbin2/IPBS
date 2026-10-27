@@ -26,7 +26,9 @@ const navItems = computed(() => [
   { path: "/knowledge", label: "知识库", icon: UploadFilled },
   { path: "/chat", label: "对话", icon: ChatDotRound },
   { path: "/mcp-tools", label: "MCP 工具", icon: Tools },
-  { path: "/observability", label: "观测评估", icon: DataAnalysis },
+  ...(auth.canViewObservability
+    ? [{ path: "/observability", label: "观测评估", icon: DataAnalysis }]
+    : []),
   ...(auth.session.role === "admin"
     ? [
         { path: "/admin-approvals", label: "审批", icon: Operation },

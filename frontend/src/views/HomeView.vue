@@ -14,12 +14,14 @@ const stats = ref({
 });
 const statsLoading = ref(true);
 
-const quickLinks = [
+const quickLinks = computed(() => [
   { title: "博客", detail: "撰写和管理技术文章", icon: Files, path: "/blog" },
   { title: "知识库", detail: "上传文档，构建检索索引", icon: UploadFilled, path: "/knowledge" },
   { title: "智能对话", detail: "与多智能体助手交互", icon: ChatDotRound, path: "/chat" },
-  { title: "观测评估", detail: "查看 Agent 运行指标与评估", icon: DataAnalysis, path: "/observability" }
-];
+  ...(auth.canViewObservability
+    ? [{ title: "观测评估", detail: "查看 Agent 运行指标与评估", icon: DataAnalysis, path: "/observability" }]
+    : [])
+]);
 
 const greeting = computed(() => {
   const hour = new Date().getHours();
@@ -43,7 +45,7 @@ onMounted(async () => {
     const [articles, knowledgeBases, observability] = await Promise.allSettled([
       requestJson("/api/agent/blog/articles/"),
       requestJson("/api/agent/knowledge-bases/"),
-      requestJson("/api/agent/observability/")
+      auth.canViewObservability ? requestJson("/api/agent/observability/") : Promise.resolve(null)
     ]);
 
     if (articles.status === "fulfilled") {
@@ -103,12 +105,12 @@ async function requestJson(url: string, options: RequestInit = {}) {
         <span class="metric-label">知识库</span>
         <span class="metric-hint">已创建数</span>
       </div>
-      <div class="metric">
+      <div v-if="auth.canViewObservability" class="metric">
         <span class="metric-value">{{ statsLoading ? "—" : stats.totalAgentRuns }}</span>
         <span class="metric-label">Agent 调用</span>
         <span class="metric-hint">累计运行次数</span>
       </div>
-      <div class="metric">
+      <div v-if="auth.canViewObservability" class="metric">
         <span class="metric-value">
           {{ statsLoading ? "—" : Math.round(stats.averageLatencyMs) }}<small>ms</small>
         </span>

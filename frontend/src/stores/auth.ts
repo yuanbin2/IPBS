@@ -42,6 +42,9 @@ export const useAuthStore = defineStore("auth", {
   }),
   getters: {
     isAuthenticated: (state) => Boolean(state.token) && state.session.authenticated,
+    canViewObservability: (state) =>
+      Boolean(state.token) && state.session.authenticated &&
+      (state.session.role === "admin" || state.session.role === "operator"),
     roleLabel: (state) => {
       const labels = { admin: "管理员", operator: "操作员", visitor: "访客" };
       return labels[state.session.role] ?? state.session.role;
