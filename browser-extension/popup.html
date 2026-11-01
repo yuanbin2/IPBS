@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>剪藏到博客</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main id="app" class="popup">
+      <h1 class="title">剪藏到博客</h1>
+
+      <section class="scope">
+        <p class="label">剪藏范围</p>
+        <div class="scope-row" role="radiogroup" aria-label="剪藏范围">
+          <button type="button" class="scope-btn" data-mode="article" aria-pressed="true">正文</button>
+          <button type="button" class="scope-btn" data-mode="selection" aria-pressed="false">我选中的内容</button>
+          <button type="button" class="scope-btn" data-mode="full" aria-pressed="false">整页预览</button>
+        </div>
+        <p class="hint">只在点击扩展后读取当前标签页；不会在后台采集，也不读取其他标签页。</p>
+      </section>
+
+      <section class="target">
+        <p class="label">保存到</p>
+        <div class="target-row" role="radiogroup" aria-label="保存目标">
+          <button type="button" class="target-btn" data-target="private_note" aria-pressed="true">
+            <strong>我的私有笔记</strong>
+            <small>默认；仅本人可见，不进入公开审核</small>
+          </button>
+          <button type="button" class="target-btn" data-target="article_draft" aria-pressed="false">
+            <strong>博客新文章草稿</strong>
+            <small>需自己提交审核后才会公开</small>
+          </button>
+        </div>
+      </section>
+
+      <section class="actions">
+        <button id="extract-button" type="button" class="primary">读取并预览</button>
+        <a id="manual-save" class="manual" href="#" target="_blank" rel="noopener noreferrer" hidden>到博客手动导入 HTML</a>
+      </section>
+
+      <section class="screenshot">
+        <p class="label">截图模式</p>
+        <div class="scope-row" role="radiogroup" aria-label="截图模式">
+          <button type="button" class="scope-btn shot-btn" data-shot-mode="screen">当前屏</button>
+          <button type="button" class="scope-btn shot-btn" data-shot-mode="region">手动区域</button>
+          <button type="button" class="scope-btn shot-btn" data-shot-mode="longpage">长页范围</button>
+        </div>
+
+        <p class="label">截图去向</p>
+        <div class="scope-row" role="radiogroup" aria-label="截图去向">
+          <button type="button" class="scope-btn save-btn" data-save-target="local" aria-pressed="true">仅保存图片</button>
+          <button type="button" class="scope-btn save-btn" data-save-target="blog" aria-pressed="false">送到博客识别</button>
+        </div>
+        <p class="hint" id="save-mode-hint"></p>
+
+        <div id="origin-row" hidden>
+          <p class="label">博客地址（只从允许列表选择）</p>
+          <select id="shot-origin" aria-label="博客地址"></select>
+        </div>
+        <p class="hint">只处理你已能正常看到且有权保存的内容；不能用它绕过登录、付费墙或复制限制。</p>
+      </section>
+
+      <section id="result" class="result" hidden>
+        <div class="fields">
+          <label class="field">
+            <span>标题</span>
+            <input id="title-input" type="text" maxlength="200" />
+          </label>
+          <label class="field">
+            <span>来源说明（会写入笔记/草稿）</span>
+            <input id="source-input" type="text" maxlength="300" placeholder="例如：某篇博客文章的摘译" />
+          </label>
+          <label class="field">
+            <span>来源链接</span>
+            <input id="url-input" type="text" readonly />
+          </label>
+          <label class="field">
+            <span>站点/作者</span>
+            <input id="site-input" type="text" maxlength="120" />
+          </label>
+          <label class="field">
+            <span>博客地址（只从允许列表选择）</span>
+            <select id="target-origin"></select>
+          </label>
+        </div>
+
+        <p id="stats" class="stats"></p>
+        <div id="warnings" class="warnings"></div>
+
+        <details class="preview">
+          <summary>Markdown 预览（初步抽取，站内仍会再次校验）</summary>
+          <pre id="preview-text" aria-label="Markdown 预览"></pre>
+        </details>
+
+        <div class="actions">
+          <button id="send-button" type="button" class="primary">送到博客</button>
+          <button id="retry-button" type="button" hidden>重试</button>
+        </div>
+      </section>
+
+      <section id="feedback" class="feedback" role="status" aria-live="polite"></section>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

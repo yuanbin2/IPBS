@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>长截图拼接</title>
+  </head>
+  <body>
+    <!-- MV3 offscreen 文档：service worker 没有 DOM/canvas，长图拼接在这里完成。
+         只处理 background 指定的一次“仅保存图片”会话；不访问任何网页内容。 -->
+    <script type="module" src="offscreen-stitch.js"></script>
+  </body>
+</html>

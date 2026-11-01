@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "博客网页剪藏",
+  "version": "0.5.0",
+  "description": "手动剪藏网页正文，或截图后在本站浏览器内本地 OCR，也可仅把长截图保存为图片；不读取登录凭据，不上传截图，也不自动发布。",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "offscreen",
+    "downloads"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "剪藏当前网页",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "externally_connectable": {
+    "matches": [
+      "http://127.0.0.1:8001/*",
+      "http://127.0.0.1:5173/*",
+      "http://127.0.0.1:5174/*"
+    ]
+  }
+}

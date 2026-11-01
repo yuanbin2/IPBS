@@ -1,0 +1,42 @@
+* { box-sizing: border-box; }
+html { width: 640px; }
+body { width: 640px; margin: 0; overflow-x: hidden; font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; }
+.popup { width: 100%; min-width: 0; padding: 18px; display: grid; gap: 12px; }
+.popup > *, .fields, .field, .preview { min-width: 0; }
+.title { margin: 0; font-size: 16px; }
+.label { margin: 0 0 6px; font-size: 12px; color: #63716e; }
+.hint { margin: 6px 0 0; font-size: 12px; color: #8a9793; }
+.scope-row, .target-row { display: flex; gap: 8px; }
+.scope-btn, .target-btn {
+  flex: 1; min-width: 0; padding: 8px; border: 1px solid #dce4e1; background: #fff; border-radius: 9px; cursor: pointer;
+  font-size: 13px; display: grid; gap: 3px; text-align: left;
+}
+.target-btn strong { font-size: 13px; }
+.target-btn small { color: #8a9793; font-size: 11px; line-height: 1.35; }
+.scope-btn[aria-pressed="true"], .target-btn[aria-pressed="true"] { border-color: #1f6f54; background: #eef6f2; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+button {
+  padding: 7px 12px; border: 1px solid #dce4e1; background: #fff; border-radius: 8px; cursor: pointer; font-size: 13px;
+}
+button.primary { background: #1f6f54; border-color: #1f6f54; color: #fff; }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+.manual { margin-left: auto; font-size: 12px; color: #1f6f54; }
+.result { display: grid; gap: 10px; border-top: 1px dashed #dce4e1; padding-top: 10px; }
+.fields { display: grid; gap: 8px; }
+.field { display: grid; gap: 4px; font-size: 12px; color: #4a5854; }
+.field input, .field select {
+  width: 100%; padding: 6px 8px; border: 1px solid #dce4e1; border-radius: 8px; font-size: 13px; font-family: inherit;
+}
+.stats { margin: 0; font-size: 12px; color: #63716e; }
+.warnings { display: grid; gap: 4px; }
+.warning { margin: 0; font-size: 12px; color: #b88230; }
+.preview { border: 1px solid #dce4e1; border-radius: 8px; padding: 8px; }
+.preview summary { cursor: pointer; font-size: 12px; color: #4a5854; }
+.preview pre {
+  margin: 8px 0 0; max-height: 240px; overflow: auto; font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.feedback { font-size: 12px; min-height: 16px; }
+.feedback.error { color: #b25e5e; }
+.feedback.ok { color: #1f6f54; }
+[hidden] { display: none !important; }
