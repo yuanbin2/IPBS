@@ -1,3 +1,5 @@
+> **历史 API/认证说明**：其中浏览器 localStorage JWT、令牌刷新和端点示例已过时。当前 API 认证见 [api.md](api.md)，系统拓扑见 [architecture.md](architecture.md)，开发步骤见 [README.md](README.md)。
+
 # RESTful、异步任务与 JWT 架构说明
 
 ## API 设计

@@ -1,14 +1,12 @@
 # 代码规范手册（Coding Conventions）
 
-> 本文件是系统**代码习惯的单一事实源（SSOT）**。写给三波人看：未来的自己、未来的协作者、AI。
-> 本文档不重复 `design-blueprint.md`（业务/数据/迭代纪律总纲）与 `database-schema-reference.md`（字段级 schema）的内容，只回答一个问题：**代码怎么写**。
-> 三份文档的分工：蓝图定「做什么、数据在哪」，schema 定「字段长什么样」，本手册定「代码长什么样」。
+> **规范草案与迁移历史（始于 2026-09-23）**：后文包含当时的目录快照、迁移计划和测试基线，不是当前代码结构或全量现状的权威说明。开发时以现存源码、`docs/project-structure.md`、`docs/api.md`、`docs/database-current.md` 与缺陷表为准；通用风格建议可参考本文，路径、字段、完成状态必须逐项核对。
 
 ---
 
 ## 0. 这份手册解决什么问题
 
-系统代码主体已按领域分包（`models/` `serializers/` `views/` `services/` `api_urls/`），但存在四类习惯不一致：
+本文创建时，系统代码主体按领域分包（`models/` `serializers/` `views/` `services/` `api_urls/`），当时记录了四类习惯不一致：
 
 1. **依赖方向混乱**：`views/common.py` 用 `from .common import *` 星号导入兜底，`serializers/__init__.py` 同样星号导出——改一个文件不知道会影响谁。
 2. **薄厚不均**：部分 View 把查询过滤、权限判断、序列化全写在 HTTP 方法里（`views/blog.py` 的列表过滤约 40 行），部分又正确下沉到 `services/`。
@@ -381,10 +379,9 @@ class BlogArticlePublishView(APIView):
 
 | 问题 | 查哪份文档 |
 | --- | --- |
-| 这个功能编什么号、归哪个对象空间、迭代流程 | `design-blueprint.md` |
-| 这张表有哪些字段、什么索引、删除策略 | `database-schema-reference.md` |
-| 这个文件该放哪、View 能写几行、错误怎么返回 | **本手册** |
-| 三者冲突时 | 字段以代码为准并立即同步 schema；结构以蓝图为准；代码习惯以本手册为准 |
+| 当前项目入口与文档分类 | `README.md`、`docs/README.md` |
+| 当前目录、接口和数据库 | `project-structure.md`、`api.md`、`database-current.md`，最终以源码/迁移为准 |
+| 本文建议的代码习惯 | **本手册（日期化草案）**；与当前实现冲突时先核验代码，不以本文推断状态 |
 
 ---
 

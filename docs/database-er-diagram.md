@@ -1,3 +1,5 @@
+> **不完整的历史 ER 图**：本文未包含当前全部模型和关系；只用于理解早期核心关系，不代表当前数据库全貌。请以 ORM 模型与 migrations 为准，概览见 [database-current.md](database-current.md)。
+
 # 数据库结构图
 
 下图根据 `backend/apps/agent_api/models/` 的当前模型生成。`workspace_key`

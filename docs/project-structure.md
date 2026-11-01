@@ -1,51 +1,36 @@
-# 项目结构
+# 当前代码目录
 
-本项目参考 AIFriends 的“按业务模块拆分视图和前端请求层”思路，但 API 保持资源式 REST
-设计，不采用 `create/delete/get_single` 等动作式路径。
+以当前目录树为准。根目录 `agent/` 是旧实验代码目录；当前 Django Agent/RAG 实现在 `backend/apps/agent_api/` 与 `backend/agent/`。新开发应优先沿当前路由、服务、模型和测试模块定位，不应按旧日程笔记寻找源码。
 
 ```text
 backend/
-  config/                       Django、ASGI、Celery 配置
-  apps/
-    core/                       健康检查等平台基础能力
-    users/                      用户域
-    agent_api/
-      api_urls/                 按业务域组织的 URL
-        auth.py                 JWT、当前用户、安全审计
-        agent.py                对话、Agent、评估、可观测性
-        knowledge.py            知识库、文档、搜索、任务状态
-        governance.py           审批和 MCP 工具
-        blog.py                 文章、评论、博客 Agent
-      views/                    与 URL 对应的 DRF View 模块
-      serializers/              按业务域组织的 DRF Serializer
-      services/                 RAG、博客发布、博客 Agent 等业务服务
-      tasks.py                  Celery 异步任务
-      models/                   按领域拆分的持久化模型
-
+  config/                         Django 设置、根 URL、ASGI/WSGI、Celery
+  apps/core/                      健康检查与平台基础能力
+  apps/agent_api/
+    api_urls/                     认证、Agent、知识、治理、博客、项目路由
+    views/                        DRF 请求/权限层
+    services/                     博客、RAG、导入、媒体与业务服务
+    models/                       按领域拆分的 ORM 模型
+    migrations/                   数据库 schema 迁移
+    tasks.py                      Celery 任务
 frontend/src/
-  api/client.ts                 JWT 注入、刷新去重和失败重试
-  stores/                       会话与页面状态
-  router/                       页面路由与访问控制
-  views/                        页面级组件
-  components/                   复用 UI
+  api/                            API 客户端
+  features/blog/                  博客、私有笔记、HTML/截图导入功能
+  views/                          页面级组件
+browser-extension/                Manifest V3 剪藏与截图采集扩展
+app-desktop/                      Windows Edge App 模式启动器
+desktop/                          单独的实验性 Electron 项目
+ docs/                            当前说明、计划、验收与历史材料
 ```
 
-## 分层约束
+## 主要入口
 
-- `api_urls` 只声明 URL，不放业务逻辑。
-- `views` 负责参数校验、权限检查、调用领域服务和构造 HTTP 响应。
-- `serializers` 负责模型输出、嵌套关系和 API 数据表示。
-- `tasks` 只承载可重试、耗时的后台工作。
-- `rag.py`、`blog.py` 等领域服务不依赖 HTTP request，可由 API、Celery 或测试复用。
-- 前端页面不自行实现 JWT 刷新，统一经过 `api/client.ts`。
+- Django URL：`backend/config/urls.py` → `/api/agent/` → `backend/apps/agent_api/api_urls/`。
+- 博客路由：`backend/apps/agent_api/api_urls/blog.py`；具体权限和字段由 View、Serializer、测试定义。
+- 数据库：`backend/apps/agent_api/models/` 与 `migrations/`。
+- 前端路由：`frontend/src/router/`；主要页面 `frontend/src/views/`。
+- Vite 脚本和测试：`frontend/package.json`。
+- 本机一键入口：仓库根 `start.bat` / `start.sh`；热更新重启入口：`restart.bat` / `restart.sh`。
+- Compose 服务定义：根 `docker-compose.yml`。
 
-## REST 约定
-
-- 集合：`GET/POST /resources/`
-- 单资源：`GET/PATCH/DELETE /resources/{id}/`
-- 耗时工作：返回 `202 Accepted` 和任务资源地址
-- 认证：`Authorization: Bearer <access-token>`
-- 错误：使用恰当的 4xx/5xx 状态码并返回 `detail`
-
-各领域 View 直接定义在对应模块中，不经过兼容转发层。跨领域复用的序列化、权限与审计辅助函数
-集中在 `views/common.py`；可复用业务逻辑应继续下沉到领域服务，而不是堆积在 View 中。
+此处是代码导航，不是架构承诺。异步、权限、存储和实站验收边界见[架构](architecture.md)、[部署](deployment.md)和[缺陷跟踪表](缺陷跟踪表V2.0.md)。

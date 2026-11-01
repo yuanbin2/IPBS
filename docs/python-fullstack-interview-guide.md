@@ -219,7 +219,7 @@ flowchart LR
 
 ### 10. LangGraph 状态图包含哪些节点？
 
-> query_analyzer、retrieve、grade_documents、rewrite_query、generate、cite_sources。分析节点决定直接回答还是检索；检索节点调用知识库；评分节点判断相关性；低相关最多改写一次；生成节点根据有无来源采用不同提示词；最后保留引用。
+> query_analyzer、retrieve、grade_documents、rewrite_query、generate。分析节点按规则决定直接回答还是检索；检索节点调用知识库；评分节点判断相关性；低相关最多改写一次；生成节点根据有无来源采用不同提示词。检索来源随状态返回，没有独立的引用生成节点；逐条依据性仍需验证。
 
 ### 11. 为什么用 LangGraph，不直接写 if/else？
 

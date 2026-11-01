@@ -1,0 +1,89 @@
+classDiagram
+    class AppController {
+        -ConfigStore config
+        -CredentialStore credentials
+        -AuthClient auth
+        -BlogApiClient api
+        -OverlaySelector overlay
+        -ActionToolbar toolbar
+        -TrayIcon tray
+        +start() None
+        +on_hotkey triggered() None
+        +on_captured(QImage shot) None
+        +on_publish() None
+        +on_save_local() None
+        +on_ocr_handoff() None
+        +fallback_save_local(reason str) None
+    }
+
+    class ConfigStore {
+        +hotkey str
+        +save_dir Path
+        +backend_base str
+        +autostart bool
+        +load() dict
+        +save(patch dict) None
+    }
+
+    class CredentialStore {
+        +save_login(username str, password str) None
+        +load_login() tuple
+        +save_tokens(access str, refresh str) None
+        +load_tokens() tuple
+        -_dpapi_protect(bytes) bytes
+        -_dpapi_unprotect(bytes) bytes
+    }
+
+    class AuthClient {
+        +access_token str|None
+        +login(username str, password str) bool
+        +ensure_token() str
+        -_refresh() bool
+    }
+
+    class BlogApiClient {
+        +upload_public_image(png_bytes bytes, filename str) dict
+        +upload_note_image(png_bytes bytes, filename str) dict
+        -_post_multipart(path str, ...) dict
+    }
+
+    class LocalSaver {
+        +save(shot QImage) Path
+        -_dated_filename() str
+    }
+
+    class HotkeyManager {
+        +register(hotkey str, on_fire callable) bool
+        +unregister() None
+    }
+
+    class OverlaySelector {
+        +run(monitor_shots list~QPixmap~) QImage|None
+    }
+
+    class ActionToolbar {
+        +show_near(rect QRect, actions dict) None
+    }
+
+    class TrayIcon {
+        +show() None
+        +open_settings() None
+        +toggle_autostart() None
+    }
+
+    class HandoffServer {
+        +serve(png_bytes bytes) str
+        +open_blog_with_token(url str) None
+    }
+
+    AppController --> ConfigStore : 读写配置
+    AppController --> CredentialStore : 凭据存取
+    AppController --> AuthClient : 登录/续期
+    AppController --> BlogApiClient : 上传
+    AppController --> LocalSaver : 存本地
+    AppController --> HotkeyManager : 注册热键
+    AppController --> OverlaySelector : 选区
+    AppController --> ActionToolbar : 悬浮条
+    AppController --> TrayIcon : 托盘
+    AppController --> HandoffServer : P1 OCR 交接
+    AuthClient --> CredentialStore : token 落盘

@@ -1,0 +1,7472 @@
+{
+  "schema_version": 1,
+  "annotation_status": "assistant_draft_unreviewed",
+  "embedding": "local_hash",
+  "indexing_ms": 4.568,
+  "query_embedding_latency_note": "Measured once per unique query and added to each applicable arm; not a live end-to-end request latency.",
+  "weights": {
+    "vector": 0.72,
+    "keyword": 0.28,
+    "rerank": 0.4
+  },
+  "summary": {
+    "tune": {
+      "keyword": {
+        "cases": 24,
+        "answerable": 22,
+        "recall_at_5": 1.0,
+        "recall_hits": 22,
+        "mrr_at_10": 0.9773,
+        "no_answer_with_candidates": 2,
+        "no_answer_cases": 2,
+        "p50_ms": 1.114,
+        "p95_ms": 2.834,
+        "misses": []
+      },
+      "vector": {
+        "cases": 24,
+        "answerable": 22,
+        "recall_at_5": 1.0,
+        "recall_hits": 22,
+        "mrr_at_10": 0.9545,
+        "no_answer_with_candidates": 2,
+        "no_answer_cases": 2,
+        "p50_ms": 1.969,
+        "p95_ms": 2.601,
+        "misses": []
+      },
+      "hybrid": {
+        "cases": 24,
+        "answerable": 22,
+        "recall_at_5": 1.0,
+        "recall_hits": 22,
+        "mrr_at_10": 0.9545,
+        "no_answer_with_candidates": 2,
+        "no_answer_cases": 2,
+        "p50_ms": 3.279,
+        "p95_ms": 4.135,
+        "misses": []
+      },
+      "hybrid_rewrite": {
+        "cases": 24,
+        "answerable": 22,
+        "recall_at_5": 1.0,
+        "recall_hits": 22,
+        "mrr_at_10": 0.9545,
+        "no_answer_with_candidates": 2,
+        "no_answer_cases": 2,
+        "p50_ms": 3.383,
+        "p95_ms": 4.917,
+        "misses": []
+      },
+      "hybrid_rewrite_rerank": {
+        "cases": 24,
+        "answerable": 22,
+        "recall_at_5": 1.0,
+        "recall_hits": 22,
+        "mrr_at_10": 0.9545,
+        "no_answer_with_candidates": 2,
+        "no_answer_cases": 2,
+        "p50_ms": 3.729,
+        "p95_ms": 4.695,
+        "misses": []
+      },
+      "hybrid_rewrite_rerank_0_2": {
+        "cases": 24,
+        "answerable": 22,
+        "recall_at_5": 1.0,
+        "recall_hits": 22,
+        "mrr_at_10": 0.9545,
+        "no_answer_with_candidates": 2,
+        "no_answer_cases": 2,
+        "p50_ms": 3.664,
+        "p95_ms": 4.589,
+        "misses": []
+      },
+      "hybrid_rewrite_rerank_0_6": {
+        "cases": 24,
+        "answerable": 22,
+        "recall_at_5": 1.0,
+        "recall_hits": 22,
+        "mrr_at_10": 0.9545,
+        "no_answer_with_candidates": 2,
+        "no_answer_cases": 2,
+        "p50_ms": 3.532,
+        "p95_ms": 4.955,
+        "misses": []
+      }
+    },
+    "validation": {
+      "keyword": {
+        "cases": 14,
+        "answerable": 10,
+        "recall_at_5": 1.0,
+        "recall_hits": 10,
+        "mrr_at_10": 0.9,
+        "no_answer_with_candidates": 4,
+        "no_answer_cases": 4,
+        "p50_ms": 1.141,
+        "p95_ms": 1.77,
+        "misses": []
+      },
+      "vector": {
+        "cases": 14,
+        "answerable": 10,
+        "recall_at_5": 0.7,
+        "recall_hits": 7,
+        "mrr_at_10": 0.6625,
+        "no_answer_with_candidates": 4,
+        "no_answer_cases": 4,
+        "p50_ms": 1.936,
+        "p95_ms": 3.24,
+        "misses": [
+          "q25",
+          "q28",
+          "q29"
+        ]
+      },
+      "hybrid": {
+        "cases": 14,
+        "answerable": 10,
+        "recall_at_5": 0.8,
+        "recall_hits": 8,
+        "mrr_at_10": 0.6893,
+        "no_answer_with_candidates": 4,
+        "no_answer_cases": 4,
+        "p50_ms": 3.171,
+        "p95_ms": 4.969,
+        "misses": [
+          "q28",
+          "q29"
+        ]
+      },
+      "hybrid_rewrite": {
+        "cases": 14,
+        "answerable": 10,
+        "recall_at_5": 0.9,
+        "recall_hits": 9,
+        "mrr_at_10": 0.8143,
+        "no_answer_with_candidates": 4,
+        "no_answer_cases": 4,
+        "p50_ms": 3.45,
+        "p95_ms": 5.906,
+        "misses": [
+          "q29"
+        ]
+      },
+      "hybrid_rewrite_rerank": {
+        "cases": 14,
+        "answerable": 10,
+        "recall_at_5": 0.9,
+        "recall_hits": 9,
+        "mrr_at_10": 0.8143,
+        "no_answer_with_candidates": 4,
+        "no_answer_cases": 4,
+        "p50_ms": 4.31,
+        "p95_ms": 4.977,
+        "misses": [
+          "q29"
+        ]
+      },
+      "hybrid_rewrite_rerank_0_2": {
+        "cases": 14,
+        "answerable": 10,
+        "recall_at_5": 0.9,
+        "recall_hits": 9,
+        "mrr_at_10": 0.8143,
+        "no_answer_with_candidates": 4,
+        "no_answer_cases": 4,
+        "p50_ms": 3.84,
+        "p95_ms": 5.124,
+        "misses": [
+          "q29"
+        ]
+      },
+      "hybrid_rewrite_rerank_0_6": {
+        "cases": 14,
+        "answerable": 10,
+        "recall_at_5": 0.9,
+        "recall_hits": 9,
+        "mrr_at_10": 0.8167,
+        "no_answer_with_candidates": 4,
+        "no_answer_cases": 4,
+        "p50_ms": 4.554,
+        "p95_ms": 6.134,
+        "misses": [
+          "q29"
+        ]
+      }
+    }
+  },
+  "answer_evidence": {
+    "groundedness": null,
+    "groundedness_reviewed_cases": 0,
+    "full_request_cost": null,
+    "cost_covered_cases": 0,
+    "cost_complete": false,
+    "currency": null,
+    "price_version": null,
+    "reason": "answer_generation_not_run",
+    "cost_scope": "configured_model_api_prices_only; infrastructure excluded"
+  },
+  "rows": [
+    {
+      "id": "q01",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "keyword",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c02",
+        "c03"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c03"
+      ],
+      "latency_ms": 2.394,
+      "query": "李若岚毕业于哪所大学？ Ruolan Li Li Ruolan university affiliation institution"
+    },
+    {
+      "id": "q01",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "vector",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c03",
+        "c02"
+      ],
+      "top10": [
+        "c01",
+        "c03",
+        "c02"
+      ],
+      "latency_ms": 1.901,
+      "query": "李若岚毕业于哪所大学？ Ruolan Li Li Ruolan university affiliation institution"
+    },
+    {
+      "id": "q01",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c02",
+        "c03",
+        "c25",
+        "c22"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c03",
+        "c25",
+        "c22",
+        "c13",
+        "c14",
+        "c27",
+        "c06"
+      ],
+      "latency_ms": 3.259,
+      "query": "李若岚毕业于哪所大学？ Ruolan Li Li Ruolan university affiliation institution"
+    },
+    {
+      "id": "q01",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c02",
+        "c03",
+        "c25",
+        "c22"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c03",
+        "c25",
+        "c22",
+        "c13",
+        "c14",
+        "c27",
+        "c06"
+      ],
+      "latency_ms": 3.177,
+      "query": "李若岚毕业于哪所大学？ Ruolan Li Li Ruolan university affiliation institution"
+    },
+    {
+      "id": "q01",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c02",
+        "c03",
+        "c25",
+        "c22"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c03",
+        "c25",
+        "c22",
+        "c13",
+        "c14",
+        "c27",
+        "c06"
+      ],
+      "latency_ms": 3.892,
+      "query": "李若岚毕业于哪所大学？ Ruolan Li Li Ruolan university affiliation institution"
+    },
+    {
+      "id": "q01",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c02",
+        "c03",
+        "c25",
+        "c22"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c03",
+        "c25",
+        "c22",
+        "c13",
+        "c14",
+        "c27",
+        "c06"
+      ],
+      "latency_ms": 3.838,
+      "query": "李若岚毕业于哪所大学？ Ruolan Li Li Ruolan university affiliation institution"
+    },
+    {
+      "id": "q01",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c02",
+        "c03",
+        "c25",
+        "c22"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c03",
+        "c25",
+        "c22",
+        "c13",
+        "c14",
+        "c27",
+        "c06"
+      ],
+      "latency_ms": 3.507,
+      "query": "李若岚毕业于哪所大学？ Ruolan Li Li Ruolan university affiliation institution"
+    },
+    {
+      "id": "q02",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "keyword",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c02",
+        "c12",
+        "c14"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c12",
+        "c14"
+      ],
+      "latency_ms": 0.882,
+      "query": "李若岚研究什么方向？"
+    },
+    {
+      "id": "q02",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "vector",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c06",
+        "c02",
+        "c09",
+        "c22"
+      ],
+      "top10": [
+        "c01",
+        "c06",
+        "c02",
+        "c09",
+        "c22",
+        "c03",
+        "c27",
+        "c05",
+        "c18"
+      ],
+      "latency_ms": 1.859,
+      "query": "李若岚研究什么方向？"
+    },
+    {
+      "id": "q02",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c02",
+        "c06",
+        "c09",
+        "c22"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c06",
+        "c09",
+        "c22",
+        "c03",
+        "c27",
+        "c05",
+        "c18",
+        "c12"
+      ],
+      "latency_ms": 2.722,
+      "query": "李若岚研究什么方向？"
+    },
+    {
+      "id": "q02",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c02",
+        "c06",
+        "c09",
+        "c22"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c06",
+        "c09",
+        "c22",
+        "c03",
+        "c27",
+        "c05",
+        "c18",
+        "c12"
+      ],
+      "latency_ms": 2.863,
+      "query": "李若岚研究什么方向？"
+    },
+    {
+      "id": "q02",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c02",
+        "c06",
+        "c09",
+        "c22"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c06",
+        "c09",
+        "c22",
+        "c03",
+        "c27",
+        "c05",
+        "c18",
+        "c12"
+      ],
+      "latency_ms": 3.36,
+      "query": "李若岚研究什么方向？"
+    },
+    {
+      "id": "q02",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c02",
+        "c06",
+        "c09",
+        "c22"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c06",
+        "c09",
+        "c22",
+        "c03",
+        "c27",
+        "c05",
+        "c18",
+        "c12"
+      ],
+      "latency_ms": 3.128,
+      "query": "李若岚研究什么方向？"
+    },
+    {
+      "id": "q02",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c01"
+      ],
+      "top5": [
+        "c01",
+        "c02",
+        "c06",
+        "c09",
+        "c22"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c06",
+        "c09",
+        "c22",
+        "c03",
+        "c27",
+        "c05",
+        "c18",
+        "c12"
+      ],
+      "latency_ms": 3.051,
+      "query": "李若岚研究什么方向？"
+    },
+    {
+      "id": "q03",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "keyword",
+      "gold": [
+        "c02"
+      ],
+      "top5": [
+        "c02",
+        "c01",
+        "c09",
+        "c10",
+        "c11"
+      ],
+      "top10": [
+        "c02",
+        "c01",
+        "c09",
+        "c10",
+        "c11",
+        "c13",
+        "c04",
+        "c12"
+      ],
+      "latency_ms": 1.038,
+      "query": "李若岚在青禾实验室负责什么？"
+    },
+    {
+      "id": "q03",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "vector",
+      "gold": [
+        "c02"
+      ],
+      "top5": [
+        "c02",
+        "c01",
+        "c06",
+        "c13",
+        "c21"
+      ],
+      "top10": [
+        "c02",
+        "c01",
+        "c06",
+        "c13",
+        "c21",
+        "c27",
+        "c26",
+        "c09",
+        "c22",
+        "c16"
+      ],
+      "latency_ms": 1.976,
+      "query": "李若岚在青禾实验室负责什么？"
+    },
+    {
+      "id": "q03",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid",
+      "gold": [
+        "c02"
+      ],
+      "top5": [
+        "c02",
+        "c01",
+        "c13",
+        "c06",
+        "c21"
+      ],
+      "top10": [
+        "c02",
+        "c01",
+        "c13",
+        "c06",
+        "c21",
+        "c27",
+        "c26",
+        "c09",
+        "c10",
+        "c11"
+      ],
+      "latency_ms": 4.15,
+      "query": "李若岚在青禾实验室负责什么？"
+    },
+    {
+      "id": "q03",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c02"
+      ],
+      "top5": [
+        "c02",
+        "c01",
+        "c13",
+        "c06",
+        "c21"
+      ],
+      "top10": [
+        "c02",
+        "c01",
+        "c13",
+        "c06",
+        "c21",
+        "c27",
+        "c26",
+        "c09",
+        "c10",
+        "c11"
+      ],
+      "latency_ms": 3.55,
+      "query": "李若岚在青禾实验室负责什么？"
+    },
+    {
+      "id": "q03",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c02"
+      ],
+      "top5": [
+        "c02",
+        "c01",
+        "c13",
+        "c06",
+        "c21"
+      ],
+      "top10": [
+        "c02",
+        "c01",
+        "c13",
+        "c06",
+        "c21",
+        "c27",
+        "c26",
+        "c09",
+        "c10",
+        "c11"
+      ],
+      "latency_ms": 3.737,
+      "query": "李若岚在青禾实验室负责什么？"
+    },
+    {
+      "id": "q03",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c02"
+      ],
+      "top5": [
+        "c02",
+        "c01",
+        "c13",
+        "c06",
+        "c21"
+      ],
+      "top10": [
+        "c02",
+        "c01",
+        "c13",
+        "c06",
+        "c21",
+        "c27",
+        "c26",
+        "c09",
+        "c10",
+        "c11"
+      ],
+      "latency_ms": 3.531,
+      "query": "李若岚在青禾实验室负责什么？"
+    },
+    {
+      "id": "q03",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c02"
+      ],
+      "top5": [
+        "c02",
+        "c01",
+        "c13",
+        "c06",
+        "c21"
+      ],
+      "top10": [
+        "c02",
+        "c01",
+        "c13",
+        "c06",
+        "c21",
+        "c27",
+        "c09",
+        "c26",
+        "c10",
+        "c11"
+      ],
+      "latency_ms": 3.354,
+      "query": "李若岚在青禾实验室负责什么？"
+    },
+    {
+      "id": "q04",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "keyword",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04"
+      ],
+      "top10": [
+        "c03",
+        "c04"
+      ],
+      "latency_ms": 1.453,
+      "query": "周明远的硕士专业是什么？ Shizhuanye Shuo Shuo Shizhuanye"
+    },
+    {
+      "id": "q04",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "vector",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c10",
+        "c11",
+        "c09",
+        "c14"
+      ],
+      "top10": [
+        "c03",
+        "c10",
+        "c11",
+        "c09",
+        "c14",
+        "c04",
+        "c08",
+        "c06",
+        "c26",
+        "c01"
+      ],
+      "latency_ms": 1.956,
+      "query": "周明远的硕士专业是什么？ Shizhuanye Shuo Shuo Shizhuanye"
+    },
+    {
+      "id": "q04",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c10",
+        "c11",
+        "c09",
+        "c14",
+        "c08",
+        "c06",
+        "c26",
+        "c01"
+      ],
+      "latency_ms": 3.351,
+      "query": "周明远的硕士专业是什么？ Shizhuanye Shuo Shuo Shizhuanye"
+    },
+    {
+      "id": "q04",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c10",
+        "c11",
+        "c09",
+        "c14",
+        "c08",
+        "c06",
+        "c26",
+        "c01"
+      ],
+      "latency_ms": 3.187,
+      "query": "周明远的硕士专业是什么？ Shizhuanye Shuo Shuo Shizhuanye"
+    },
+    {
+      "id": "q04",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c10",
+        "c11",
+        "c09",
+        "c14",
+        "c08",
+        "c06",
+        "c26",
+        "c01"
+      ],
+      "latency_ms": 3.335,
+      "query": "周明远的硕士专业是什么？ Shizhuanye Shuo Shuo Shizhuanye"
+    },
+    {
+      "id": "q04",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c10",
+        "c11",
+        "c09",
+        "c14",
+        "c08",
+        "c06",
+        "c26",
+        "c01"
+      ],
+      "latency_ms": 3.847,
+      "query": "周明远的硕士专业是什么？ Shizhuanye Shuo Shuo Shizhuanye"
+    },
+    {
+      "id": "q04",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c10",
+        "c11",
+        "c09",
+        "c14",
+        "c08",
+        "c06",
+        "c26",
+        "c01"
+      ],
+      "latency_ms": 3.372,
+      "query": "周明远的硕士专业是什么？ Shizhuanye Shuo Shuo Shizhuanye"
+    },
+    {
+      "id": "q05",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "keyword",
+      "gold": [
+        "c04"
+      ],
+      "top5": [
+        "c04",
+        "c03",
+        "c02"
+      ],
+      "top10": [
+        "c04",
+        "c03",
+        "c02"
+      ],
+      "latency_ms": 0.887,
+      "query": "周明远负责哪个系统？"
+    },
+    {
+      "id": "q05",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "vector",
+      "gold": [
+        "c04"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c01",
+        "c02",
+        "c27"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c01",
+        "c02",
+        "c27",
+        "c17",
+        "c05",
+        "c06",
+        "c25",
+        "c20"
+      ],
+      "latency_ms": 1.932,
+      "query": "周明远负责哪个系统？"
+    },
+    {
+      "id": "q05",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid",
+      "gold": [
+        "c04"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c02",
+        "c01",
+        "c27"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c02",
+        "c01",
+        "c27",
+        "c17",
+        "c05",
+        "c06",
+        "c25",
+        "c20"
+      ],
+      "latency_ms": 2.966,
+      "query": "周明远负责哪个系统？"
+    },
+    {
+      "id": "q05",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c04"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c02",
+        "c01",
+        "c27"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c02",
+        "c01",
+        "c27",
+        "c17",
+        "c05",
+        "c06",
+        "c25",
+        "c20"
+      ],
+      "latency_ms": 2.736,
+      "query": "周明远负责哪个系统？"
+    },
+    {
+      "id": "q05",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c04"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c02",
+        "c01",
+        "c27"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c02",
+        "c01",
+        "c27",
+        "c17",
+        "c05",
+        "c06",
+        "c25",
+        "c20"
+      ],
+      "latency_ms": 3.098,
+      "query": "周明远负责哪个系统？"
+    },
+    {
+      "id": "q05",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c04"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c02",
+        "c01",
+        "c27"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c02",
+        "c01",
+        "c27",
+        "c17",
+        "c05",
+        "c06",
+        "c25",
+        "c20"
+      ],
+      "latency_ms": 3.096,
+      "query": "周明远负责哪个系统？"
+    },
+    {
+      "id": "q05",
+      "split": "tune",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c04"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c02",
+        "c01",
+        "c27"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c02",
+        "c01",
+        "c27",
+        "c17",
+        "c05",
+        "c06",
+        "c25",
+        "c20"
+      ],
+      "latency_ms": 3.216,
+      "query": "周明远负责哪个系统？"
+    },
+    {
+      "id": "q06",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c05"
+      ],
+      "top5": [
+        "c05",
+        "c06",
+        "c07",
+        "c08"
+      ],
+      "top10": [
+        "c05",
+        "c06",
+        "c07",
+        "c08"
+      ],
+      "latency_ms": 1.129,
+      "query": "海棠项目的访问令牌有效期多久？"
+    },
+    {
+      "id": "q06",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c05"
+      ],
+      "top5": [
+        "c05",
+        "c18",
+        "c27",
+        "c06",
+        "c23"
+      ],
+      "top10": [
+        "c05",
+        "c18",
+        "c27",
+        "c06",
+        "c23",
+        "c24",
+        "c22",
+        "c15",
+        "c16",
+        "c07"
+      ],
+      "latency_ms": 1.968,
+      "query": "海棠项目的访问令牌有效期多久？"
+    },
+    {
+      "id": "q06",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c05"
+      ],
+      "top5": [
+        "c05",
+        "c06",
+        "c18",
+        "c27",
+        "c07"
+      ],
+      "top10": [
+        "c05",
+        "c06",
+        "c18",
+        "c27",
+        "c07",
+        "c23",
+        "c24",
+        "c22",
+        "c15",
+        "c16"
+      ],
+      "latency_ms": 3.186,
+      "query": "海棠项目的访问令牌有效期多久？"
+    },
+    {
+      "id": "q06",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c05"
+      ],
+      "top5": [
+        "c05",
+        "c06",
+        "c18",
+        "c27",
+        "c07"
+      ],
+      "top10": [
+        "c05",
+        "c06",
+        "c18",
+        "c27",
+        "c07",
+        "c23",
+        "c24",
+        "c22",
+        "c15",
+        "c16"
+      ],
+      "latency_ms": 4.795,
+      "query": "海棠项目的访问令牌有效期多久？"
+    },
+    {
+      "id": "q06",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c05"
+      ],
+      "top5": [
+        "c05",
+        "c06",
+        "c18",
+        "c07",
+        "c27"
+      ],
+      "top10": [
+        "c05",
+        "c06",
+        "c18",
+        "c07",
+        "c27",
+        "c23",
+        "c24",
+        "c22",
+        "c15",
+        "c16"
+      ],
+      "latency_ms": 4.211,
+      "query": "海棠项目的访问令牌有效期多久？"
+    },
+    {
+      "id": "q06",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c05"
+      ],
+      "top5": [
+        "c05",
+        "c06",
+        "c18",
+        "c27",
+        "c07"
+      ],
+      "top10": [
+        "c05",
+        "c06",
+        "c18",
+        "c27",
+        "c07",
+        "c23",
+        "c24",
+        "c22",
+        "c15",
+        "c16"
+      ],
+      "latency_ms": 4.233,
+      "query": "海棠项目的访问令牌有效期多久？"
+    },
+    {
+      "id": "q06",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c05"
+      ],
+      "top5": [
+        "c05",
+        "c06",
+        "c07",
+        "c18",
+        "c27"
+      ],
+      "top10": [
+        "c05",
+        "c06",
+        "c07",
+        "c18",
+        "c27",
+        "c23",
+        "c24",
+        "c22",
+        "c15",
+        "c16"
+      ],
+      "latency_ms": 3.556,
+      "query": "海棠项目的访问令牌有效期多久？"
+    },
+    {
+      "id": "q07",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c06"
+      ],
+      "top5": [
+        "c06",
+        "c05",
+        "c07",
+        "c08",
+        "c21"
+      ],
+      "top10": [
+        "c06",
+        "c05",
+        "c07",
+        "c08",
+        "c21",
+        "c22",
+        "c23",
+        "c24",
+        "c27"
+      ],
+      "latency_ms": 1.373,
+      "query": "海棠项目上传原文件存放在哪里？ Jiancunfang Wen Wen Jiancunfang"
+    },
+    {
+      "id": "q07",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c06"
+      ],
+      "top5": [
+        "c06",
+        "c05",
+        "c18",
+        "c19",
+        "c07"
+      ],
+      "top10": [
+        "c06",
+        "c05",
+        "c18",
+        "c19",
+        "c07",
+        "c08",
+        "c01",
+        "c02",
+        "c16",
+        "c03"
+      ],
+      "latency_ms": 2.215,
+      "query": "海棠项目上传原文件存放在哪里？ Jiancunfang Wen Wen Jiancunfang"
+    },
+    {
+      "id": "q07",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c06"
+      ],
+      "top5": [
+        "c06",
+        "c05",
+        "c18",
+        "c19",
+        "c07"
+      ],
+      "top10": [
+        "c06",
+        "c05",
+        "c18",
+        "c19",
+        "c07",
+        "c08",
+        "c01",
+        "c02",
+        "c27",
+        "c16"
+      ],
+      "latency_ms": 3.333,
+      "query": "海棠项目上传原文件存放在哪里？ Jiancunfang Wen Wen Jiancunfang"
+    },
+    {
+      "id": "q07",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c06"
+      ],
+      "top5": [
+        "c06",
+        "c05",
+        "c18",
+        "c19",
+        "c07"
+      ],
+      "top10": [
+        "c06",
+        "c05",
+        "c18",
+        "c19",
+        "c07",
+        "c08",
+        "c01",
+        "c02",
+        "c27",
+        "c16"
+      ],
+      "latency_ms": 3.647,
+      "query": "海棠项目上传原文件存放在哪里？ Jiancunfang Wen Wen Jiancunfang"
+    },
+    {
+      "id": "q07",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c06"
+      ],
+      "top5": [
+        "c06",
+        "c05",
+        "c07",
+        "c08",
+        "c18"
+      ],
+      "top10": [
+        "c06",
+        "c05",
+        "c07",
+        "c08",
+        "c18",
+        "c19",
+        "c01",
+        "c02",
+        "c27",
+        "c16"
+      ],
+      "latency_ms": 3.603,
+      "query": "海棠项目上传原文件存放在哪里？ Jiancunfang Wen Wen Jiancunfang"
+    },
+    {
+      "id": "q07",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c06"
+      ],
+      "top5": [
+        "c06",
+        "c05",
+        "c18",
+        "c07",
+        "c19"
+      ],
+      "top10": [
+        "c06",
+        "c05",
+        "c18",
+        "c07",
+        "c19",
+        "c08",
+        "c01",
+        "c02",
+        "c27",
+        "c16"
+      ],
+      "latency_ms": 3.672,
+      "query": "海棠项目上传原文件存放在哪里？ Jiancunfang Wen Wen Jiancunfang"
+    },
+    {
+      "id": "q07",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c06"
+      ],
+      "top5": [
+        "c06",
+        "c05",
+        "c07",
+        "c08",
+        "c18"
+      ],
+      "top10": [
+        "c06",
+        "c05",
+        "c07",
+        "c08",
+        "c18",
+        "c19",
+        "c01",
+        "c02",
+        "c27",
+        "c16"
+      ],
+      "latency_ms": 4.089,
+      "query": "海棠项目上传原文件存放在哪里？ Jiancunfang Wen Wen Jiancunfang"
+    },
+    {
+      "id": "q08",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c07"
+      ],
+      "top5": [
+        "c07",
+        "c08",
+        "c05",
+        "c06",
+        "c04"
+      ],
+      "top10": [
+        "c07",
+        "c08",
+        "c05",
+        "c06",
+        "c04"
+      ],
+      "latency_ms": 1.018,
+      "query": "星河项目按哪三层校验访问？"
+    },
+    {
+      "id": "q08",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c07"
+      ],
+      "top5": [
+        "c07",
+        "c02",
+        "c05",
+        "c08",
+        "c06"
+      ],
+      "top10": [
+        "c07",
+        "c02",
+        "c05",
+        "c08",
+        "c06",
+        "c15",
+        "c16",
+        "c20"
+      ],
+      "latency_ms": 2.023,
+      "query": "星河项目按哪三层校验访问？"
+    },
+    {
+      "id": "q08",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c07"
+      ],
+      "top5": [
+        "c07",
+        "c08",
+        "c05",
+        "c02",
+        "c06"
+      ],
+      "top10": [
+        "c07",
+        "c08",
+        "c05",
+        "c02",
+        "c06",
+        "c15",
+        "c16",
+        "c20",
+        "c04"
+      ],
+      "latency_ms": 3.017,
+      "query": "星河项目按哪三层校验访问？"
+    },
+    {
+      "id": "q08",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c07"
+      ],
+      "top5": [
+        "c07",
+        "c08",
+        "c05",
+        "c02",
+        "c06"
+      ],
+      "top10": [
+        "c07",
+        "c08",
+        "c05",
+        "c02",
+        "c06",
+        "c15",
+        "c16",
+        "c20",
+        "c04"
+      ],
+      "latency_ms": 3.075,
+      "query": "星河项目按哪三层校验访问？"
+    },
+    {
+      "id": "q08",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c07"
+      ],
+      "top5": [
+        "c07",
+        "c08",
+        "c05",
+        "c02",
+        "c06"
+      ],
+      "top10": [
+        "c07",
+        "c08",
+        "c05",
+        "c02",
+        "c06",
+        "c15",
+        "c16",
+        "c20",
+        "c04"
+      ],
+      "latency_ms": 3.152,
+      "query": "星河项目按哪三层校验访问？"
+    },
+    {
+      "id": "q08",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c07"
+      ],
+      "top5": [
+        "c07",
+        "c08",
+        "c05",
+        "c02",
+        "c06"
+      ],
+      "top10": [
+        "c07",
+        "c08",
+        "c05",
+        "c02",
+        "c06",
+        "c15",
+        "c16",
+        "c20",
+        "c04"
+      ],
+      "latency_ms": 3.382,
+      "query": "星河项目按哪三层校验访问？"
+    },
+    {
+      "id": "q08",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c07"
+      ],
+      "top5": [
+        "c07",
+        "c08",
+        "c05",
+        "c02",
+        "c06"
+      ],
+      "top10": [
+        "c07",
+        "c08",
+        "c05",
+        "c02",
+        "c06",
+        "c15",
+        "c16",
+        "c04",
+        "c20"
+      ],
+      "latency_ms": 3.411,
+      "query": "星河项目按哪三层校验访问？"
+    },
+    {
+      "id": "q09",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c08",
+        "c07",
+        "c16",
+        "c05",
+        "c06"
+      ],
+      "top10": [
+        "c08",
+        "c07",
+        "c16",
+        "c05",
+        "c06",
+        "c25",
+        "c26",
+        "c01",
+        "c04",
+        "c23"
+      ],
+      "latency_ms": 1.099,
+      "query": "星河项目50并发检索P95是多少？"
+    },
+    {
+      "id": "q09",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c08",
+        "c07",
+        "c16",
+        "c25",
+        "c26"
+      ],
+      "top10": [
+        "c08",
+        "c07",
+        "c16",
+        "c25",
+        "c26",
+        "c04",
+        "c01",
+        "c17",
+        "c09",
+        "c28"
+      ],
+      "latency_ms": 1.884,
+      "query": "星河项目50并发检索P95是多少？"
+    },
+    {
+      "id": "q09",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c08",
+        "c07",
+        "c16",
+        "c25",
+        "c26"
+      ],
+      "top10": [
+        "c08",
+        "c07",
+        "c16",
+        "c25",
+        "c26",
+        "c04",
+        "c01",
+        "c17",
+        "c09",
+        "c28"
+      ],
+      "latency_ms": 2.847,
+      "query": "星河项目50并发检索P95是多少？"
+    },
+    {
+      "id": "q09",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c08",
+        "c07",
+        "c16",
+        "c25",
+        "c26"
+      ],
+      "top10": [
+        "c08",
+        "c07",
+        "c16",
+        "c25",
+        "c26",
+        "c04",
+        "c01",
+        "c17",
+        "c09",
+        "c28"
+      ],
+      "latency_ms": 2.816,
+      "query": "星河项目50并发检索P95是多少？"
+    },
+    {
+      "id": "q09",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c08",
+        "c07",
+        "c16",
+        "c25",
+        "c26"
+      ],
+      "top10": [
+        "c08",
+        "c07",
+        "c16",
+        "c25",
+        "c26",
+        "c04",
+        "c01",
+        "c17",
+        "c09",
+        "c28"
+      ],
+      "latency_ms": 3.79,
+      "query": "星河项目50并发检索P95是多少？"
+    },
+    {
+      "id": "q09",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c08",
+        "c07",
+        "c16",
+        "c25",
+        "c26"
+      ],
+      "top10": [
+        "c08",
+        "c07",
+        "c16",
+        "c25",
+        "c26",
+        "c04",
+        "c01",
+        "c17",
+        "c09",
+        "c28"
+      ],
+      "latency_ms": 3.501,
+      "query": "星河项目50并发检索P95是多少？"
+    },
+    {
+      "id": "q09",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c08",
+        "c07",
+        "c16",
+        "c25",
+        "c26"
+      ],
+      "top10": [
+        "c08",
+        "c07",
+        "c16",
+        "c25",
+        "c26",
+        "c04",
+        "c01",
+        "c17",
+        "c09",
+        "c05"
+      ],
+      "latency_ms": 4.293,
+      "query": "星河项目50并发检索P95是多少？"
+    },
+    {
+      "id": "q10",
+      "split": "tune",
+      "slice": "version",
+      "variant": "keyword",
+      "gold": [
+        "c09"
+      ],
+      "top5": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "top10": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "latency_ms": 1.032,
+      "query": "青禾产品2025版支持增量同步吗？"
+    },
+    {
+      "id": "q10",
+      "split": "tune",
+      "slice": "version",
+      "variant": "vector",
+      "gold": [
+        "c09"
+      ],
+      "top5": [
+        "c09",
+        "c10",
+        "c11",
+        "c15",
+        "c04"
+      ],
+      "top10": [
+        "c09",
+        "c10",
+        "c11",
+        "c15",
+        "c04",
+        "c08",
+        "c21",
+        "c02",
+        "c17",
+        "c19"
+      ],
+      "latency_ms": 1.87,
+      "query": "青禾产品2025版支持增量同步吗？"
+    },
+    {
+      "id": "q10",
+      "split": "tune",
+      "slice": "version",
+      "variant": "hybrid",
+      "gold": [
+        "c09"
+      ],
+      "top5": [
+        "c09",
+        "c10",
+        "c11",
+        "c15",
+        "c02"
+      ],
+      "top10": [
+        "c09",
+        "c10",
+        "c11",
+        "c15",
+        "c02",
+        "c04",
+        "c08",
+        "c21",
+        "c17",
+        "c19"
+      ],
+      "latency_ms": 3.043,
+      "query": "青禾产品2025版支持增量同步吗？"
+    },
+    {
+      "id": "q10",
+      "split": "tune",
+      "slice": "version",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c09"
+      ],
+      "top5": [
+        "c09",
+        "c10",
+        "c11",
+        "c15",
+        "c02"
+      ],
+      "top10": [
+        "c09",
+        "c10",
+        "c11",
+        "c15",
+        "c02",
+        "c04",
+        "c08",
+        "c21",
+        "c17",
+        "c19"
+      ],
+      "latency_ms": 3.028,
+      "query": "青禾产品2025版支持增量同步吗？"
+    },
+    {
+      "id": "q10",
+      "split": "tune",
+      "slice": "version",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c09"
+      ],
+      "top5": [
+        "c09",
+        "c10",
+        "c11",
+        "c15",
+        "c02"
+      ],
+      "top10": [
+        "c09",
+        "c10",
+        "c11",
+        "c15",
+        "c02",
+        "c04",
+        "c08",
+        "c21",
+        "c17",
+        "c22"
+      ],
+      "latency_ms": 4.616,
+      "query": "青禾产品2025版支持增量同步吗？"
+    },
+    {
+      "id": "q10",
+      "split": "tune",
+      "slice": "version",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c09"
+      ],
+      "top5": [
+        "c09",
+        "c10",
+        "c11",
+        "c15",
+        "c02"
+      ],
+      "top10": [
+        "c09",
+        "c10",
+        "c11",
+        "c15",
+        "c02",
+        "c04",
+        "c08",
+        "c21",
+        "c17",
+        "c19"
+      ],
+      "latency_ms": 3.506,
+      "query": "青禾产品2025版支持增量同步吗？"
+    },
+    {
+      "id": "q10",
+      "split": "tune",
+      "slice": "version",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c09"
+      ],
+      "top5": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "top10": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "latency_ms": 3.399,
+      "query": "青禾产品2025版支持增量同步吗？"
+    },
+    {
+      "id": "q11",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "keyword",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "latency_ms": 1.089,
+      "query": "青禾产品2026版冲突如何处理？"
+    },
+    {
+      "id": "q11",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "vector",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "latency_ms": 2.139,
+      "query": "青禾产品2026版冲突如何处理？"
+    },
+    {
+      "id": "q11",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "hybrid",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "latency_ms": 2.921,
+      "query": "青禾产品2026版冲突如何处理？"
+    },
+    {
+      "id": "q11",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "latency_ms": 3.083,
+      "query": "青禾产品2026版冲突如何处理？"
+    },
+    {
+      "id": "q11",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "latency_ms": 3.51,
+      "query": "青禾产品2026版冲突如何处理？"
+    },
+    {
+      "id": "q11",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "latency_ms": 3.593,
+      "query": "青禾产品2026版冲突如何处理？"
+    },
+    {
+      "id": "q11",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "latency_ms": 3.214,
+      "query": "青禾产品2026版冲突如何处理？"
+    },
+    {
+      "id": "q12",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c12"
+      ],
+      "top5": [
+        "c12",
+        "c13",
+        "c02"
+      ],
+      "top10": [
+        "c12",
+        "c13",
+        "c02"
+      ],
+      "latency_ms": 1.516,
+      "query": "散射成像实验用了什么散射介质？ scattering imaging imaging through scattering media scattering media diffuser"
+    },
+    {
+      "id": "q12",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c12"
+      ],
+      "top5": [
+        "c12",
+        "c18",
+        "c21",
+        "c02",
+        "c09"
+      ],
+      "top10": [
+        "c12",
+        "c18",
+        "c21",
+        "c02",
+        "c09",
+        "c26",
+        "c04",
+        "c28",
+        "c08",
+        "c05"
+      ],
+      "latency_ms": 1.903,
+      "query": "散射成像实验用了什么散射介质？ scattering imaging imaging through scattering media scattering media diffuser"
+    },
+    {
+      "id": "q12",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c12"
+      ],
+      "top5": [
+        "c12",
+        "c18",
+        "c21",
+        "c02",
+        "c09"
+      ],
+      "top10": [
+        "c12",
+        "c18",
+        "c21",
+        "c02",
+        "c09",
+        "c26",
+        "c04",
+        "c28",
+        "c08",
+        "c05"
+      ],
+      "latency_ms": 4.048,
+      "query": "散射成像实验用了什么散射介质？ scattering imaging imaging through scattering media scattering media diffuser"
+    },
+    {
+      "id": "q12",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c12"
+      ],
+      "top5": [
+        "c12",
+        "c18",
+        "c21",
+        "c02",
+        "c09"
+      ],
+      "top10": [
+        "c12",
+        "c18",
+        "c21",
+        "c02",
+        "c09",
+        "c26",
+        "c04",
+        "c28",
+        "c08",
+        "c05"
+      ],
+      "latency_ms": 4.073,
+      "query": "散射成像实验用了什么散射介质？ scattering imaging imaging through scattering media scattering media diffuser"
+    },
+    {
+      "id": "q12",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c12"
+      ],
+      "top5": [
+        "c12",
+        "c18",
+        "c21",
+        "c02",
+        "c09"
+      ],
+      "top10": [
+        "c12",
+        "c18",
+        "c21",
+        "c02",
+        "c09",
+        "c26",
+        "c04",
+        "c28",
+        "c08",
+        "c05"
+      ],
+      "latency_ms": 4.615,
+      "query": "散射成像实验用了什么散射介质？ scattering imaging imaging through scattering media scattering media diffuser"
+    },
+    {
+      "id": "q12",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c12"
+      ],
+      "top5": [
+        "c12",
+        "c18",
+        "c21",
+        "c02",
+        "c09"
+      ],
+      "top10": [
+        "c12",
+        "c18",
+        "c21",
+        "c02",
+        "c09",
+        "c26",
+        "c04",
+        "c28",
+        "c08",
+        "c05"
+      ],
+      "latency_ms": 4.071,
+      "query": "散射成像实验用了什么散射介质？ scattering imaging imaging through scattering media scattering media diffuser"
+    },
+    {
+      "id": "q12",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c12"
+      ],
+      "top5": [
+        "c12",
+        "c18",
+        "c21",
+        "c02",
+        "c09"
+      ],
+      "top10": [
+        "c12",
+        "c18",
+        "c21",
+        "c02",
+        "c09",
+        "c26",
+        "c04",
+        "c28",
+        "c08",
+        "c05"
+      ],
+      "latency_ms": 3.924,
+      "query": "散射成像实验用了什么散射介质？ scattering imaging imaging through scattering media scattering media diffuser"
+    },
+    {
+      "id": "q13",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c13"
+      ],
+      "top5": [
+        "c13",
+        "c12",
+        "c02"
+      ],
+      "top10": [
+        "c13",
+        "c12",
+        "c02"
+      ],
+      "latency_ms": 1.44,
+      "query": "散斑相关实验的曝光时间是多少？ speckle correlation speckle-correlation speckle"
+    },
+    {
+      "id": "q13",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c13"
+      ],
+      "top5": [
+        "c13",
+        "c12",
+        "c08",
+        "c02",
+        "c26"
+      ],
+      "top10": [
+        "c13",
+        "c12",
+        "c08",
+        "c02",
+        "c26",
+        "c20",
+        "c16",
+        "c03",
+        "c07",
+        "c04"
+      ],
+      "latency_ms": 1.9,
+      "query": "散斑相关实验的曝光时间是多少？ speckle correlation speckle-correlation speckle"
+    },
+    {
+      "id": "q13",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c13"
+      ],
+      "top5": [
+        "c13",
+        "c12",
+        "c08",
+        "c02",
+        "c26"
+      ],
+      "top10": [
+        "c13",
+        "c12",
+        "c08",
+        "c02",
+        "c26",
+        "c20",
+        "c16",
+        "c03",
+        "c07",
+        "c04"
+      ],
+      "latency_ms": 3.304,
+      "query": "散斑相关实验的曝光时间是多少？ speckle correlation speckle-correlation speckle"
+    },
+    {
+      "id": "q13",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c13"
+      ],
+      "top5": [
+        "c13",
+        "c12",
+        "c08",
+        "c02",
+        "c26"
+      ],
+      "top10": [
+        "c13",
+        "c12",
+        "c08",
+        "c02",
+        "c26",
+        "c20",
+        "c16",
+        "c03",
+        "c07",
+        "c04"
+      ],
+      "latency_ms": 3.372,
+      "query": "散斑相关实验的曝光时间是多少？ speckle correlation speckle-correlation speckle"
+    },
+    {
+      "id": "q13",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c13"
+      ],
+      "top5": [
+        "c13",
+        "c12",
+        "c02",
+        "c08",
+        "c26"
+      ],
+      "top10": [
+        "c13",
+        "c12",
+        "c02",
+        "c08",
+        "c26",
+        "c20",
+        "c16",
+        "c03",
+        "c07",
+        "c04"
+      ],
+      "latency_ms": 4.177,
+      "query": "散斑相关实验的曝光时间是多少？ speckle correlation speckle-correlation speckle"
+    },
+    {
+      "id": "q13",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c13"
+      ],
+      "top5": [
+        "c13",
+        "c12",
+        "c02",
+        "c08",
+        "c26"
+      ],
+      "top10": [
+        "c13",
+        "c12",
+        "c02",
+        "c08",
+        "c26",
+        "c20",
+        "c16",
+        "c03",
+        "c07",
+        "c04"
+      ],
+      "latency_ms": 3.656,
+      "query": "散斑相关实验的曝光时间是多少？ speckle correlation speckle-correlation speckle"
+    },
+    {
+      "id": "q13",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c13"
+      ],
+      "top5": [
+        "c13",
+        "c12",
+        "c02",
+        "c08",
+        "c26"
+      ],
+      "top10": [
+        "c13",
+        "c12",
+        "c02",
+        "c08",
+        "c26",
+        "c20",
+        "c16",
+        "c03",
+        "c07",
+        "c04"
+      ],
+      "latency_ms": 4.71,
+      "query": "散斑相关实验的曝光时间是多少？ speckle correlation speckle-correlation speckle"
+    },
+    {
+      "id": "q14",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c14"
+      ],
+      "top5": [
+        "c14",
+        "c15",
+        "c01",
+        "c04",
+        "c12"
+      ],
+      "top10": [
+        "c14",
+        "c15",
+        "c01",
+        "c04",
+        "c12",
+        "c18",
+        "c25"
+      ],
+      "latency_ms": 1.224,
+      "query": "图像重建模型采用什么结构？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q14",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c14"
+      ],
+      "top5": [
+        "c14",
+        "c04",
+        "c18",
+        "c19",
+        "c23"
+      ],
+      "top10": [
+        "c14",
+        "c04",
+        "c18",
+        "c19",
+        "c23",
+        "c24",
+        "c22",
+        "c15",
+        "c16",
+        "c28"
+      ],
+      "latency_ms": 1.998,
+      "query": "图像重建模型采用什么结构？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q14",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c14"
+      ],
+      "top5": [
+        "c14",
+        "c04",
+        "c18",
+        "c15",
+        "c19"
+      ],
+      "top10": [
+        "c14",
+        "c04",
+        "c18",
+        "c15",
+        "c19",
+        "c23",
+        "c24",
+        "c22",
+        "c16",
+        "c28"
+      ],
+      "latency_ms": 3.369,
+      "query": "图像重建模型采用什么结构？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q14",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c14"
+      ],
+      "top5": [
+        "c14",
+        "c04",
+        "c18",
+        "c15",
+        "c19"
+      ],
+      "top10": [
+        "c14",
+        "c04",
+        "c18",
+        "c15",
+        "c19",
+        "c23",
+        "c24",
+        "c22",
+        "c16",
+        "c28"
+      ],
+      "latency_ms": 3.107,
+      "query": "图像重建模型采用什么结构？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q14",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c14"
+      ],
+      "top5": [
+        "c14",
+        "c04",
+        "c18",
+        "c15",
+        "c19"
+      ],
+      "top10": [
+        "c14",
+        "c04",
+        "c18",
+        "c15",
+        "c19",
+        "c23",
+        "c24",
+        "c22",
+        "c16",
+        "c28"
+      ],
+      "latency_ms": 3.72,
+      "query": "图像重建模型采用什么结构？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q14",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c14"
+      ],
+      "top5": [
+        "c14",
+        "c04",
+        "c18",
+        "c15",
+        "c19"
+      ],
+      "top10": [
+        "c14",
+        "c04",
+        "c18",
+        "c15",
+        "c19",
+        "c23",
+        "c24",
+        "c22",
+        "c16",
+        "c28"
+      ],
+      "latency_ms": 3.759,
+      "query": "图像重建模型采用什么结构？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q14",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c14"
+      ],
+      "top5": [
+        "c14",
+        "c04",
+        "c18",
+        "c15",
+        "c19"
+      ],
+      "top10": [
+        "c14",
+        "c04",
+        "c18",
+        "c15",
+        "c19",
+        "c23",
+        "c24",
+        "c22",
+        "c16",
+        "c28"
+      ],
+      "latency_ms": 11.32,
+      "query": "图像重建模型采用什么结构？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q15",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c15"
+      ],
+      "top5": [
+        "c15"
+      ],
+      "top10": [
+        "c15"
+      ],
+      "latency_ms": 3.047,
+      "query": "移除跳跃连接后PSNR下降多少？"
+    },
+    {
+      "id": "q15",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c15"
+      ],
+      "top5": [
+        "c15",
+        "c21",
+        "c13",
+        "c05",
+        "c25"
+      ],
+      "top10": [
+        "c15",
+        "c21",
+        "c13",
+        "c05",
+        "c25",
+        "c09",
+        "c26",
+        "c28",
+        "c27",
+        "c17"
+      ],
+      "latency_ms": 1.97,
+      "query": "移除跳跃连接后PSNR下降多少？"
+    },
+    {
+      "id": "q15",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c15"
+      ],
+      "top5": [
+        "c15",
+        "c21",
+        "c13",
+        "c05",
+        "c25"
+      ],
+      "top10": [
+        "c15",
+        "c21",
+        "c13",
+        "c05",
+        "c25",
+        "c09",
+        "c26",
+        "c28",
+        "c27",
+        "c17"
+      ],
+      "latency_ms": 3.956,
+      "query": "移除跳跃连接后PSNR下降多少？"
+    },
+    {
+      "id": "q15",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c15"
+      ],
+      "top5": [
+        "c15",
+        "c21",
+        "c13",
+        "c05",
+        "c25"
+      ],
+      "top10": [
+        "c15",
+        "c21",
+        "c13",
+        "c05",
+        "c25",
+        "c09",
+        "c26",
+        "c28",
+        "c27",
+        "c17"
+      ],
+      "latency_ms": 3.714,
+      "query": "移除跳跃连接后PSNR下降多少？"
+    },
+    {
+      "id": "q15",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c15"
+      ],
+      "top5": [
+        "c15",
+        "c21",
+        "c13",
+        "c05",
+        "c25"
+      ],
+      "top10": [
+        "c15",
+        "c21",
+        "c13",
+        "c05",
+        "c25",
+        "c09",
+        "c26",
+        "c28",
+        "c27",
+        "c17"
+      ],
+      "latency_ms": 3.892,
+      "query": "移除跳跃连接后PSNR下降多少？"
+    },
+    {
+      "id": "q15",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c15"
+      ],
+      "top5": [
+        "c15",
+        "c21",
+        "c13",
+        "c05",
+        "c25"
+      ],
+      "top10": [
+        "c15",
+        "c21",
+        "c13",
+        "c05",
+        "c25",
+        "c09",
+        "c26",
+        "c28",
+        "c27",
+        "c17"
+      ],
+      "latency_ms": 4.62,
+      "query": "移除跳跃连接后PSNR下降多少？"
+    },
+    {
+      "id": "q15",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c15"
+      ],
+      "top5": [
+        "c15",
+        "c21",
+        "c13",
+        "c05",
+        "c25"
+      ],
+      "top10": [
+        "c15",
+        "c21",
+        "c13",
+        "c05",
+        "c25",
+        "c09",
+        "c26",
+        "c28",
+        "c27",
+        "c17"
+      ],
+      "latency_ms": 3.977,
+      "query": "移除跳跃连接后PSNR下降多少？"
+    },
+    {
+      "id": "q16",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c16"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c08",
+        "c05",
+        "c18"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c08",
+        "c05",
+        "c18",
+        "c23",
+        "c24"
+      ],
+      "latency_ms": 1.004,
+      "query": "风行服务100并发时P95是多少？"
+    },
+    {
+      "id": "q16",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c16"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c08",
+        "c18",
+        "c27"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c08",
+        "c18",
+        "c27",
+        "c05"
+      ],
+      "latency_ms": 1.916,
+      "query": "风行服务100并发时P95是多少？"
+    },
+    {
+      "id": "q16",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c16"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c08",
+        "c18",
+        "c05"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c08",
+        "c18",
+        "c05",
+        "c27",
+        "c23",
+        "c24"
+      ],
+      "latency_ms": 2.969,
+      "query": "风行服务100并发时P95是多少？"
+    },
+    {
+      "id": "q16",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c16"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c08",
+        "c18",
+        "c05"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c08",
+        "c18",
+        "c05",
+        "c27",
+        "c23",
+        "c24"
+      ],
+      "latency_ms": 4.938,
+      "query": "风行服务100并发时P95是多少？"
+    },
+    {
+      "id": "q16",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c16"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c08",
+        "c18",
+        "c05"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c08",
+        "c18",
+        "c05",
+        "c27",
+        "c23",
+        "c24"
+      ],
+      "latency_ms": 3.064,
+      "query": "风行服务100并发时P95是多少？"
+    },
+    {
+      "id": "q16",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c16"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c08",
+        "c18",
+        "c05"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c08",
+        "c18",
+        "c05",
+        "c27",
+        "c23",
+        "c24"
+      ],
+      "latency_ms": 3.261,
+      "query": "风行服务100并发时P95是多少？"
+    },
+    {
+      "id": "q16",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c16"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c08",
+        "c18",
+        "c05"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c08",
+        "c18",
+        "c05",
+        "c23",
+        "c24",
+        "c27"
+      ],
+      "latency_ms": 3.054,
+      "query": "风行服务100并发时P95是多少？"
+    },
+    {
+      "id": "q17",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c17",
+        "c16",
+        "c23",
+        "c24",
+        "c10"
+      ],
+      "top10": [
+        "c17",
+        "c16",
+        "c23",
+        "c24",
+        "c10",
+        "c11",
+        "c01",
+        "c05",
+        "c18",
+        "c22"
+      ],
+      "latency_ms": 0.955,
+      "query": "风行服务2026年7月为何超时？"
+    },
+    {
+      "id": "q17",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c08",
+        "c25",
+        "c23"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c08",
+        "c25",
+        "c23",
+        "c24",
+        "c13",
+        "c02",
+        "c05",
+        "c18"
+      ],
+      "latency_ms": 1.834,
+      "query": "风行服务2026年7月为何超时？"
+    },
+    {
+      "id": "q17",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c08",
+        "c23",
+        "c24"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c08",
+        "c23",
+        "c24",
+        "c25",
+        "c05",
+        "c18",
+        "c13",
+        "c02"
+      ],
+      "latency_ms": 2.913,
+      "query": "风行服务2026年7月为何超时？"
+    },
+    {
+      "id": "q17",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c08",
+        "c23",
+        "c24"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c08",
+        "c23",
+        "c24",
+        "c25",
+        "c05",
+        "c18",
+        "c13",
+        "c02"
+      ],
+      "latency_ms": 5.354,
+      "query": "风行服务2026年7月为何超时？"
+    },
+    {
+      "id": "q17",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c23",
+        "c24",
+        "c08"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c23",
+        "c24",
+        "c08",
+        "c25",
+        "c05",
+        "c18",
+        "c13",
+        "c02"
+      ],
+      "latency_ms": 3.578,
+      "query": "风行服务2026年7月为何超时？"
+    },
+    {
+      "id": "q17",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c23",
+        "c24",
+        "c08"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c23",
+        "c24",
+        "c08",
+        "c25",
+        "c05",
+        "c18",
+        "c13",
+        "c02"
+      ],
+      "latency_ms": 3.25,
+      "query": "风行服务2026年7月为何超时？"
+    },
+    {
+      "id": "q17",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c16",
+        "c17",
+        "c23",
+        "c24",
+        "c08"
+      ],
+      "top10": [
+        "c16",
+        "c17",
+        "c23",
+        "c24",
+        "c08",
+        "c05",
+        "c18",
+        "c25",
+        "c10",
+        "c11"
+      ],
+      "latency_ms": 3.182,
+      "query": "风行服务2026年7月为何超时？"
+    },
+    {
+      "id": "q18",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c18"
+      ],
+      "top5": [
+        "c18",
+        "c16",
+        "c17",
+        "c19",
+        "c05"
+      ],
+      "top10": [
+        "c18",
+        "c16",
+        "c17",
+        "c19",
+        "c05",
+        "c09",
+        "c10"
+      ],
+      "latency_ms": 2.912,
+      "query": "竹影服务发布前检查什么？"
+    },
+    {
+      "id": "q18",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c18"
+      ],
+      "top5": [
+        "c18",
+        "c05",
+        "c06",
+        "c19",
+        "c04"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c06",
+        "c19",
+        "c04",
+        "c21",
+        "c12"
+      ],
+      "latency_ms": 2.08,
+      "query": "竹影服务发布前检查什么？"
+    },
+    {
+      "id": "q18",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c18"
+      ],
+      "top5": [
+        "c18",
+        "c05",
+        "c19",
+        "c06",
+        "c04"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c19",
+        "c06",
+        "c04",
+        "c21",
+        "c12",
+        "c16",
+        "c17",
+        "c09"
+      ],
+      "latency_ms": 3.076,
+      "query": "竹影服务发布前检查什么？"
+    },
+    {
+      "id": "q18",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c18"
+      ],
+      "top5": [
+        "c18",
+        "c05",
+        "c19",
+        "c06",
+        "c04"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c19",
+        "c06",
+        "c04",
+        "c21",
+        "c12",
+        "c16",
+        "c17",
+        "c09"
+      ],
+      "latency_ms": 2.934,
+      "query": "竹影服务发布前检查什么？"
+    },
+    {
+      "id": "q18",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c18"
+      ],
+      "top5": [
+        "c18",
+        "c05",
+        "c19",
+        "c06",
+        "c04"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c19",
+        "c06",
+        "c04",
+        "c21",
+        "c12",
+        "c16",
+        "c17",
+        "c09"
+      ],
+      "latency_ms": 3.205,
+      "query": "竹影服务发布前检查什么？"
+    },
+    {
+      "id": "q18",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c18"
+      ],
+      "top5": [
+        "c18",
+        "c05",
+        "c19",
+        "c06",
+        "c04"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c19",
+        "c06",
+        "c04",
+        "c21",
+        "c12",
+        "c16",
+        "c17",
+        "c09"
+      ],
+      "latency_ms": 4.109,
+      "query": "竹影服务发布前检查什么？"
+    },
+    {
+      "id": "q18",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c18"
+      ],
+      "top5": [
+        "c18",
+        "c05",
+        "c19",
+        "c06",
+        "c04"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c19",
+        "c06",
+        "c04",
+        "c16",
+        "c17",
+        "c21",
+        "c12",
+        "c09"
+      ],
+      "latency_ms": 3.682,
+      "query": "竹影服务发布前检查什么？"
+    },
+    {
+      "id": "q19",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c19"
+      ],
+      "top5": [
+        "c19",
+        "c18"
+      ],
+      "top10": [
+        "c19",
+        "c18"
+      ],
+      "latency_ms": 0.909,
+      "query": "竹影回滚时先做什么？"
+    },
+    {
+      "id": "q19",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c19"
+      ],
+      "top5": [
+        "c19",
+        "c21",
+        "c01",
+        "c20",
+        "c12"
+      ],
+      "top10": [
+        "c19",
+        "c21",
+        "c01",
+        "c20",
+        "c12",
+        "c02",
+        "c18",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 1.852,
+      "query": "竹影回滚时先做什么？"
+    },
+    {
+      "id": "q19",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c19"
+      ],
+      "top5": [
+        "c19",
+        "c21",
+        "c01",
+        "c20",
+        "c12"
+      ],
+      "top10": [
+        "c19",
+        "c21",
+        "c01",
+        "c20",
+        "c12",
+        "c18",
+        "c02",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 3.549,
+      "query": "竹影回滚时先做什么？"
+    },
+    {
+      "id": "q19",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c19"
+      ],
+      "top5": [
+        "c19",
+        "c21",
+        "c01",
+        "c20",
+        "c12"
+      ],
+      "top10": [
+        "c19",
+        "c21",
+        "c01",
+        "c20",
+        "c12",
+        "c18",
+        "c02",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 3.394,
+      "query": "竹影回滚时先做什么？"
+    },
+    {
+      "id": "q19",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c19"
+      ],
+      "top5": [
+        "c19",
+        "c21",
+        "c01",
+        "c20",
+        "c12"
+      ],
+      "top10": [
+        "c19",
+        "c21",
+        "c01",
+        "c20",
+        "c12",
+        "c18",
+        "c02",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 4.05,
+      "query": "竹影回滚时先做什么？"
+    },
+    {
+      "id": "q19",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c19"
+      ],
+      "top5": [
+        "c19",
+        "c21",
+        "c01",
+        "c20",
+        "c12"
+      ],
+      "top10": [
+        "c19",
+        "c21",
+        "c01",
+        "c20",
+        "c12",
+        "c18",
+        "c02",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 3.939,
+      "query": "竹影回滚时先做什么？"
+    },
+    {
+      "id": "q19",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c19"
+      ],
+      "top5": [
+        "c19",
+        "c21",
+        "c01",
+        "c20",
+        "c12"
+      ],
+      "top10": [
+        "c19",
+        "c21",
+        "c01",
+        "c20",
+        "c12",
+        "c18",
+        "c02",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 4.123,
+      "query": "竹影回滚时先做什么？"
+    },
+    {
+      "id": "q20",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c20"
+      ],
+      "top5": [
+        "c20",
+        "c21",
+        "c06"
+      ],
+      "top10": [
+        "c20",
+        "c21",
+        "c06"
+      ],
+      "latency_ms": 1.251,
+      "query": "兰亭平台默认会把私有正文写进日志吗？"
+    },
+    {
+      "id": "q20",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c20"
+      ],
+      "top5": [
+        "c20",
+        "c21",
+        "c18",
+        "c12",
+        "c14"
+      ],
+      "top10": [
+        "c20",
+        "c21",
+        "c18",
+        "c12",
+        "c14",
+        "c19",
+        "c25"
+      ],
+      "latency_ms": 3.268,
+      "query": "兰亭平台默认会把私有正文写进日志吗？"
+    },
+    {
+      "id": "q20",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c20"
+      ],
+      "top5": [
+        "c20",
+        "c21",
+        "c18",
+        "c12",
+        "c14"
+      ],
+      "top10": [
+        "c20",
+        "c21",
+        "c18",
+        "c12",
+        "c14",
+        "c19",
+        "c25",
+        "c06"
+      ],
+      "latency_ms": 3.298,
+      "query": "兰亭平台默认会把私有正文写进日志吗？"
+    },
+    {
+      "id": "q20",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c20"
+      ],
+      "top5": [
+        "c20",
+        "c21",
+        "c18",
+        "c12",
+        "c14"
+      ],
+      "top10": [
+        "c20",
+        "c21",
+        "c18",
+        "c12",
+        "c14",
+        "c19",
+        "c25",
+        "c06"
+      ],
+      "latency_ms": 4.001,
+      "query": "兰亭平台默认会把私有正文写进日志吗？"
+    },
+    {
+      "id": "q20",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c20"
+      ],
+      "top5": [
+        "c20",
+        "c21",
+        "c18",
+        "c12",
+        "c14"
+      ],
+      "top10": [
+        "c20",
+        "c21",
+        "c18",
+        "c12",
+        "c14",
+        "c19",
+        "c25",
+        "c06"
+      ],
+      "latency_ms": 3.4,
+      "query": "兰亭平台默认会把私有正文写进日志吗？"
+    },
+    {
+      "id": "q20",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c20"
+      ],
+      "top5": [
+        "c20",
+        "c21",
+        "c18",
+        "c12",
+        "c14"
+      ],
+      "top10": [
+        "c20",
+        "c21",
+        "c18",
+        "c12",
+        "c14",
+        "c19",
+        "c25",
+        "c06"
+      ],
+      "latency_ms": 3.47,
+      "query": "兰亭平台默认会把私有正文写进日志吗？"
+    },
+    {
+      "id": "q20",
+      "split": "tune",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c20"
+      ],
+      "top5": [
+        "c20",
+        "c21",
+        "c18",
+        "c12",
+        "c14"
+      ],
+      "top10": [
+        "c20",
+        "c21",
+        "c18",
+        "c12",
+        "c14",
+        "c19",
+        "c25",
+        "c06"
+      ],
+      "latency_ms": 4.207,
+      "query": "兰亭平台默认会把私有正文写进日志吗？"
+    },
+    {
+      "id": "q21",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "keyword",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 1.097,
+      "query": "2026年第二季度上传文档多少份？"
+    },
+    {
+      "id": "q21",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "vector",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 2.31,
+      "query": "2026年第二季度上传文档多少份？"
+    },
+    {
+      "id": "q21",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "hybrid",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 4.952,
+      "query": "2026年第二季度上传文档多少份？"
+    },
+    {
+      "id": "q21",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 3.932,
+      "query": "2026年第二季度上传文档多少份？"
+    },
+    {
+      "id": "q21",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 3.676,
+      "query": "2026年第二季度上传文档多少份？"
+    },
+    {
+      "id": "q21",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 4.416,
+      "query": "2026年第二季度上传文档多少份？"
+    },
+    {
+      "id": "q21",
+      "split": "tune",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 3.494,
+      "query": "2026年第二季度上传文档多少份？"
+    },
+    {
+      "id": "q22",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "keyword",
+      "gold": [],
+      "top5": [
+        "c05",
+        "c06",
+        "c18",
+        "c19",
+        "c07"
+      ],
+      "top10": [
+        "c05",
+        "c06",
+        "c18",
+        "c19",
+        "c07",
+        "c08",
+        "c21"
+      ],
+      "latency_ms": 1.338,
+      "query": "海棠项目的数据库密码是什么？ Kumima Ju Ju Kumima"
+    },
+    {
+      "id": "q22",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "vector",
+      "gold": [],
+      "top5": [
+        "c18",
+        "c05",
+        "c06",
+        "c19"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c06",
+        "c19"
+      ],
+      "latency_ms": 2.652,
+      "query": "海棠项目的数据库密码是什么？ Kumima Ju Ju Kumima"
+    },
+    {
+      "id": "q22",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "hybrid",
+      "gold": [],
+      "top5": [
+        "c18",
+        "c05",
+        "c06",
+        "c19"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c06",
+        "c19"
+      ],
+      "latency_ms": 3.388,
+      "query": "海棠项目的数据库密码是什么？ Kumima Ju Ju Kumima"
+    },
+    {
+      "id": "q22",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite",
+      "gold": [],
+      "top5": [
+        "c18",
+        "c05",
+        "c06",
+        "c19"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c06",
+        "c19"
+      ],
+      "latency_ms": 3.696,
+      "query": "海棠项目的数据库密码是什么？ Kumima Ju Ju Kumima"
+    },
+    {
+      "id": "q22",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [],
+      "top5": [
+        "c18",
+        "c05",
+        "c06",
+        "c19",
+        "c08"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c06",
+        "c19",
+        "c08",
+        "c07",
+        "c21",
+        "c01",
+        "c02",
+        "c25"
+      ],
+      "latency_ms": 4.758,
+      "query": "海棠项目的数据库密码是什么？ Kumima Ju Ju Kumima"
+    },
+    {
+      "id": "q22",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [],
+      "top5": [
+        "c18",
+        "c05",
+        "c06",
+        "c19",
+        "c08"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c06",
+        "c19",
+        "c08",
+        "c07",
+        "c21",
+        "c01",
+        "c02",
+        "c25"
+      ],
+      "latency_ms": 4.291,
+      "query": "海棠项目的数据库密码是什么？ Kumima Ju Ju Kumima"
+    },
+    {
+      "id": "q22",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [],
+      "top5": [
+        "c05",
+        "c18",
+        "c06",
+        "c19",
+        "c08"
+      ],
+      "top10": [
+        "c05",
+        "c18",
+        "c06",
+        "c19",
+        "c08",
+        "c07",
+        "c21",
+        "c01",
+        "c02",
+        "c25"
+      ],
+      "latency_ms": 4.907,
+      "query": "海棠项目的数据库密码是什么？ Kumima Ju Ju Kumima"
+    },
+    {
+      "id": "q23",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "keyword",
+      "gold": [],
+      "top5": [
+        "c01",
+        "c02"
+      ],
+      "top10": [
+        "c01",
+        "c02"
+      ],
+      "latency_ms": 0.988,
+      "query": "李若岚的手机号码是多少？"
+    },
+    {
+      "id": "q23",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "vector",
+      "gold": [],
+      "top5": [
+        "c01",
+        "c02",
+        "c06",
+        "c22",
+        "c15"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c06",
+        "c22",
+        "c15",
+        "c14",
+        "c13",
+        "c03",
+        "c04",
+        "c27"
+      ],
+      "latency_ms": 2.063,
+      "query": "李若岚的手机号码是多少？"
+    },
+    {
+      "id": "q23",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "hybrid",
+      "gold": [],
+      "top5": [
+        "c01",
+        "c02",
+        "c06",
+        "c22",
+        "c15"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c06",
+        "c22",
+        "c15",
+        "c14",
+        "c13",
+        "c03",
+        "c04",
+        "c27"
+      ],
+      "latency_ms": 3.428,
+      "query": "李若岚的手机号码是多少？"
+    },
+    {
+      "id": "q23",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite",
+      "gold": [],
+      "top5": [
+        "c01",
+        "c02",
+        "c06",
+        "c22",
+        "c15"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c06",
+        "c22",
+        "c15",
+        "c14",
+        "c13",
+        "c03",
+        "c04",
+        "c27"
+      ],
+      "latency_ms": 2.916,
+      "query": "李若岚的手机号码是多少？"
+    },
+    {
+      "id": "q23",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [],
+      "top5": [
+        "c01",
+        "c02",
+        "c06",
+        "c22",
+        "c15"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c06",
+        "c22",
+        "c15",
+        "c14",
+        "c13",
+        "c03",
+        "c04",
+        "c27"
+      ],
+      "latency_ms": 4.709,
+      "query": "李若岚的手机号码是多少？"
+    },
+    {
+      "id": "q23",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [],
+      "top5": [
+        "c01",
+        "c02",
+        "c06",
+        "c22",
+        "c15"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c06",
+        "c22",
+        "c15",
+        "c14",
+        "c13",
+        "c03",
+        "c04",
+        "c27"
+      ],
+      "latency_ms": 3.282,
+      "query": "李若岚的手机号码是多少？"
+    },
+    {
+      "id": "q23",
+      "split": "tune",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [],
+      "top5": [
+        "c01",
+        "c02",
+        "c06",
+        "c22",
+        "c15"
+      ],
+      "top10": [
+        "c01",
+        "c02",
+        "c06",
+        "c22",
+        "c15",
+        "c14",
+        "c13",
+        "c03",
+        "c04",
+        "c27"
+      ],
+      "latency_ms": 3.277,
+      "query": "李若岚的手机号码是多少？"
+    },
+    {
+      "id": "q24",
+      "split": "tune",
+      "slice": "follow_up",
+      "variant": "keyword",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c01",
+        "c03"
+      ],
+      "top10": [
+        "c01",
+        "c03"
+      ],
+      "latency_ms": 1.159,
+      "query": "那他毕业于哪里？ Ta Na Na Ta university affiliation institution"
+    },
+    {
+      "id": "q24",
+      "split": "tune",
+      "slice": "follow_up",
+      "variant": "vector",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c06",
+        "c28",
+        "c21",
+        "c01"
+      ],
+      "top10": [
+        "c03",
+        "c06",
+        "c28",
+        "c21",
+        "c01",
+        "c14",
+        "c07",
+        "c04",
+        "c02"
+      ],
+      "latency_ms": 2.02,
+      "query": "那他毕业于哪里？ Ta Na Na Ta university affiliation institution"
+    },
+    {
+      "id": "q24",
+      "split": "tune",
+      "slice": "follow_up",
+      "variant": "hybrid",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c01",
+        "c06",
+        "c28",
+        "c21"
+      ],
+      "top10": [
+        "c03",
+        "c01",
+        "c06",
+        "c28",
+        "c21",
+        "c14",
+        "c07",
+        "c04",
+        "c02"
+      ],
+      "latency_ms": 3.185,
+      "query": "那他毕业于哪里？ Ta Na Na Ta university affiliation institution"
+    },
+    {
+      "id": "q24",
+      "split": "tune",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c01",
+        "c21",
+        "c06"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c01",
+        "c21",
+        "c06",
+        "c02",
+        "c20",
+        "c27",
+        "c23",
+        "c24"
+      ],
+      "latency_ms": 4.764,
+      "query": "周明远负责什么系统？ 那他毕业于哪里？ Tongnata Xi Xi Tongnata university affiliation institution"
+    },
+    {
+      "id": "q24",
+      "split": "tune",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c01",
+        "c21",
+        "c06"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c01",
+        "c21",
+        "c06",
+        "c02",
+        "c20",
+        "c27",
+        "c23",
+        "c24"
+      ],
+      "latency_ms": 4.181,
+      "query": "周明远负责什么系统？ 那他毕业于哪里？ Tongnata Xi Xi Tongnata university affiliation institution"
+    },
+    {
+      "id": "q24",
+      "split": "tune",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c01",
+        "c21",
+        "c06"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c01",
+        "c21",
+        "c06",
+        "c02",
+        "c20",
+        "c27",
+        "c23",
+        "c24"
+      ],
+      "latency_ms": 5.548,
+      "query": "周明远负责什么系统？ 那他毕业于哪里？ Tongnata Xi Xi Tongnata university affiliation institution"
+    },
+    {
+      "id": "q24",
+      "split": "tune",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c01",
+        "c21",
+        "c06"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c01",
+        "c21",
+        "c06",
+        "c02",
+        "c20",
+        "c27",
+        "c23",
+        "c24"
+      ],
+      "latency_ms": 4.963,
+      "query": "周明远负责什么系统？ 那他毕业于哪里？ Tongnata Xi Xi Tongnata university affiliation institution"
+    },
+    {
+      "id": "q25",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "keyword",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c08",
+        "c16"
+      ],
+      "top10": [
+        "c08",
+        "c16"
+      ],
+      "latency_ms": 0.729,
+      "query": "它的P95是多少？"
+    },
+    {
+      "id": "q25",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "vector",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c14",
+        "c04"
+      ],
+      "top10": [
+        "c14",
+        "c04"
+      ],
+      "latency_ms": 2.415,
+      "query": "它的P95是多少？"
+    },
+    {
+      "id": "q25",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c14",
+        "c04",
+        "c16",
+        "c08",
+        "c09"
+      ],
+      "top10": [
+        "c14",
+        "c04",
+        "c16",
+        "c08",
+        "c09",
+        "c26",
+        "c18",
+        "c19",
+        "c20"
+      ],
+      "latency_ms": 5.165,
+      "query": "它的P95是多少？"
+    },
+    {
+      "id": "q25",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c08",
+        "c07",
+        "c16",
+        "c05",
+        "c17"
+      ],
+      "top10": [
+        "c08",
+        "c07",
+        "c16",
+        "c05",
+        "c17",
+        "c04",
+        "c18",
+        "c26",
+        "c06",
+        "c09"
+      ],
+      "latency_ms": 7.071,
+      "query": "星河项目50并发的检索表现如何？ 它的P95是多少？"
+    },
+    {
+      "id": "q25",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c08",
+        "c07",
+        "c16",
+        "c05",
+        "c17"
+      ],
+      "top10": [
+        "c08",
+        "c07",
+        "c16",
+        "c05",
+        "c17",
+        "c04",
+        "c26",
+        "c18",
+        "c06",
+        "c25"
+      ],
+      "latency_ms": 4.255,
+      "query": "星河项目50并发的检索表现如何？ 它的P95是多少？"
+    },
+    {
+      "id": "q25",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c08",
+        "c07",
+        "c16",
+        "c05",
+        "c17"
+      ],
+      "top10": [
+        "c08",
+        "c07",
+        "c16",
+        "c05",
+        "c17",
+        "c04",
+        "c18",
+        "c26",
+        "c06",
+        "c25"
+      ],
+      "latency_ms": 4.0,
+      "query": "星河项目50并发的检索表现如何？ 它的P95是多少？"
+    },
+    {
+      "id": "q25",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c08"
+      ],
+      "top5": [
+        "c08",
+        "c07",
+        "c16",
+        "c05",
+        "c04"
+      ],
+      "top10": [
+        "c08",
+        "c07",
+        "c16",
+        "c05",
+        "c04",
+        "c17",
+        "c26",
+        "c06",
+        "c18",
+        "c25"
+      ],
+      "latency_ms": 6.086,
+      "query": "星河项目50并发的检索表现如何？ 它的P95是多少？"
+    },
+    {
+      "id": "q26",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "keyword",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "top10": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "latency_ms": 0.943,
+      "query": "那一版支持增量同步吗？"
+    },
+    {
+      "id": "q26",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "vector",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c09",
+        "c10",
+        "c11",
+        "c03",
+        "c04"
+      ],
+      "top10": [
+        "c09",
+        "c10",
+        "c11",
+        "c03",
+        "c04",
+        "c08",
+        "c01",
+        "c15",
+        "c14",
+        "c21"
+      ],
+      "latency_ms": 1.882,
+      "query": "那一版支持增量同步吗？"
+    },
+    {
+      "id": "q26",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c09",
+        "c11",
+        "c10",
+        "c03",
+        "c04"
+      ],
+      "top10": [
+        "c09",
+        "c11",
+        "c10",
+        "c03",
+        "c04",
+        "c08",
+        "c01",
+        "c15",
+        "c14",
+        "c21"
+      ],
+      "latency_ms": 2.832,
+      "query": "那一版支持增量同步吗？"
+    },
+    {
+      "id": "q26",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "top10": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "latency_ms": 3.688,
+      "query": "青禾产品2026版有什么变化？ 那一版支持增量同步吗？"
+    },
+    {
+      "id": "q26",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "top10": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "latency_ms": 4.498,
+      "query": "青禾产品2026版有什么变化？ 那一版支持增量同步吗？"
+    },
+    {
+      "id": "q26",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "top10": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "latency_ms": 4.585,
+      "query": "青禾产品2026版有什么变化？ 那一版支持增量同步吗？"
+    },
+    {
+      "id": "q26",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "top10": [
+        "c09",
+        "c11",
+        "c10"
+      ],
+      "latency_ms": 4.35,
+      "query": "青禾产品2026版有什么变化？ 那一版支持增量同步吗？"
+    },
+    {
+      "id": "q27",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "keyword",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c17"
+      ],
+      "top10": [
+        "c17"
+      ],
+      "latency_ms": 1.583,
+      "query": "它的恢复措施是什么？ Fucuoshi Hui Hui Fucuoshi"
+    },
+    {
+      "id": "q27",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "vector",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c17",
+        "c16",
+        "c09",
+        "c15",
+        "c14"
+      ],
+      "top10": [
+        "c17",
+        "c16",
+        "c09",
+        "c15",
+        "c14",
+        "c26",
+        "c04",
+        "c02",
+        "c06",
+        "c19"
+      ],
+      "latency_ms": 2.039,
+      "query": "它的恢复措施是什么？ Fucuoshi Hui Hui Fucuoshi"
+    },
+    {
+      "id": "q27",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c17",
+        "c16",
+        "c09",
+        "c15",
+        "c14"
+      ],
+      "top10": [
+        "c17",
+        "c16",
+        "c09",
+        "c15",
+        "c14",
+        "c26",
+        "c04",
+        "c02",
+        "c06",
+        "c19"
+      ],
+      "latency_ms": 4.654,
+      "query": "它的恢复措施是什么？ Fucuoshi Hui Hui Fucuoshi"
+    },
+    {
+      "id": "q27",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c17",
+        "c16",
+        "c20",
+        "c09",
+        "c10"
+      ],
+      "top10": [
+        "c17",
+        "c16",
+        "c20",
+        "c09",
+        "c10",
+        "c11",
+        "c15",
+        "c07",
+        "c06",
+        "c12"
+      ],
+      "latency_ms": 3.687,
+      "query": "风行服务2026年7月故障原因是什么？ 它的恢复措施是什么？ Zhangyuanyin Gu Gu Zhangyuanyin"
+    },
+    {
+      "id": "q27",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c17",
+        "c16",
+        "c10",
+        "c11",
+        "c20"
+      ],
+      "top10": [
+        "c17",
+        "c16",
+        "c10",
+        "c11",
+        "c20",
+        "c09",
+        "c15",
+        "c07",
+        "c06",
+        "c12"
+      ],
+      "latency_ms": 4.901,
+      "query": "风行服务2026年7月故障原因是什么？ 它的恢复措施是什么？ Zhangyuanyin Gu Gu Zhangyuanyin"
+    },
+    {
+      "id": "q27",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c17",
+        "c16",
+        "c10",
+        "c11",
+        "c20"
+      ],
+      "top10": [
+        "c17",
+        "c16",
+        "c10",
+        "c11",
+        "c20",
+        "c09",
+        "c15",
+        "c07",
+        "c06",
+        "c12"
+      ],
+      "latency_ms": 5.249,
+      "query": "风行服务2026年7月故障原因是什么？ 它的恢复措施是什么？ Zhangyuanyin Gu Gu Zhangyuanyin"
+    },
+    {
+      "id": "q27",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c17"
+      ],
+      "top5": [
+        "c17",
+        "c16",
+        "c10",
+        "c11",
+        "c20"
+      ],
+      "top10": [
+        "c17",
+        "c16",
+        "c10",
+        "c11",
+        "c20",
+        "c09",
+        "c15",
+        "c07",
+        "c06",
+        "c12"
+      ],
+      "latency_ms": 4.848,
+      "query": "风行服务2026年7月故障原因是什么？ 它的恢复措施是什么？ Zhangyuanyin Gu Gu Zhangyuanyin"
+    },
+    {
+      "id": "q28",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "keyword",
+      "gold": [
+        "c21"
+      ],
+      "top5": [
+        "c20",
+        "c21",
+        "c06",
+        "c10",
+        "c11"
+      ],
+      "top10": [
+        "c20",
+        "c21",
+        "c06",
+        "c10",
+        "c11"
+      ],
+      "latency_ms": 0.869,
+      "query": "那日志能保留多少？"
+    },
+    {
+      "id": "q28",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "vector",
+      "gold": [
+        "c21"
+      ],
+      "top5": [
+        "c18",
+        "c19",
+        "c12",
+        "c28",
+        "c06"
+      ],
+      "top10": [
+        "c18",
+        "c19",
+        "c12",
+        "c28",
+        "c06",
+        "c20",
+        "c09",
+        "c16",
+        "c10",
+        "c11"
+      ],
+      "latency_ms": 1.937,
+      "query": "那日志能保留多少？"
+    },
+    {
+      "id": "q28",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid",
+      "gold": [
+        "c21"
+      ],
+      "top5": [
+        "c18",
+        "c19",
+        "c12",
+        "c20",
+        "c06"
+      ],
+      "top10": [
+        "c18",
+        "c19",
+        "c12",
+        "c20",
+        "c06",
+        "c28",
+        "c10",
+        "c11",
+        "c09",
+        "c16"
+      ],
+      "latency_ms": 2.997,
+      "query": "那日志能保留多少？"
+    },
+    {
+      "id": "q28",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c21"
+      ],
+      "top5": [
+        "c20",
+        "c21",
+        "c16",
+        "c18",
+        "c28"
+      ],
+      "top10": [
+        "c20",
+        "c21",
+        "c16",
+        "c18",
+        "c28",
+        "c19",
+        "c12",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 3.378,
+      "query": "兰亭平台默认记录私有正文吗？ 那日志能保留多少？"
+    },
+    {
+      "id": "q28",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c21"
+      ],
+      "top5": [
+        "c20",
+        "c21",
+        "c16",
+        "c18",
+        "c28"
+      ],
+      "top10": [
+        "c20",
+        "c21",
+        "c16",
+        "c18",
+        "c28",
+        "c19",
+        "c12",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 4.085,
+      "query": "兰亭平台默认记录私有正文吗？ 那日志能保留多少？"
+    },
+    {
+      "id": "q28",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c21"
+      ],
+      "top5": [
+        "c20",
+        "c21",
+        "c16",
+        "c18",
+        "c28"
+      ],
+      "top10": [
+        "c20",
+        "c21",
+        "c16",
+        "c18",
+        "c28",
+        "c19",
+        "c12",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 5.057,
+      "query": "兰亭平台默认记录私有正文吗？ 那日志能保留多少？"
+    },
+    {
+      "id": "q28",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c21"
+      ],
+      "top5": [
+        "c20",
+        "c21",
+        "c16",
+        "c18",
+        "c28"
+      ],
+      "top10": [
+        "c20",
+        "c21",
+        "c16",
+        "c18",
+        "c28",
+        "c19",
+        "c12",
+        "c06",
+        "c23",
+        "c24"
+      ],
+      "latency_ms": 5.106,
+      "query": "兰亭平台默认记录私有正文吗？ 那日志能保留多少？"
+    },
+    {
+      "id": "q29",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "keyword",
+      "gold": [
+        "c26"
+      ],
+      "top5": [
+        "c26",
+        "c02",
+        "c22",
+        "c23",
+        "c24"
+      ],
+      "top10": [
+        "c26",
+        "c02",
+        "c22",
+        "c23",
+        "c24"
+      ],
+      "latency_ms": 1.112,
+      "query": "它用什么指标评测？"
+    },
+    {
+      "id": "q29",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "vector",
+      "gold": [
+        "c26"
+      ],
+      "top5": [
+        "c19",
+        "c25",
+        "c21",
+        "c01",
+        "c02"
+      ],
+      "top10": [
+        "c19",
+        "c25",
+        "c21",
+        "c01",
+        "c02",
+        "c06",
+        "c14",
+        "c26",
+        "c28",
+        "c08"
+      ],
+      "latency_ms": 1.965,
+      "query": "它用什么指标评测？"
+    },
+    {
+      "id": "q29",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid",
+      "gold": [
+        "c26"
+      ],
+      "top5": [
+        "c19",
+        "c25",
+        "c02",
+        "c21",
+        "c01"
+      ],
+      "top10": [
+        "c19",
+        "c25",
+        "c02",
+        "c21",
+        "c01",
+        "c06",
+        "c26",
+        "c14",
+        "c28",
+        "c08"
+      ],
+      "latency_ms": 3.778,
+      "query": "它用什么指标评测？"
+    },
+    {
+      "id": "q29",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c26"
+      ],
+      "top5": [
+        "c25",
+        "c01",
+        "c08",
+        "c02",
+        "c21"
+      ],
+      "top10": [
+        "c25",
+        "c01",
+        "c08",
+        "c02",
+        "c21",
+        "c14",
+        "c26",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 4.42,
+      "query": "检索方案设计是什么？ 它用什么指标评测？ Ansheji Fang Fang Ansheji"
+    },
+    {
+      "id": "q29",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c26"
+      ],
+      "top5": [
+        "c25",
+        "c01",
+        "c08",
+        "c02",
+        "c21"
+      ],
+      "top10": [
+        "c25",
+        "c01",
+        "c08",
+        "c02",
+        "c21",
+        "c14",
+        "c26",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 4.411,
+      "query": "检索方案设计是什么？ 它用什么指标评测？ Ansheji Fang Fang Ansheji"
+    },
+    {
+      "id": "q29",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c26"
+      ],
+      "top5": [
+        "c25",
+        "c01",
+        "c08",
+        "c02",
+        "c21"
+      ],
+      "top10": [
+        "c25",
+        "c01",
+        "c08",
+        "c02",
+        "c21",
+        "c14",
+        "c26",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 3.883,
+      "query": "检索方案设计是什么？ 它用什么指标评测？ Ansheji Fang Fang Ansheji"
+    },
+    {
+      "id": "q29",
+      "split": "validation",
+      "slice": "follow_up",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c26"
+      ],
+      "top5": [
+        "c25",
+        "c01",
+        "c08",
+        "c02",
+        "c21"
+      ],
+      "top10": [
+        "c25",
+        "c01",
+        "c08",
+        "c02",
+        "c21",
+        "c26",
+        "c14",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 5.096,
+      "query": "检索方案设计是什么？ 它用什么指标评测？ Ansheji Fang Fang Ansheji"
+    },
+    {
+      "id": "q30",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "keyword",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c11",
+        "c10",
+        "c09"
+      ],
+      "top10": [
+        "c11",
+        "c10",
+        "c09"
+      ],
+      "latency_ms": 1.557,
+      "query": "青禾2026同步冲突是否需要人工确认？"
+    },
+    {
+      "id": "q30",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "vector",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "top10": [
+        "c10",
+        "c11",
+        "c09"
+      ],
+      "latency_ms": 1.867,
+      "query": "青禾2026同步冲突是否需要人工确认？"
+    },
+    {
+      "id": "q30",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "hybrid",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c11",
+        "c10",
+        "c09"
+      ],
+      "top10": [
+        "c11",
+        "c10",
+        "c09"
+      ],
+      "latency_ms": 4.863,
+      "query": "青禾2026同步冲突是否需要人工确认？"
+    },
+    {
+      "id": "q30",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c11",
+        "c10",
+        "c09"
+      ],
+      "top10": [
+        "c11",
+        "c10",
+        "c09"
+      ],
+      "latency_ms": 3.14,
+      "query": "青禾2026同步冲突是否需要人工确认？"
+    },
+    {
+      "id": "q30",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c11",
+        "c10",
+        "c09"
+      ],
+      "top10": [
+        "c11",
+        "c10",
+        "c09"
+      ],
+      "latency_ms": 4.414,
+      "query": "青禾2026同步冲突是否需要人工确认？"
+    },
+    {
+      "id": "q30",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c11",
+        "c10",
+        "c09"
+      ],
+      "top10": [
+        "c11",
+        "c10",
+        "c09"
+      ],
+      "latency_ms": 3.942,
+      "query": "青禾2026同步冲突是否需要人工确认？"
+    },
+    {
+      "id": "q30",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c10",
+        "c11"
+      ],
+      "top5": [
+        "c11",
+        "c10",
+        "c09"
+      ],
+      "top10": [
+        "c11",
+        "c10",
+        "c09"
+      ],
+      "latency_ms": 3.747,
+      "query": "青禾2026同步冲突是否需要人工确认？"
+    },
+    {
+      "id": "q31",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "keyword",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 1.052,
+      "query": "2026年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q31",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "vector",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 1.913,
+      "query": "2026年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q31",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "hybrid",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 4.098,
+      "query": "2026年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q31",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 2.993,
+      "query": "2026年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q31",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 5.117,
+      "query": "2026年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q31",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 3.519,
+      "query": "2026年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q31",
+      "split": "validation",
+      "slice": "duplicate",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c23",
+        "c24"
+      ],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 4.557,
+      "query": "2026年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q32",
+      "split": "validation",
+      "slice": "chinese_entity",
+      "variant": "keyword",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c01"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c01"
+      ],
+      "latency_ms": 1.289,
+      "query": "周明远就读于哪所大学？ Mingyuan Zhou Zhou Mingyuan university affiliation institution"
+    },
+    {
+      "id": "q32",
+      "split": "validation",
+      "slice": "chinese_entity",
+      "variant": "vector",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c13",
+        "c01",
+        "c25",
+        "c23"
+      ],
+      "top10": [
+        "c03",
+        "c13",
+        "c01",
+        "c25",
+        "c23",
+        "c24",
+        "c22",
+        "c16",
+        "c08",
+        "c27"
+      ],
+      "latency_ms": 1.846,
+      "query": "周明远就读于哪所大学？ Mingyuan Zhou Zhou Mingyuan university affiliation institution"
+    },
+    {
+      "id": "q32",
+      "split": "validation",
+      "slice": "chinese_entity",
+      "variant": "hybrid",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c13",
+        "c01",
+        "c25"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c13",
+        "c01",
+        "c25",
+        "c23",
+        "c24",
+        "c22",
+        "c16",
+        "c08"
+      ],
+      "latency_ms": 3.561,
+      "query": "周明远就读于哪所大学？ Mingyuan Zhou Zhou Mingyuan university affiliation institution"
+    },
+    {
+      "id": "q32",
+      "split": "validation",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c13",
+        "c01",
+        "c25"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c13",
+        "c01",
+        "c25",
+        "c23",
+        "c24",
+        "c22",
+        "c16",
+        "c08"
+      ],
+      "latency_ms": 3.523,
+      "query": "周明远就读于哪所大学？ Mingyuan Zhou Zhou Mingyuan university affiliation institution"
+    },
+    {
+      "id": "q32",
+      "split": "validation",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c01",
+        "c13",
+        "c25"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c01",
+        "c13",
+        "c25",
+        "c23",
+        "c24",
+        "c22",
+        "c16",
+        "c08"
+      ],
+      "latency_ms": 4.692,
+      "query": "周明远就读于哪所大学？ Mingyuan Zhou Zhou Mingyuan university affiliation institution"
+    },
+    {
+      "id": "q32",
+      "split": "validation",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c01",
+        "c13",
+        "c25"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c01",
+        "c13",
+        "c25",
+        "c23",
+        "c24",
+        "c22",
+        "c16",
+        "c08"
+      ],
+      "latency_ms": 3.797,
+      "query": "周明远就读于哪所大学？ Mingyuan Zhou Zhou Mingyuan university affiliation institution"
+    },
+    {
+      "id": "q32",
+      "split": "validation",
+      "slice": "chinese_entity",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c03"
+      ],
+      "top5": [
+        "c03",
+        "c04",
+        "c01",
+        "c13",
+        "c25"
+      ],
+      "top10": [
+        "c03",
+        "c04",
+        "c01",
+        "c13",
+        "c25",
+        "c23",
+        "c24",
+        "c22",
+        "c16",
+        "c08"
+      ],
+      "latency_ms": 4.909,
+      "query": "周明远就读于哪所大学？ Mingyuan Zhou Zhou Mingyuan university affiliation institution"
+    },
+    {
+      "id": "q33",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c27"
+      ],
+      "top5": [
+        "c27",
+        "c28",
+        "c21",
+        "c07",
+        "c20"
+      ],
+      "top10": [
+        "c27",
+        "c28",
+        "c21",
+        "c07",
+        "c20",
+        "c22",
+        "c23",
+        "c24"
+      ],
+      "latency_ms": 1.94,
+      "query": "文档入库任务失败最多重试几次？"
+    },
+    {
+      "id": "q33",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c27"
+      ],
+      "top5": [
+        "c27",
+        "c02",
+        "c23",
+        "c24",
+        "c09"
+      ],
+      "top10": [
+        "c27",
+        "c02",
+        "c23",
+        "c24",
+        "c09",
+        "c22",
+        "c03",
+        "c01",
+        "c10",
+        "c11"
+      ],
+      "latency_ms": 3.697,
+      "query": "文档入库任务失败最多重试几次？"
+    },
+    {
+      "id": "q33",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c27"
+      ],
+      "top5": [
+        "c27",
+        "c02",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c27",
+        "c02",
+        "c23",
+        "c24",
+        "c22",
+        "c09",
+        "c03",
+        "c01",
+        "c07",
+        "c10"
+      ],
+      "latency_ms": 3.054,
+      "query": "文档入库任务失败最多重试几次？"
+    },
+    {
+      "id": "q33",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c27"
+      ],
+      "top5": [
+        "c27",
+        "c02",
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c27",
+        "c02",
+        "c23",
+        "c24",
+        "c22",
+        "c09",
+        "c03",
+        "c01",
+        "c07",
+        "c10"
+      ],
+      "latency_ms": 3.024,
+      "query": "文档入库任务失败最多重试几次？"
+    },
+    {
+      "id": "q33",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c27"
+      ],
+      "top5": [
+        "c27",
+        "c23",
+        "c24",
+        "c22",
+        "c02"
+      ],
+      "top10": [
+        "c27",
+        "c23",
+        "c24",
+        "c22",
+        "c02",
+        "c09",
+        "c03",
+        "c01",
+        "c07",
+        "c10"
+      ],
+      "latency_ms": 4.365,
+      "query": "文档入库任务失败最多重试几次？"
+    },
+    {
+      "id": "q33",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c27"
+      ],
+      "top5": [
+        "c27",
+        "c23",
+        "c24",
+        "c02",
+        "c22"
+      ],
+      "top10": [
+        "c27",
+        "c23",
+        "c24",
+        "c02",
+        "c22",
+        "c09",
+        "c03",
+        "c01",
+        "c07",
+        "c10"
+      ],
+      "latency_ms": 3.644,
+      "query": "文档入库任务失败最多重试几次？"
+    },
+    {
+      "id": "q33",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c27"
+      ],
+      "top5": [
+        "c27",
+        "c23",
+        "c24",
+        "c22",
+        "c02"
+      ],
+      "top10": [
+        "c27",
+        "c23",
+        "c24",
+        "c22",
+        "c02",
+        "c09",
+        "c03",
+        "c01",
+        "c07",
+        "c21"
+      ],
+      "latency_ms": 3.45,
+      "query": "文档入库任务失败最多重试几次？"
+    },
+    {
+      "id": "q34",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "keyword",
+      "gold": [
+        "c28"
+      ],
+      "top5": [
+        "c28",
+        "c27",
+        "c26",
+        "c08",
+        "c09"
+      ],
+      "top10": [
+        "c28",
+        "c27",
+        "c26",
+        "c08",
+        "c09",
+        "c10",
+        "c13",
+        "c15"
+      ],
+      "latency_ms": 1.679,
+      "query": "入库监控分开记录哪些耗时？"
+    },
+    {
+      "id": "q34",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "vector",
+      "gold": [
+        "c28"
+      ],
+      "top5": [
+        "c28",
+        "c27",
+        "c04",
+        "c14",
+        "c07"
+      ],
+      "top10": [
+        "c28",
+        "c27",
+        "c04",
+        "c14",
+        "c07",
+        "c08",
+        "c01",
+        "c25",
+        "c17"
+      ],
+      "latency_ms": 1.931,
+      "query": "入库监控分开记录哪些耗时？"
+    },
+    {
+      "id": "q34",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "hybrid",
+      "gold": [
+        "c28"
+      ],
+      "top5": [
+        "c28",
+        "c27",
+        "c04",
+        "c14",
+        "c08"
+      ],
+      "top10": [
+        "c28",
+        "c27",
+        "c04",
+        "c14",
+        "c08",
+        "c07",
+        "c01",
+        "c25",
+        "c17",
+        "c26"
+      ],
+      "latency_ms": 3.112,
+      "query": "入库监控分开记录哪些耗时？"
+    },
+    {
+      "id": "q34",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "hybrid_rewrite",
+      "gold": [
+        "c28"
+      ],
+      "top5": [
+        "c28",
+        "c27",
+        "c04",
+        "c14",
+        "c08"
+      ],
+      "top10": [
+        "c28",
+        "c27",
+        "c04",
+        "c14",
+        "c08",
+        "c07",
+        "c01",
+        "c25",
+        "c17",
+        "c26"
+      ],
+      "latency_ms": 5.279,
+      "query": "入库监控分开记录哪些耗时？"
+    },
+    {
+      "id": "q34",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [
+        "c28"
+      ],
+      "top5": [
+        "c28",
+        "c27",
+        "c04",
+        "c14",
+        "c08"
+      ],
+      "top10": [
+        "c28",
+        "c27",
+        "c04",
+        "c14",
+        "c08",
+        "c07",
+        "c01",
+        "c25",
+        "c17",
+        "c26"
+      ],
+      "latency_ms": 4.224,
+      "query": "入库监控分开记录哪些耗时？"
+    },
+    {
+      "id": "q34",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [
+        "c28"
+      ],
+      "top5": [
+        "c28",
+        "c27",
+        "c04",
+        "c14",
+        "c08"
+      ],
+      "top10": [
+        "c28",
+        "c27",
+        "c04",
+        "c14",
+        "c08",
+        "c07",
+        "c01",
+        "c25",
+        "c17",
+        "c26"
+      ],
+      "latency_ms": 3.579,
+      "query": "入库监控分开记录哪些耗时？"
+    },
+    {
+      "id": "q34",
+      "split": "validation",
+      "slice": "fact",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [
+        "c28"
+      ],
+      "top5": [
+        "c28",
+        "c27",
+        "c04",
+        "c14",
+        "c08"
+      ],
+      "top10": [
+        "c28",
+        "c27",
+        "c04",
+        "c14",
+        "c08",
+        "c07",
+        "c01",
+        "c25",
+        "c17",
+        "c26"
+      ],
+      "latency_ms": 6.222,
+      "query": "入库监控分开记录哪些耗时？"
+    },
+    {
+      "id": "q35",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "keyword",
+      "gold": [],
+      "top5": [
+        "c18",
+        "c16",
+        "c17",
+        "c19",
+        "c05"
+      ],
+      "top10": [
+        "c18",
+        "c16",
+        "c17",
+        "c19",
+        "c05"
+      ],
+      "latency_ms": 1.224,
+      "query": "竹影服务的生产IP地址是多少？"
+    },
+    {
+      "id": "q35",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "vector",
+      "gold": [],
+      "top5": [
+        "c18",
+        "c05",
+        "c25",
+        "c26",
+        "c17"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c25",
+        "c26",
+        "c17",
+        "c19",
+        "c12",
+        "c15",
+        "c14",
+        "c10"
+      ],
+      "latency_ms": 2.051,
+      "query": "竹影服务的生产IP地址是多少？"
+    },
+    {
+      "id": "q35",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid",
+      "gold": [],
+      "top5": [
+        "c18",
+        "c05",
+        "c25",
+        "c17",
+        "c26"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c25",
+        "c17",
+        "c26",
+        "c19",
+        "c12",
+        "c15",
+        "c14",
+        "c10"
+      ],
+      "latency_ms": 3.104,
+      "query": "竹影服务的生产IP地址是多少？"
+    },
+    {
+      "id": "q35",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite",
+      "gold": [],
+      "top5": [
+        "c18",
+        "c05",
+        "c25",
+        "c17",
+        "c26"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c25",
+        "c17",
+        "c26",
+        "c19",
+        "c12",
+        "c15",
+        "c14",
+        "c10"
+      ],
+      "latency_ms": 2.968,
+      "query": "竹影服务的生产IP地址是多少？"
+    },
+    {
+      "id": "q35",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [],
+      "top5": [
+        "c18",
+        "c05",
+        "c25",
+        "c17",
+        "c19"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c25",
+        "c17",
+        "c19",
+        "c26",
+        "c12",
+        "c15",
+        "c14",
+        "c10"
+      ],
+      "latency_ms": 3.331,
+      "query": "竹影服务的生产IP地址是多少？"
+    },
+    {
+      "id": "q35",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [],
+      "top5": [
+        "c18",
+        "c05",
+        "c25",
+        "c17",
+        "c19"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c25",
+        "c17",
+        "c19",
+        "c26",
+        "c12",
+        "c15",
+        "c14",
+        "c10"
+      ],
+      "latency_ms": 3.437,
+      "query": "竹影服务的生产IP地址是多少？"
+    },
+    {
+      "id": "q35",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [],
+      "top5": [
+        "c18",
+        "c05",
+        "c17",
+        "c19",
+        "c25"
+      ],
+      "top10": [
+        "c18",
+        "c05",
+        "c17",
+        "c19",
+        "c25",
+        "c26",
+        "c12",
+        "c15",
+        "c14",
+        "c10"
+      ],
+      "latency_ms": 4.552,
+      "query": "竹影服务的生产IP地址是多少？"
+    },
+    {
+      "id": "q36",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "keyword",
+      "gold": [],
+      "top5": [
+        "c22",
+        "c24",
+        "c23"
+      ],
+      "top10": [
+        "c22",
+        "c24",
+        "c23"
+      ],
+      "latency_ms": 1.058,
+      "query": "2027年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q36",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "vector",
+      "gold": [],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 1.935,
+      "query": "2027年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q36",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid",
+      "gold": [],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 2.976,
+      "query": "2027年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q36",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite",
+      "gold": [],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 2.943,
+      "query": "2027年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q36",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 3.478,
+      "query": "2027年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q36",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 4.113,
+      "query": "2027年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q36",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [],
+      "top5": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "top10": [
+        "c23",
+        "c24",
+        "c22"
+      ],
+      "latency_ms": 3.265,
+      "query": "2027年第二季度活跃用户是多少？"
+    },
+    {
+      "id": "q37",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "keyword",
+      "gold": [],
+      "top5": [
+        "c14",
+        "c15",
+        "c01",
+        "c05",
+        "c13"
+      ],
+      "top10": [
+        "c14",
+        "c15",
+        "c01",
+        "c05",
+        "c13",
+        "c25",
+        "c26",
+        "c27"
+      ],
+      "latency_ms": 1.17,
+      "query": "图像重建使用了哪一款GPU？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q37",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "vector",
+      "gold": [],
+      "top5": [
+        "c14",
+        "c25",
+        "c15",
+        "c26",
+        "c05"
+      ],
+      "top10": [
+        "c14",
+        "c25",
+        "c15",
+        "c26",
+        "c05",
+        "c06",
+        "c18"
+      ],
+      "latency_ms": 1.82,
+      "query": "图像重建使用了哪一款GPU？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q37",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid",
+      "gold": [],
+      "top5": [
+        "c14",
+        "c15",
+        "c25",
+        "c26",
+        "c05"
+      ],
+      "top10": [
+        "c14",
+        "c15",
+        "c25",
+        "c26",
+        "c05",
+        "c06",
+        "c18",
+        "c01",
+        "c13",
+        "c27"
+      ],
+      "latency_ms": 3.231,
+      "query": "图像重建使用了哪一款GPU？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q37",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite",
+      "gold": [],
+      "top5": [
+        "c14",
+        "c15",
+        "c25",
+        "c26",
+        "c05"
+      ],
+      "top10": [
+        "c14",
+        "c15",
+        "c25",
+        "c26",
+        "c05",
+        "c06",
+        "c18",
+        "c01",
+        "c13",
+        "c27"
+      ],
+      "latency_ms": 3.003,
+      "query": "图像重建使用了哪一款GPU？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q37",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [],
+      "top5": [
+        "c14",
+        "c15",
+        "c25",
+        "c26",
+        "c05"
+      ],
+      "top10": [
+        "c14",
+        "c15",
+        "c25",
+        "c26",
+        "c05",
+        "c06",
+        "c18",
+        "c01",
+        "c13",
+        "c27"
+      ],
+      "latency_ms": 4.158,
+      "query": "图像重建使用了哪一款GPU？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q37",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [],
+      "top5": [
+        "c14",
+        "c15",
+        "c25",
+        "c26",
+        "c05"
+      ],
+      "top10": [
+        "c14",
+        "c15",
+        "c25",
+        "c26",
+        "c05",
+        "c06",
+        "c18",
+        "c01",
+        "c13",
+        "c27"
+      ],
+      "latency_ms": 3.344,
+      "query": "图像重建使用了哪一款GPU？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q37",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [],
+      "top5": [
+        "c14",
+        "c15",
+        "c25",
+        "c26",
+        "c05"
+      ],
+      "top10": [
+        "c14",
+        "c15",
+        "c25",
+        "c26",
+        "c05",
+        "c06",
+        "c18",
+        "c01",
+        "c13",
+        "c27"
+      ],
+      "latency_ms": 3.29,
+      "query": "图像重建使用了哪一款GPU？ image reconstruction reconstruct"
+    },
+    {
+      "id": "q38",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "keyword",
+      "gold": [],
+      "top5": [
+        "c20",
+        "c21"
+      ],
+      "top10": [
+        "c20",
+        "c21"
+      ],
+      "latency_ms": 0.932,
+      "query": "兰亭平台的CEO是谁？"
+    },
+    {
+      "id": "q38",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "vector",
+      "gold": [],
+      "top5": [
+        "c21",
+        "c02",
+        "c20"
+      ],
+      "top10": [
+        "c21",
+        "c02",
+        "c20"
+      ],
+      "latency_ms": 2.994,
+      "query": "兰亭平台的CEO是谁？"
+    },
+    {
+      "id": "q38",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid",
+      "gold": [],
+      "top5": [
+        "c21",
+        "c20",
+        "c02",
+        "c27",
+        "c26"
+      ],
+      "top10": [
+        "c21",
+        "c20",
+        "c02",
+        "c27",
+        "c26",
+        "c28",
+        "c12"
+      ],
+      "latency_ms": 2.967,
+      "query": "兰亭平台的CEO是谁？"
+    },
+    {
+      "id": "q38",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite",
+      "gold": [],
+      "top5": [
+        "c21",
+        "c20",
+        "c02",
+        "c27",
+        "c26"
+      ],
+      "top10": [
+        "c21",
+        "c20",
+        "c02",
+        "c27",
+        "c26",
+        "c28",
+        "c12"
+      ],
+      "latency_ms": 3.745,
+      "query": "兰亭平台的CEO是谁？"
+    },
+    {
+      "id": "q38",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank",
+      "gold": [],
+      "top5": [
+        "c21",
+        "c20",
+        "c02",
+        "c27",
+        "c26"
+      ],
+      "top10": [
+        "c21",
+        "c20",
+        "c02",
+        "c27",
+        "c26",
+        "c28",
+        "c12"
+      ],
+      "latency_ms": 3.185,
+      "query": "兰亭平台的CEO是谁？"
+    },
+    {
+      "id": "q38",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank_0_2",
+      "gold": [],
+      "top5": [
+        "c21",
+        "c20",
+        "c02",
+        "c27",
+        "c26"
+      ],
+      "top10": [
+        "c21",
+        "c20",
+        "c02",
+        "c27",
+        "c26",
+        "c28",
+        "c12"
+      ],
+      "latency_ms": 2.96,
+      "query": "兰亭平台的CEO是谁？"
+    },
+    {
+      "id": "q38",
+      "split": "validation",
+      "slice": "no_answer",
+      "variant": "hybrid_rewrite_rerank_0_6",
+      "gold": [],
+      "top5": [
+        "c21",
+        "c20",
+        "c02",
+        "c27",
+        "c26"
+      ],
+      "top10": [
+        "c21",
+        "c20",
+        "c02",
+        "c27",
+        "c26",
+        "c28",
+        "c12"
+      ],
+      "latency_ms": 3.162,
+      "query": "兰亭平台的CEO是谁？"
+    }
+  ],
+  "provenance": {
+    "generated_at_utc": "2026-10-22T13:21:27.132169+00:00",
+    "python": "3.14.6",
+    "corpus_version": "i001-synthetic-v1",
+    "corpus_sha256": "c8566c17d6ff1103fbec55e63275ad7eea13ce900f115a7bfd412e58dc39421e",
+    "questions_version": "i001-questions-v1",
+    "questions_sha256": "7c14e4c00650524cbd868cc34663ea64108ee7fe4e4f1f36e79dd26afc62cfd2",
+    "evaluator_code_sha256": "111645f641c7e78c72a98c552911e6f51a02f1b15e07b173501a4ac453398c99",
+    "search_code_sha256": "cf363b3b84755c440a435457ffd9d1a5b5badbf6f7817b80a55515f8cb571d28",
+    "rewrite_code_sha256": "c52f2f08f1b6f8bbd9c5106bc83e3c195603f254a54353604ba0266ee664af30",
+    "retrieval_prompt_sha256": "a3c037f8ee4157978d4ceedfa7ec3a298b421b92e8a6119b2c73828e8f4156f0",
+    "embedding_model": "local-hash-embedding",
+    "embedding_model_version": "sha256-token-hash-v1",
+    "answer_model": "not_run",
+    "answer_prompt": "not_run",
+    "top_k": [
+      5,
+      10
+    ],
+    "snapshot_backend": "in_memory_exact_vectors"
+  }
+}

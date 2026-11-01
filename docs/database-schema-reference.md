@@ -1,3 +1,5 @@
+> **历史字段快照**：本文字段清单未覆盖当前所有迁移与模型，且部分早期设计假设已过时；不得作为当前 schema 的唯一事实源。当前模型/迁移优先，概览见 [database-current.md](database-current.md)。
+
 # 数据库字段参考手册（Database Schema Reference）
 
 > 本文件是系统**字段级 schema 的单一事实源**。参考 `lark-doc-db-design.md`（智控系统数据库设计文档）的方法论：按对象空间组织、字段级设计、标准约定、变更追踪。

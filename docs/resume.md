@@ -1,52 +1,24 @@
-# 简历项目包装
+# 项目简历要点（I-023，待本人确认职责）
 
-## 项目名称
+**项目定位：个人知识管理与内容生产平台。**用户可整理私有资料、检索问答并查看引用，再由作者校对内容、保存文章并走人工发布审批。当前是 Vue 3 + Django/DRF 模块化单体；生产配置包含 PostgreSQL/pgvector、RabbitMQ/Celery 和 Redis，本地演示模式使用 SQLite/同步任务。架构与三条数据流见 [I-021 决策记录](I-021-当前架构与技术取舍.md)和[架构图](architecture.md)。
 
-企业知识智能体平台 + 个人博客智能体系统
+**个人职责待补充：**仓库能证明功能、测试和文档存在，不能证明求职者独立设计或亲自实现了其中每项。以下六条是按岗位裁剪的候选表述；对外使用前逐条核对本人负责的设计、编码、测试、协作与上线范围，删除未亲自参与的部分。不得直接使用“独立完成”“从 0 到 1”或把项目称为已生产验证的企业平台。
 
-## 一句话介绍
+## AI 全栈岗位：三条候选要点
 
-从 0 到 1 搭建一个可部署、可观测、带权限安全和 Human-in-the-loop 的企业级 Agentic RAG 平台，并把个人博客内容接入为可问答的知识源。
+1. **资料到内容的闭环（个人贡献待补充）：**基于 Vue 3/TypeScript 与 Django/DRF 串联知识库上传、文档状态查询、带引用问答、文章编辑和人工发布；由服务端校验角色与 workspace，发布成功与知识索引就绪分别呈现。技术取舍是复用模块化单体和持久业务状态，不把审批交给浏览器或模型。证据：[I-021 三条数据流](I-021-当前架构与技术取舍.md)、[上传与发布代码](../backend/apps/agent_api/views/)、[前端页面](../frontend/src/views/)；真实用户完成率未测。
+2. **运行一致性与异步入库（个人贡献待补充）：**问答使用 `run_id` 将请求、消息和 `AgentRun` 结果关联，断线后可按权限查询；文档入库使用持久任务、代际切换、有界重试，避免旧任务覆盖新内容。取舍是用业务表保存权威状态，队列和缓存只承担异步执行及临时数据。证据：[I-021 问答/上传流程](I-021-当前架构与技术取舍.md)、[I-008 故障验证](I-008-文档入库可靠性验证.md)、[问答状态测试](../backend/apps/agent_api/tests/test_chat_runs.py)；真实 PostgreSQL、broker/worker 故障验收仍待完成。
+3. **交付与回退边界（个人贡献待补充）：**为前端单测、类型/构建、后端、浏览器 E2E 和截图工具离线测试配置 CI 检查，并编写部署前迁移预检与就绪检查；本地隔离演练了失败迁移后的应用回退。证据：[CI 配置](../.github/workflows/ci.yml)、[I-019 演练报告](I-019-可重复部署与失败回退演练.md)：A 部署/检查 **3.322 秒**、失败 B 后回退/复验 **3.190 秒**，仅为该次本机 SQLite/HTTP 脚本结果；GitHub CI、真实 Compose/PostgreSQL 回退未验。
 
-## 简历写法
+## AI Agent 岗位：三条候选要点
 
-### 版本 A：偏 Agent 工程
+1. **可解释的问答路由（个人贡献待补充）：**Supervisor 按规则分发专用处理路径，RAG 内部以有限 LangGraph 图处理直接回答、检索、低相关时最多一次改写和生成；私有检索与工具调用仍受服务端角色/workspace/审批约束。选择保留现有小图以兼容来源与正文事件，未将规则分发描述为自主多 Agent 规划。证据：[I-007 决策](I-007-LangGraph工作流决策.md)、[路由代码](../backend/agent/supervisor_routing.py)、[RAG 图](../backend/agent/simple_agent.py)；图与普通函数的质量/性能差值未测。
+2. **检索方案评估（个人贡献待补充）：**制作可复跑的关键词、向量、混合、确定性历史拼接和**规则重排**消融，保留负结果，避免凭合成样本调生产权重。证据：[I-001 报告](I-001-RAG检索消融评测.md)与[评测脚本](../backend/scripts/evaluate_rag_i001.py)：**28 条合成切片、38 条暂定映射题**；14 条独立验证题中有暂定来源的 10 题，关键词 Recall@5 为 **10/10**、当前混合为 **8/10**。映射未经人工复核，本地哈希向量不是真实 embedding；不能声称方案提升或真实回答依据性已验证。
+3. **生成期正文与运行观测（个人贡献待补充）：**将模型生成片段接到后端 SSE `answer_delta`/`answer_snapshot` 和前端预览，阶段 `progress` 单独处理；最终正文、引用、运行状态及模型调用用途/用量写入 `AgentRun`，未知 token/价格保留未知。证据：[生成节点](../backend/agent/simple_agent.py)、[SSE 实现](../backend/apps/agent_api/views/chat.py)、[流式回归](../backend/apps/agent_api/tests/test_streaming_body.py)、[I-005 台账](AI全栈与Agent工程改进跟踪表V1.0.md)；一次真实模型小样本仅验证分片可达，真实浏览器/代理下的流式体验和账单对账未验。
 
-企业知识智能体平台 | Vue 3 / Django / LangGraph / RAG / MCP / Docker
+## 对外使用前核对
 
-- 设计并实现多智能体知识平台，包含 RAG Agent、Blog Agent、MCP Tool Agent、SQL Analysis Agent、Review Agent、Admin Approval Agent，由 Supervisor 按问题类型路由。
-- 构建 Agentic RAG 流程，支持文档上传、切片、embedding、检索、引用来源、回答生成和检索失败兜底。
-- 将个人博客文章发布流程与知识库联动，文章发布后自动进入知识库，访客可通过博客智能体询问项目经历、技术栈和架构设计。
-- 实现 Human-in-the-loop 审批机制，对删除文档、发布博客、MCP 工具调用等敏感操作进行人工审批并记录结果。
-- 接入 MCP 工具注册表，支持工具启用/禁用、审批开关、权限范围和执行记录。
-- 建立可观测与评估体系，记录 Agent trace、latency、tool success rate，并维护 30 条评估集覆盖博客、知识库、复杂问题和越权攻击。
-- 完成 RBAC、workspace 隔离、安全审计、prompt injection 拦截和输出脱敏。
-- 使用 Docker Compose 编排 Nginx、Vue、Django、PostgreSQL、Redis、Celery，并用 GitHub Actions 跑测试、构建和 Compose 校验。
-
-### 版本 B：偏全栈工程
-
-企业知识智能体平台 | Vue 3 / TypeScript / Django REST Framework / PostgreSQL / Docker
-
-- 独立完成前后端 Monorepo，从基础架构、用户界面、API、数据库模型到部署流程完整落地。
-- 前端实现博客、知识库、Agent 对话、审批后台、MCP 工具管理、观测评估、安全中心等工作台页面。
-- 后端使用 Django REST Framework 设计文章、知识库、文档、审批、工具、观测、评估、权限等 API。
-- 实现 Markdown 博客编辑与图片上传，支持文章发布审批、评论、归档、标签分类和知识库同步。
-- 构建登录注册、token 自动携带、路由守卫和统一 AppShell 布局，提升系统完整性。
-- 使用自动化测试覆盖 37 个关键后端场景，并通过前端类型检查和生产构建。
-
-## 面试讲解顺序
-
-1. 先讲业务目标：普通 RAG 项目升级为企业可控 Agent 平台。
-2. 再讲架构：Vue 工作台、Django API、多智能体、知识库、审批、安全、部署。
-3. 重点讲 Agent：Supervisor 路由、RAG 检索、MCP 工具、HITL 审批。
-4. 讲工程质量：测试、CI、Docker、可观测、评估集。
-5. 最后讲安全边界：RBAC、workspace、prompt injection、防密钥泄漏。
-
-## 可量化成果
-
-- 37 个后端自动化测试。
-- 30 条 Agent 评估题。
-- 8 个前端核心工作台页面。
-- 7 个 Docker Compose 服务。
-- 6 类 specialized agents。
-- 4 类 MCP 工具。
+- 请本人为每条填写：自己做了什么、何时完成、合作分工、可公开展示的代码/测试与实际部署范围；未确认前保留“个人贡献待补充”，不直接投递。
+- RAG 使用**规则重排**，未实现模型重排；Supervisor 是**规则路由**，未实现自主规划。`progress` 是阶段提示；只有 `answer_delta`/`answer_snapshot` 才是正文增量/校正，部分路径只有最终正文。依据：[I-007](I-007-LangGraph工作流决策.md)、[流式协议](../frontend/src/features/chat/utils/streamProtocol.ts)。
+- I-022 仅保留现有文章草稿与业务审批，**自动带来源草稿和跨请求 LangGraph checkpoint 恢复未实现**；不得写进已完成经历。依据：[I-022 评估](I-022-草稿审批与恢复评估.md)。
+- 合成/模拟测试、单次真实模型调用、本地部署演练分别说明；不把它们概括成生产收益。演示口径见[演示与面试脚本](demo-script.md)。

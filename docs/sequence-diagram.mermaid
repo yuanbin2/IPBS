@@ -1,0 +1,41 @@
+sequenceDiagram
+    participant U as 用户
+    participant HK as HotkeyManager
+    participant C as AppController
+    participant O as OverlaySelector
+    participant T as ActionToolbar
+    participant A as AuthClient
+    participant B as BlogApiClient
+    participant S as LocalSaver
+    participant CB as ClipboardHelper
+
+    U->>HK: 按下全局热键
+    HK->>C: on_hotkey()
+    C->>O: run(各屏 QPixmap)
+    O->>U: 全屏遮罩+拖拽框选 (Esc=取消)
+    U->>O: 松开鼠标完成选区
+    O-->>C: 选区 QImage
+    C->>T: show_near(选区)
+    U->>T: 点击「发博客」
+    T->>C: on_publish()
+    C->>A: ensure_token()
+    alt 无 token / 过期
+        A->>A: DPAPI 读凭据→POST /api/agent/auth/login/ 或 /auth/refresh/
+    end
+    A-->>C: access token
+    C->>B: upload_public_image(png, filename)
+    B->>B: POST /api/agent/blog/images/ (Bearer, multipart image)
+    alt 201
+        B-->>C: {url, markdown}
+        C->>CB: 复制 markdown
+        C->>U: 气泡「已复制 Markdown 链接」
+    else 401/403/413/429/网络错误
+        B-->>C: ToolError(code)
+        C->>S: fallback_save_local(shot)
+        C->>U: 气泡「上传失败已存本地：<路径>」
+    end
+    U->>T: 点击「存本地」
+    T->>C: on_save_local()
+    C->>S: save(shot)
+    S-->>C: <保存目录>/2026/07/20260727-153001.png
+    C->>U: 气泡「已保存」

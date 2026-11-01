@@ -1,3 +1,5 @@
+> **历史逻辑设计快照**：本文早于现有 pgvector identity、文档 outbox、文章修订、私有笔记/图片与领域目录模型；其中“向量仍以 JSON 保存”等陈述已过时。当前数据库概览见 [database-current.md](database-current.md)，字段与迁移以源码为准。
+
 # 当前系统数据库设计说明
 
 ## 1. 文档目的

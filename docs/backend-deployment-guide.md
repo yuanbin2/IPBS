@@ -1,3 +1,5 @@
+> **历史部署教程，不可照此部署**：本文包含过时的 PythonAnywhere/旧安全配置和启动步骤。当前本地与 Compose 操作只见 [deployment.md](deployment.md)；生产行为仍须按缺陷表逐项实站验收。
+
 # Django 后端部署指南
 
 本指南将帮助你将 Django 后端部署到公网服务器。

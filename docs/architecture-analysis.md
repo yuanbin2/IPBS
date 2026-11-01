@@ -61,13 +61,13 @@
 1. JWT 鉴权 → 解析 user + workspace_key
 2. detect_sensitive_input()          ← 安全检查，前置，先于路由
      命中 → 直接转 admin_approval_agent（防止关键词被下方分支吞掉）
-3. MultiAgentSupervisor._decide()    ← 10 级关键词瀑布，首个命中即返回
+3. supervisor_routing.decide()        ← 规则优先级分发，首个命中即返回
 4. 命中子 Agent → 执行
      rag_agent  → SimpleToolCallingAgent 跑 LangGraph
      blog_agent → 公开博客检索
      mcp_tool   → 工具注册表（带权限/审批开关）
      sql_agent  → 受限统计查询
-5. generate → cite_sources → END
+5. generate → END（检索来源随状态和响应保留）
 6. 输出脱敏 → 落库 Conversation / Message / AgentRun → 审计日志
 ```
 
@@ -77,7 +77,7 @@
 
 ## 5. 编排层：Supervisor 路由详解
 
-`agent/multi_agent.py:297` 的 `_decide()` 是**纯关键词优先级瀑布**，自上而下第一个命中就 `return`：
+`agent/supervisor_routing.py` 的 `decide()` 是**规则优先级分发**，自上而下第一个命中就 `return`：
 
 | 序 | Agent | 触发关键词 | 置信度 |
 | --- | --- | --- | --- |
@@ -99,44 +99,40 @@
 
 ### 优点
 
-- **零 token 成本、零延迟**：路由不调模型，纯字符串匹配，确定性 100%。
+- **无模型 token 成本**：路由不调模型，主要是字符串规则；路由本身耗时尚未做同条件函数/图对照。
 - **优先级顺序有真实设计意图**：治理 → 工具 → 事实 → 私有知识 → 通用检索。注意 4–8 级全是 `rag_agent`，但被拆成 5 个入口，每个带不同置信度 —— 这是在用关键词「伪造」细粒度意图识别。
-- **置信度字段是真的在传递语义**，`blog_agent` 命中技术栈事实时给 0.99，兜底给 0.62，下游可据此判断可信程度。
+- **置信度是静态标签**：例如技术栈事实为 0.99、兜底为 0.62；没有概率校准，不应据此判断回答可信程度。
 
 ### 隐患
 
 - **顺序耦合极强**：第 8 级含「搜索」「网络」「检索」，第 9 级含「工具」「文件搜索」。一旦上游新增关键词，极易把下游分支永久屏蔽（**饿死**）。这类 bug 不报错，只是路由静默走错，非常难发现。
 - **中文分词未做**：直接 `in` 子串匹配。像「搜索」这样的高频词，会误伤「我想搜索一下我的博客」这类本应进 `blog_agent` 的请求。
-- **置信度是硬编码常量，不是真实概率**：无法反映真实把握，只能当排序权重用。
+- **置信度是硬编码常量，不是真实概率**：路由由规则顺序决定，当前数值不能作为可靠性评分或排序依据。
 
 ---
 
 ## 6. 智能层：LangGraph 状态图
 
-`agent/simple_agent.py:412-442`，这才是真正的 `StateGraph`：
+`agent/simple_agent.py` 中的有限 `StateGraph`：
 
 ```
-query_analyzer ──(需检索)──> retrieve ──> grade_documents ──(评分通过)──> generate
-      │                                          │                          │
-      └──(普通问题直接回答)─────────────────────┘                    cite_sources
-                                                 │                          │
-                                          (评分不足)                          ▼
-                                                 ▼                         END
-                                          rewrite_query ──(回环，最多 1 次)──┘
+query_analyzer ──(需检索)──> retrieve ──> grade_documents ──(生成)──> generate ──> END
+      │                                          │
+      └──(普通问题直接回答)──────────────────────────────────────────> generate
+                                                 │
+                                             (低相关且未改写)
+                                                 ▼
+                                          rewrite_query ──(最多 1 次)──> retrieve
 ```
 
-节点清单（`add_node` 共 6 个）：
-`query_analyzer` / `retrieve` / `grade_documents` / `rewrite_query` / `generate` / `cite_sources`
+节点清单（`add_node` 共 5 个）：
+`query_analyzer` / `retrieve` / `grade_documents` / `rewrite_query` / `generate`。
+原 `cite_sources` 只追加 trace，未生成引用，现已移除；来源由检索状态保留并返回。
 
-边结构（关键行号）：
-- `:423` `add_conditional_edges` — `query_analyzer` 分流（检索 or 直接答）
-- `:431` `retrieve → grade_documents`
-- `:432` `add_conditional_edges` — 评分门控
-- `:440` `rewrite_query → retrieve` ← **回环边**
-- `:441` `generate → cite_sources`
-- `:442` `cite_sources → END`
+边结构：`query_analyzer` 分流至 `retrieve` 或 `generate`；
+`retrieve → grade_documents`；低相关时 `grade_documents → rewrite_query → retrieve` 至多一次；其余路径 `generate → END`。
 
-**这是全项目技术上最扎实的一块**。自纠错回环用 `max 1 次` 硬约束封顶，既拿到了 Agentic RAG 的收益，又避免了无限重试和成本失控 —— 这是生产环境的正确做法。
+`max_rewrites=1` 限制低相关检索改写回环次数；该上限控制调用次数，但 I-001 尚未证明复杂检索链对人工复核样本的收益。图的保留理由和后续简化条件见 [I-007 ADR](I-007-LangGraph工作流决策.md)。
 
 ---
 

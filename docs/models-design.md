@@ -1,3 +1,5 @@
+> **历史模型拆分说明**：文中有向量 JSON、模型字段和关系已被后续代码/migrations 取代；仅保留最初按领域拆包的决策背景。当前目录见 [backend/apps/agent_api/models/README.md](../backend/apps/agent_api/models/README.md)，当前模型概览见 [database-current.md](database-current.md)。
+
 # 数据模型独立分层与实例表
 
 ## 1. 为什么把 Models 拆成目录
