@@ -275,7 +275,24 @@ class SecurityStatusView(APIView):
         )
 
 
+SECURITY_AUDIT_EVENT_PAGE_SIZE = 20
+SECURITY_AUDIT_EVENT_MAX_PAGE_SIZE = 50
+
+
+def _int_query_param(request, name, default):
+    """Audit list paging must tolerate malformed client input instead of 500-ing."""
+    raw = request.query_params.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 class SecurityAuditListView(APIView):
+    """审计事件按 -created_at 倒序游标分页，供安全页滚动到底再加载下一页。"""
+
     authentication_classes = []
     permission_classes = []
 
@@ -284,5 +301,18 @@ class SecurityAuditListView(APIView):
         if denied:
             return denied
         workspace_key = get_workspace_key(request)
-        events = SecurityAuditEvent.objects.filter(workspace_key=workspace_key)[:100]
-        return Response([serialize_security_audit_event(event) for event in events])
+        limit = _int_query_param(request, "limit", SECURITY_AUDIT_EVENT_PAGE_SIZE)
+        if limit <= 0:
+            limit = SECURITY_AUDIT_EVENT_PAGE_SIZE
+        limit = min(limit, SECURITY_AUDIT_EVENT_MAX_PAGE_SIZE)
+        offset = max(_int_query_param(request, "offset", 0), 0)
+        queryset = SecurityAuditEvent.objects.filter(workspace_key=workspace_key).order_by("-created_at", "-id")
+        total = queryset.count()
+        events = list(queryset[offset : offset + limit])
+        return Response(
+            {
+                "events": [serialize_security_audit_event(event) for event in events],
+                "total": total,
+                "has_more": offset + len(events) < total,
+            }
+        )

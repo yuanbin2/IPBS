@@ -11,6 +11,8 @@ import re
 
 from langchain_core.prompts import ChatPromptTemplate
 
+from agent.model_accounting import model_purpose
+
 from ..models import BlogArticle
 from .llm_support import empty_token_usage, extract_token_usage, merge_token_usage
 from .rag import split_text
@@ -77,18 +79,20 @@ def summarize_full_article(llm, article: BlogArticle) -> tuple[str, dict[str, in
     partial_summaries: list[str] = []
     usage = empty_token_usage()
     for batch in batches:
-        message = (MAP_PROMPT | llm).invoke({"title": article.title, "content": batch})
+        with model_purpose("blog_summary_map"):
+            message = (MAP_PROMPT | llm).invoke({"title": article.title, "content": batch})
         partial_summaries.append(str(message.content))
         usage = merge_token_usage(usage, extract_token_usage(message))
 
-    final_message = (REDUCE_PROMPT | llm).invoke(
-        {
-            "title": article.title,
-            "summaries": "\n\n".join(
-                f"第 {index} 部分：\n{summary}" for index, summary in enumerate(partial_summaries, start=1)
-            ),
-        }
-    )
+    with model_purpose("blog_summary_reduce"):
+        final_message = (REDUCE_PROMPT | llm).invoke(
+            {
+                "title": article.title,
+                "summaries": "\n\n".join(
+                    f"第 {index} 部分：\n{summary}" for index, summary in enumerate(partial_summaries, start=1)
+                ),
+            }
+        )
     usage = merge_token_usage(usage, extract_token_usage(final_message))
     return str(final_message.content), usage, len(chunks)
 

@@ -74,6 +74,9 @@ class DocumentLifecycleTests(AdminApiTestCase):
         self.assertEqual(payload["task_url"], f"/api/agent/tasks/{payload['task_id']}/")
         document = Document.objects.get(pk=payload["id"])
         job = DocumentIngestionJob.objects.get(pk=payload["task_id"])
+        self.assertTrue(document.source_file.storage.exists(document.source_file.name))
+        with document.source_file.open("rb") as saved_file:
+            self.assertEqual(saved_file.read(), b"Local development upload should work without a broker.")
         dispatch_ingestion_job(str(job.pk))
         job.refresh_from_db()
         self.assertEqual(job.status, DocumentIngestionJob.Status.RETRY)
@@ -87,6 +90,10 @@ class DocumentLifecycleTests(AdminApiTestCase):
         self.assertTrue(dispatch_ingestion_job(str(job.pk)))
         job.refresh_from_db()
         self.assertEqual(job.status, DocumentIngestionJob.Status.QUEUED)
+
+        document.delete()
+        missing = self.client.get(f"/api/agent/tasks/{job.pk}/", HTTP_HOST="localhost")
+        self.assertEqual(missing.status_code, 404)
 
     @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
     @patch.dict("os.environ", NO_MODEL_ENV)

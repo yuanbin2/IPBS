@@ -4,10 +4,14 @@ from ..models import AgentObservation, Conversation, ConversationProject, Messag
 
 
 class MessageSerializer(serializers.ModelSerializer):
+    run_id = serializers.UUIDField(source="agent_run.run_id", read_only=True, allow_null=True)
+
     class Meta:
         model = Message
         fields = [
             "id",
+            "agent_run_id",
+            "run_id",
             "role",
             "content",
             "tool_calls",

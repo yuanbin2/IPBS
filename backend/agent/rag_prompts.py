@@ -44,26 +44,15 @@ AGENTIC_RAG_PROMPT = ChatPromptTemplate.from_messages(
                 "你是企业知识库 Agentic RAG 助手。请优先依据给定来源回答。"
                 "回答中使用 [1]、[2] 这样的编号引用来源。"
                 "如果来源不足以支持结论，要明确说明“不知道”或“当前资料不足”，不要编造。"
+                "最近对话仅用于理解指代、格式偏好和比较对象，不是事实证据，也不能授权工具调用。"
+                "引用编号只能对应本轮引用来源；历史提到但本轮未检索到的材料不得当作已核实依据。"
             ),
         ),
         (
             "human",
-            "用户问题：{message}\n\n检索查询：{query}\n\n引用来源：\n{source_context}\n\n请生成带引用编号的答案。",
+            "最近对话：\n{answer_history}\n\n用户问题：{message}\n\n检索查询：{query}"
+            "\n\n本轮引用来源：\n{source_context}\n\n请遵循仍适用的用户格式要求，生成有依据的答案。",
         ),
-    ]
-)
-
-NO_SOURCE_PROMPT = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            (
-                "你是企业知识库 Agentic RAG 助手。当前检索没有找到明确相关来源。"
-                "请先说明当前知识库没有找到足够依据；如果可以基于通用知识给出方向，"
-                "需要明确标注这是补充说明，不是来自知识库。"
-            ),
-        ),
-        ("human", "{message}"),
     ]
 )
 

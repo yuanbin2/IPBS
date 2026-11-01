@@ -28,6 +28,8 @@ from ..serializers import serialize_approval_request, serialize_article
 from ..services.blog import (
     ArticleAccessError,
     ArticleListFilters,
+    article_publication_fingerprint,
+    fill_default_cover,
     filtered_articles,
     get_or_create_category,
     list_articles,
@@ -94,18 +96,23 @@ class BlogArticleListCreateView(APIView):
             status=BlogArticle.Status.DRAFT,
         )
         set_article_tags(article, request.data.get("tags", []))
+        # 没填封面就用正文第一张图片，避免列表/卡片没有配图。
+        if fill_default_cover(article):
+            article.save(update_fields=["cover_image", "updated_at"])
 
         # All submissions go through approval
         approval = ApprovalRequest.objects.create(
             action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
             workspace_key=get_workspace_key(request),
             title=f"发布博客：{article.title}",
-            description=f"{'用户 ' + author_name + ' 提交的' if context.authenticated else '访客 ' + author_name + ' 提交的'}博客文章，发布后会公开并写入知识库。",
+            description=f"{'用户 ' + author_name + ' 提交的' if context.authenticated else '访客 ' + author_name + ' 提交的'}博客文章，发布后会公开；仅在选择加入知识库时写入知识库。",
             payload={
                 "article_slug": article.slug,
                 "article_id": article.id,
                 "title": article.title,
                 "author_name": author_name,
+                "add_to_knowledge_base": request.data.get("add_to_knowledge_base") is True,
+                "article_fingerprint": article_publication_fingerprint(article),
             },
             requester=author_name,
         )
@@ -138,7 +145,10 @@ class BlogArticleDiscoverView(APIView):
             return error_response("状态筛选无效", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
         try:
             page = int(request.query_params.get("page", 1))
-            page_size = int(request.query_params.get("page_size", 12))
+            from ..models import BlogSetting
+
+            default_page_size = BlogSetting.load().articles_per_page or 12
+            page_size = int(request.query_params.get("page_size", default_page_size))
         except (TypeError, ValueError):
             return error_response("页码无效", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
         if page < 1 or page > 10000 or page_size < 1 or page_size > 24:
@@ -394,6 +404,8 @@ class BlogArticleDetailView(APIView):
                 tags=[str(tag).strip() for tag in raw_tags if str(tag).strip()],
                 submitted_by=context.actor,
             )
+            if fill_default_cover(revision):
+                revision.save(update_fields=["cover_image"])
             BlogArticleRevision.objects.filter(article=article, status=BlogArticleRevision.Status.PENDING).exclude(
                 pk=revision.pk
             ).update(status=BlogArticleRevision.Status.SUPERSEDED, reviewed_at=timezone.now())
@@ -414,6 +426,7 @@ class BlogArticleDetailView(APIView):
                     "revision_id": revision.id,
                     "base_version": revision.base_version,
                     "title": title,
+                    "add_to_knowledge_base": request.data.get("add_to_knowledge_base") is True,
                 },
                 requester=context.actor,
             )
@@ -437,6 +450,9 @@ class BlogArticleDetailView(APIView):
         article.content = content
         if "category" in request.data:
             article.category = get_or_create_category(request.data.get("category"))
+        # 只有显式传了空字符串才算"清空封面"；否则用正文首图兜底。
+        if "cover_image" in request.data and not article.cover_image.strip():
+            fill_default_cover(article)
 
         article.save()
 
@@ -456,12 +472,14 @@ class BlogArticleDetailView(APIView):
             action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
             workspace_key=get_workspace_key(request),
             title=f"发布博客：{article.title}",
-            description=f"用户 {context.actor} 更新了博客文章，发布后会公开并写入知识库。",
+            description=f"用户 {context.actor} 更新了博客文章，发布后会公开；仅在选择加入知识库时写入知识库。",
             payload={
                 "article_slug": article.slug,
                 "article_id": article.id,
                 "title": article.title,
                 "author_name": context.actor,
+                "add_to_knowledge_base": request.data.get("add_to_knowledge_base") is True,
+                "article_fingerprint": article_publication_fingerprint(article),
             },
             requester=context.actor,
         )
@@ -476,11 +494,14 @@ class BlogArticleDetailView(APIView):
             status=status.HTTP_202_ACCEPTED,
         )
 
+    @transaction.atomic
     def patch(self, request, slug: str):
         denied = require_roles(request, [UserProfile.Role.OPERATOR])
         if denied:
             return denied
-        article = get_object_or_404(BlogArticle, slug=slug, workspace_key=get_workspace_key(request))
+        article = get_object_or_404(
+            BlogArticle.objects.select_for_update(), slug=slug, workspace_key=get_workspace_key(request)
+        )
         if article.status == BlogArticle.Status.PUBLISHED:
             return error_response(
                 "已发布文章请通过带公开版本号的 PUT 提交修订",
@@ -502,9 +523,18 @@ class BlogArticleDetailView(APIView):
             if requested_status not in {BlogArticle.Status.DRAFT, BlogArticle.Status.ARCHIVED}:
                 return error_response("状态修改无效", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
             article.status = requested_status
+        if request.data.get("publish"):
+            fill_default_cover(article)
         article.save()
         if "tags" in request.data:
             set_article_tags(article, request.data.get("tags", []))
+        if set(request.data) & {"title", "summary", "cover_image", "content", "category", "tags", "status", "publish"}:
+            ApprovalRequest.objects.filter(
+                action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
+                payload__article_slug=article.slug,
+                status=ApprovalRequest.Status.PENDING,
+                workspace_key=article.workspace_key,
+            ).update(status=ApprovalRequest.Status.REJECTED, result="文章内容或发布请求已变化，请重新提交审批。")
         if article.status == BlogArticle.Status.PUBLISHED or request.data.get("publish"):
             article.status = BlogArticle.Status.DRAFT
             article.save(update_fields=["status", "updated_at"])
@@ -512,8 +542,14 @@ class BlogArticleDetailView(APIView):
                 action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
                 workspace_key=get_workspace_key(request),
                 title=f"发布博客：{article.title}",
-                description="发布博客会公开文章，并将文章内容写入知识库供 Agent 检索。",
-                payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
+                description="发布博客会公开文章；仅在选择加入知识库时写入知识库。",
+                payload={
+                    "article_slug": article.slug,
+                    "article_id": article.id,
+                    "title": article.title,
+                    "add_to_knowledge_base": request.data.get("add_to_knowledge_base") is True,
+                    "article_fingerprint": article_publication_fingerprint(article),
+                },
                 requester=str(request.data.get("requester", "blog-editor")).strip(),
             )
             return Response(
@@ -537,7 +573,7 @@ class BlogArticleDetailView(APIView):
             action=ApprovalRequest.Action.DELETE_BLOG_ARTICLE,
             workspace_key=get_workspace_key(request),
             title=f"删除博客：{article.title}",
-            description="删除博客会移除文章，并删除它同步到知识库的文档。",
+            description="批准后删除文章及同步的知识库文档；仅清理未被其他内容引用的博客图片。",
             payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
             requester=(
                 str(request.data.get("requester", "blog-editor")).strip() if hasattr(request, "data") else "blog-editor"
@@ -555,12 +591,21 @@ class BlogArticlePublishView(APIView):
         if denied:
             return denied
         article = get_object_or_404(BlogArticle, slug=slug, workspace_key=get_workspace_key(request))
+        # 发布兜底：没填封面时用正文第一张图片，审核页与公开卡片都有配图。
+        if fill_default_cover(article):
+            article.save(update_fields=["cover_image", "updated_at"])
         approval = ApprovalRequest.objects.create(
             action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
             workspace_key=get_workspace_key(request),
             title=f"发布博客：{article.title}",
-            description="发布博客会公开文章，并将文章内容写入知识库供 Agent 检索。",
-            payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
+            description="发布博客会公开文章；仅在选择加入知识库时写入知识库。",
+            payload={
+                "article_slug": article.slug,
+                "article_id": article.id,
+                "title": article.title,
+                "add_to_knowledge_base": request.data.get("add_to_knowledge_base") is True,
+                "article_fingerprint": article_publication_fingerprint(article),
+            },
             requester=(
                 str(request.data.get("requester", "blog-editor")).strip() if hasattr(request, "data") else "blog-editor"
             ),

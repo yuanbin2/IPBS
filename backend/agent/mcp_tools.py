@@ -28,8 +28,9 @@ class MCPToolExecution:
 class LocalMCPToolRunner:
     """Small local MCP-style adapter layer with explicit tool names and scopes."""
 
-    def __init__(self, project_root: Path):
+    def __init__(self, project_root: Path, *, workspace_key: str | None = None):
         self.project_root = project_root
+        self.workspace_key = workspace_key
 
     def run(self, tool_name: str, query: str) -> MCPToolExecution:
         # 显式分派而不是动态 import/反射，可避免模型构造任意函数名执行。
@@ -71,13 +72,16 @@ class LocalMCPToolRunner:
     def _safe_database_stats(self) -> str:
         from apps.agent_api.models import BlogArticle, Conversation, Document, KnowledgeBase, MCPTool
 
+        if self.workspace_key is None:
+            return "workspace context required"
+        scope = {"workspace_key": self.workspace_key}
         stats = {
-            "knowledge_bases": KnowledgeBase.objects.count(),
-            "documents": Document.objects.count(),
-            "published_articles": BlogArticle.objects.filter(status=BlogArticle.Status.PUBLISHED).count(),
-            "conversations": Conversation.objects.count(),
-            "registered_mcp_tools": MCPTool.objects.count(),
-            "enabled_mcp_tools": MCPTool.objects.filter(is_enabled=True).count(),
+            "knowledge_bases": KnowledgeBase.objects.filter(**scope).count(),
+            "documents": Document.objects.filter(**scope).count(),
+            "published_articles": BlogArticle.objects.filter(**scope, status=BlogArticle.Status.PUBLISHED).count(),
+            "conversations": Conversation.objects.filter(**scope).count(),
+            "registered_mcp_tools": MCPTool.objects.filter(**scope).count(),
+            "enabled_mcp_tools": MCPTool.objects.filter(**scope, is_enabled=True).count(),
         }
         return "\n".join(f"- {key}: {value}" for key, value in stats.items())
 

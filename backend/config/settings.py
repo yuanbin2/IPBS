@@ -2,6 +2,7 @@ import os
 import sys
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 import dj_database_url
 from dotenv import load_dotenv
@@ -20,6 +21,18 @@ def env_bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def exact_https_origin(value: str) -> bool:
+    parsed = urlsplit(value)
+    return bool(
+        parsed.scheme == "https"
+        and parsed.hostname
+        and "*" not in parsed.hostname
+        and not parsed.path
+        and not parsed.query
+        and not parsed.fragment
+    )
+
+
 LOCAL_MODE = env_bool("BLOG_LOCAL_MODE")
 _LOCAL_SECRET_KEY = "dev-only-change-me-use-at-least-32-bytes"
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", _LOCAL_SECRET_KEY if LOCAL_MODE else "").strip()
@@ -28,10 +41,16 @@ if LOCAL_MODE and len(SECRET_KEY) < 32:
 if not LOCAL_MODE and (len(SECRET_KEY) < 50 or SECRET_KEY.lower().startswith("change-me")):
     raise RuntimeError("Set DJANGO_SECRET_KEY to a private value with at least 50 characters outside local mode.")
 DEBUG = LOCAL_MODE or env_bool("DJANGO_DEBUG", False)
-ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
+_configured_hosts = os.getenv("DJANGO_ALLOWED_HOSTS", "").strip()
+ALLOWED_HOSTS = [host.strip() for host in (_configured_hosts or "localhost,127.0.0.1").split(",") if host.strip()]
 RAILWAY_PUBLIC_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
 if RAILWAY_PUBLIC_DOMAIN and RAILWAY_PUBLIC_DOMAIN not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(RAILWAY_PUBLIC_DOMAIN)
+if not LOCAL_MODE and (
+    (not _configured_hosts and not RAILWAY_PUBLIC_DOMAIN)
+    or any(host == "*" or host.startswith(".") for host in ALLOWED_HOSTS)
+):
+    raise RuntimeError("Set DJANGO_ALLOWED_HOSTS to explicit production hostnames (wildcards are not allowed).")
 RAILWAY_ENVIRONMENT_NAME = os.getenv("RAILWAY_ENVIRONMENT_NAME", "").strip()
 AGENT_SECURITY_ENFORCED = env_bool("AGENT_SECURITY_ENFORCED", not LOCAL_MODE)
 if not LOCAL_MODE and DEBUG:
@@ -41,8 +60,10 @@ if not LOCAL_MODE and not AGENT_SECURITY_ENFORCED:
 CSRF_TRUSTED_ORIGINS = [
     origin.strip() for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if origin.strip()
 ]
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+if not LOCAL_MODE and any(not exact_https_origin(origin) for origin in CSRF_TRUSTED_ORIGINS):
+    raise RuntimeError("DJANGO_CSRF_TRUSTED_ORIGINS must contain exact HTTPS origins outside local mode.")
 DJANGO_HTTPS_TERMINATED = env_bool("DJANGO_HTTPS_TERMINATED", bool(RAILWAY_ENVIRONMENT_NAME))
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if DJANGO_HTTPS_TERMINATED else None
 SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", DJANGO_HTTPS_TERMINATED)
 SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "3600" if DJANGO_HTTPS_TERMINATED else "0"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", False)
@@ -81,6 +102,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
+    "agent.telemetry.RequestIdMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -110,12 +132,36 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
+_IS_ISOLATED_TEST_PROFILE = os.getenv("DJANGO_SETTINGS_MODULE") in {
+    "config.settings_security_test",
+    "config.settings_postgres_test",
+}
 default_database_url = f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
 if LOCAL_MODE:
     # A one-command local run must not depend on PostgreSQL settings left in
     # .env by a previous Docker deployment.
     DATABASES = {"default": dj_database_url.parse(default_database_url)}
 else:
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not _IS_ISOLATED_TEST_PROFILE:
+        if not database_url:
+            raise RuntimeError("Set DATABASE_URL to a PostgreSQL connection outside local mode.")
+        parsed_database_url = urlsplit(database_url)
+        if (
+            parsed_database_url.scheme not in {"postgres", "postgresql"}
+            or not parsed_database_url.hostname
+            or not parsed_database_url.username
+            or not parsed_database_url.password
+            or not parsed_database_url.path.lstrip("/")
+        ):
+            raise RuntimeError("DATABASE_URL must include a PostgreSQL user and private password.")
+        if unquote(parsed_database_url.password).lower() in {
+            "postgres",
+            "password",
+            "changeme",
+            "change-me-before-deploy",
+        }:
+            raise RuntimeError("DATABASE_URL uses a known example password; configure a private value.")
     DATABASES = {
         "default": dj_database_url.config(default=default_database_url, conn_max_age=600),
     }
@@ -137,6 +183,11 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+PRIVATE_NOTE_MEDIA_ROOT = Path(
+    os.getenv("BLOG_PRIVATE_NOTE_MEDIA_ROOT") or str(PROJECT_ROOT / "private-note-media")
+).resolve()
+if PRIVATE_NOTE_MEDIA_ROOT.is_relative_to(MEDIA_ROOT.resolve()):
+    raise RuntimeError("BLOG_PRIVATE_NOTE_MEDIA_ROOT must be outside publicly served MEDIA_ROOT")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
@@ -187,14 +238,23 @@ STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     "blog_media": _blog_media_storage_settings(),
+    # 私有笔记配图：独立根目录、无公开 URL，只经认证视图读回。
+    "private_note_media": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "OPTIONS": {"location": PRIVATE_NOTE_MEDIA_ROOT},
+    },
 }
 
-_default_cors_origins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
+_default_cors_origins = (
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174" if LOCAL_MODE else ""
+)
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("DJANGO_CORS_ALLOWED_ORIGINS", _default_cors_origins).split(",")
     if origin.strip()
 ]
+if not LOCAL_MODE and any(not exact_https_origin(origin) for origin in CORS_ALLOWED_ORIGINS):
+    raise RuntimeError("DJANGO_CORS_ALLOWED_ORIGINS must contain exact HTTPS origins outside local mode.")
 CORS_ALLOW_CREDENTIALS = True
 if LOCAL_MODE:
     CSRF_TRUSTED_ORIGINS += [origin for origin in CORS_ALLOWED_ORIGINS if origin not in CSRF_TRUSTED_ORIGINS]
@@ -216,6 +276,26 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "apps.agent_api.exceptions.exception_handler",
 }
 
+if not LOCAL_MODE and not _IS_ISOLATED_TEST_PROFILE:
+    missing_services = [name for name in ("REDIS_URL", "REDIS_CACHE_URL", "RABBITMQ_URL") if not os.getenv(name)]
+    if missing_services:
+        raise RuntimeError("Set production service URLs: " + ", ".join(missing_services))
+    for service_name in ("REDIS_URL", "REDIS_CACHE_URL"):
+        service_url = urlsplit(os.environ[service_name])
+        if service_url.scheme not in {"redis", "rediss"} or not service_url.hostname:
+            raise RuntimeError(f"{service_name} must be a Redis URL with a host.")
+    broker_url = urlsplit(os.environ["RABBITMQ_URL"])
+    if (
+        broker_url.scheme not in {"amqp", "amqps"}
+        or not broker_url.hostname
+        or not broker_url.username
+        or not broker_url.password
+    ):
+        raise RuntimeError("RABBITMQ_URL must include a broker user and private password.")
+    if unquote(broker_url.password).lower() in {"guest", "blog", "password", "changeme", "change-me-before-deploy"}:
+        raise RuntimeError("RABBITMQ_URL uses a known example password; configure a private value.")
+    if os.getenv("CACHE_BACKEND", "").strip().lower() == "locmem" or env_bool("CELERY_TASK_ALWAYS_EAGER"):
+        raise RuntimeError("Production cannot use LocMem cache or eager Celery tasks.")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672//")
 CELERY_BROKER_URL = RABBITMQ_URL
@@ -262,6 +342,15 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
     "SIGNING_KEY": SECRET_KEY,
 }
+
+AGENT_ALERT_EMAILS = [address.strip() for address in os.getenv("AGENT_ALERT_EMAILS", "").split(",") if address.strip()]
+EMAIL_HOST = os.getenv("AGENT_ALERT_SMTP_HOST", "localhost")
+EMAIL_PORT = int(os.getenv("AGENT_ALERT_SMTP_PORT", "25"))
+EMAIL_HOST_USER = os.getenv("AGENT_ALERT_SMTP_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("AGENT_ALERT_SMTP_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("AGENT_ALERT_SMTP_TLS")
+EMAIL_TIMEOUT = int(os.getenv("AGENT_ALERT_SMTP_TIMEOUT", "3"))
+DEFAULT_FROM_EMAIL = os.getenv("AGENT_ALERT_FROM_EMAIL", "agent-alert@localhost")
 
 LOGGING = {
     "version": 1,

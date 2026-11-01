@@ -10,7 +10,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote, urljoin, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 from markdownify import MarkdownConverter
@@ -19,7 +19,7 @@ MAX_HTML_BYTES = 5 * 1024 * 1024
 MAX_MARKUP_OPENERS = 80_000
 MAX_TEXT_CHARS = 350_000
 MAX_BLOCKS = 250
-CONVERTER_VERSION = "html-md-v1"
+CONVERTER_VERSION = "html-md-v2"
 
 _DROP_TAGS = {
     "script",
@@ -48,6 +48,7 @@ _STRUCTURAL_TAGS = {"p", "pre", "table", "ul", "ol", "blockquote", "figure", "hr
 _HEADINGS = {f"h{level}" for level in range(1, 7)}
 _LANGUAGE = re.compile(r"(?:language|lang)-([a-zA-Z0-9_+.-]{1,30})")
 _BACKTICKS = re.compile(r"`+")
+_IMAGE_SOURCE_ATTRS = ("data-src", "data-original", "data-lazy-src", "src")
 
 
 class HtmlImportError(ValueError):
@@ -101,6 +102,18 @@ def _code_language(el: Tag) -> str:
             if match:
                 return match.group(1).lower()
     return ""
+
+
+def _image_source(image: Tag) -> str:
+    """Read common lazy-image attributes without loading any referenced resource."""
+    for key in _IMAGE_SOURCE_ATTRS:
+        value = str(image.get(key, "")).strip()
+        if value and not value.startswith("data:"):
+            return value[:2048]
+    srcset = str(image.get("srcset", "")).strip()
+    if srcset:
+        return srcset.split(",", 1)[0].strip().split(" ", 1)[0][:2048]
+    return str(image.get("src", "")).strip()[:2048]
 
 
 class _SafeMarkdownConverter(MarkdownConverter):
@@ -223,21 +236,40 @@ def convert_html_to_markdown(html_bytes: bytes, *, filename: str, source_url: st
     warning_counts: Counter[str] = Counter()
     if unsupported_count or root.find(attrs={"rowspan": True}) or root.find(attrs={"colspan": True}):
         warning_counts["UNSUPPORTED_BLOCK"] += max(1, unsupported_count)
-    for image in list(root.find_all("img")):
-        alt = str(image.get("alt", "")).strip()[:120] or "未命名图片"
-        raw_src = str(image.get("src", ""))[:2048]
-        safe_src = _safe_url(raw_src, source_url)
+    images = list(root.find_all("img"))
+    if len(images) > 100:
+        raise HtmlImportError("网页图片超过 100 张，请选择较小的正文区域", http_status=413)
+    for image in images:
+        alt = re.sub(r"[\[\]()\\<>!`*_#~|\r\n]", " ", str(image.get("alt", ""))).strip()[:120] or "未命名图片"
+        raw_src = _image_source(image)
+        absolute = raw_src.lower().startswith(("https://", "http://", "//"))
+        safe_src = _safe_url(raw_src, source_url) if absolute else ""
+        parts = urlsplit(raw_src)
+        local_src = raw_src if raw_src and not parts.scheme and not raw_src.startswith(("//", "#")) else ""
+        if parts.scheme.lower() == "file" or re.match(r"^[a-zA-Z]:[\\/]", raw_src):
+            # Never return a machine-specific absolute path to the browser.
+            local_src = Path(unquote(parts.path or raw_src).replace("\\", "/")).name
         if safe_src and not safe_src.startswith("#"):
-            link = soup.new_tag("a", href=safe_src)
-            link.string = f"图片：{alt}（外部链接）"
-            image.replace_with(link)
-            assets.append({"kind": "image", "original": safe_src, "status": "external_link_only"})
-            warning_counts["EXTERNAL_IMAGE_LINK"] += 1
-        else:
-            image.replace_with(f"图片：{alt}（需手动上传）")
-            original = raw_src[:160] if not urlsplit(raw_src).scheme else "(blocked)"
-            assets.append({"kind": "image", "original": original, "status": "missing_local_file"})
+            image.attrs = {"src": safe_src, "alt": alt}
+            assets.append({"kind": "image", "original": safe_src, "status": "external_image", "alt": alt})
+            warning_counts["EXTERNAL_IMAGE_DEPENDENCY"] += 1
+        elif local_src:
+            placeholder = f"HTMLIMPORTLOCALIMAGE{len(assets) + 1}TOKEN"
+            image.replace_with(placeholder)
+            assets.append(
+                {
+                    "kind": "image",
+                    "original": local_src,
+                    "status": "local_file_required",
+                    "placeholder": placeholder,
+                    "alt": alt,
+                }
+            )
             warning_counts["LOCAL_IMAGE_MISSING"] += 1
+        else:
+            image.replace_with(f"图片：{alt}（图片地址不安全或缺失）")
+            assets.append({"kind": "image", "original": "(blocked)", "status": "blocked"})
+            warning_counts["UNSAFE_IMAGE_SOURCE"] += 1
     for link in list(root.find_all("a")):
         safe_href = _safe_url(str(link.get("href", "")), source_url)
         if safe_href:
@@ -246,7 +278,7 @@ def convert_html_to_markdown(html_bytes: bytes, *, filename: str, source_url: st
             link.unwrap()
             warning_counts["UNSAFE_OR_RELATIVE_LINK"] += 1
     for node in root.find_all(True):
-        if node.name == "a":
+        if node.name in {"a", "img"}:
             continue
         if node.name in {"pre", "code"}:
             node.attrs = {"class": [value for value in node.get("class", []) if _LANGUAGE.fullmatch(str(value))][:1]}

@@ -123,6 +123,7 @@ class DocumentIngestionJob(models.Model):
         SUPERSEDED = "superseded", "Superseded"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request_id = models.CharField(max_length=36, blank=True, default="", db_index=True)
     document = models.ForeignKey(Document, related_name="ingestion_jobs", on_delete=models.CASCADE)
     generation = models.PositiveIntegerField()
     content_version = models.CharField(max_length=64)
@@ -140,6 +141,7 @@ class DocumentIngestionJob(models.Model):
     lease_expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
     failure_code = models.CharField(max_length=100, blank=True, default="")
     failure_message = models.CharField(max_length=300, blank=True, default="")
+    timings = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     finished_at = models.DateTimeField(null=True, blank=True)

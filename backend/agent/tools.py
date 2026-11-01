@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ast
 import operator
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,35 +57,98 @@ class SafeCalculator:
         raise ValueError("只支持数字和基础四则运算")
 
 
-def search_project_files(project_root: Path, query: str) -> str:
-    sources = [
-        project_root / "README.md",
-        project_root / "docs" / "day-01-blog.md",
-        project_root / "docs" / "architecture.md",
-        project_root / "docs" / "day-02-notes.md",
-        project_root / "docs" / "day-03-notes.md",
-    ]
-    matches: list[str] = []
-    terms = [term.lower() for term in query.split() if term.strip()]
+# 项目文档检索的范围与上限。老实现只硬编码 5 个文件（其中 3 个早已不存在），
+# 实际可搜到的只有 README 一篇，因此改为扫描 docs/ 下全部 Markdown。
+PROJECT_DOC_MAX_FILES = 200
+PROJECT_DOC_MAX_BYTES = 512 * 1024
+PROJECT_DOC_MAX_LINES = 200_000
+PROJECT_DOC_MAX_MATCHES = 10
+PROJECT_DOC_LINE_CHARS = 200
+_SKIP_DIR_NAMES = {".git", "node_modules", ".venv", "__pycache__", "dist", "test-results"}
+_CJK_RUN = re.compile(r"[一-鿿]+")
 
-    for source in sources:
-        if not source.exists():
+
+def collect_project_doc_files(project_root: Path) -> list[Path]:
+    """根目录 README + docs/ 下全部 .md（递归，跳过构建产物目录，路径排序保证确定性）。"""
+    sources: list[Path] = []
+    readme = project_root / "README.md"
+    if readme.is_file():
+        sources.append(readme)
+    docs_dir = project_root / "docs"
+    if docs_dir.is_dir():
+        for path in sorted(docs_dir.rglob("*.md")):
+            if not path.is_file() or _SKIP_DIR_NAMES.intersection(path.parts):
+                continue
+            sources.append(path)
+    return sources[:PROJECT_DOC_MAX_FILES]
+
+
+def split_search_terms(query: str) -> list[str]:
+    """空格分词；中文串再补充 2 字滑窗，避免整句查询零召回。"""
+    terms: list[str] = []
+    for raw in query.split():
+        token = raw.strip().lower()
+        if not token:
             continue
-        text = source.read_text(encoding="utf-8", errors="ignore")
-        for line in text.splitlines():
-            line_lower = line.lower()
-            if not terms or any(term in line_lower for term in terms):
-                cleaned = line.strip("#- ` ")  # noqa: B005 - 去的是一组 markdown 符号字符
-                if cleaned:
-                    matches.append(f"{source.name}: {cleaned}")
-            if len(matches) >= 5:
+        terms.append(token)
+        for run in _CJK_RUN.findall(token):
+            if len(run) >= 3:
+                terms.extend(run[index : index + 2] for index in range(len(run) - 1))
+    # 去重并保持顺序，避免出现大量重复 2-gram 把评分拉偏。
+    return list(dict.fromkeys(terms))
+
+
+def _score_line(line_lower: str, name_lower: str, terms: list[str]) -> int:
+    hits = [term for term in terms if term in line_lower]
+    if not hits:
+        return 0
+    score = len(hits) * 10 + sum(line_lower.count(term) for term in hits)
+    if any(term in name_lower for term in terms):
+        score += 5
+    return score
+
+
+def search_project_files(project_root: Path, query: str) -> str:
+    sources = collect_project_doc_files(project_root)
+    terms = split_search_terms(query)
+    if not terms:
+        preview = "\n".join(f"- {path.relative_to(project_root).as_posix()}" for path in sources[:10])
+        return f"请提供检索关键词。当前可检索 {len(sources)} 个 Markdown 文档，例如：\n{preview}"
+
+    matches: list[tuple[int, str, int, str]] = []
+    scanned_lines = 0
+    for source in sources:
+        try:
+            if source.stat().st_size > PROJECT_DOC_MAX_BYTES:
+                continue
+            text = source.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        rel = source.relative_to(project_root).as_posix()
+        name_lower = rel.lower()
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            scanned_lines += 1
+            if scanned_lines > PROJECT_DOC_MAX_LINES:
                 break
-        if len(matches) >= 5:
+            cleaned = line.strip("#- ` *>")  # noqa: B005 - 去的是一组 markdown 符号字符
+            if not cleaned:
+                continue
+            score = _score_line(cleaned.lower(), name_lower, terms)
+            # 同时命中全部关键词的行优先级最高，避免中文 2-gram 把噪声顶上来。
+            if score and all(term in cleaned.lower() for term in query.split()):
+                score += 1000
+            if score:
+                matches.append((score, rel, lineno, cleaned[:PROJECT_DOC_LINE_CHARS]))
+        if scanned_lines > PROJECT_DOC_MAX_LINES:
             break
 
     if not matches:
-        return "项目 README、架构文档和学习笔记中没有找到直接匹配内容。"
-    return "\n".join(matches)
+        return f"docs 与 README 的 {len(sources)} 个 Markdown 文档中没有找到匹配「{query.strip()}」的内容。"
+
+    # 同分按 (文件, 行号) 升序，保证同样的查询每次输出一致。
+    ordered = sorted(matches, key=lambda item: (-item[0], item[1], item[2]))[:PROJECT_DOC_MAX_MATCHES]
+    lines = [f"{rel}:{lineno}: {text}" for _, rel, lineno, text in ordered]
+    return f"检索 {len(sources)} 个项目文档，命中 {len(ordered)} 条（按相关度排序）：\n" + "\n".join(lines)
 
 
 def search_knowledge(query: str, project_root: Path) -> str:

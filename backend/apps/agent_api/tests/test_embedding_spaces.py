@@ -1,10 +1,12 @@
 """Embedding identity, failure and reindex safety regressions."""
 
+from datetime import timedelta
 from io import StringIO
 from unittest.mock import patch
 
 from django.core.management import call_command
 from django.test import TestCase
+from django.utils import timezone
 
 from ..models import Document, DocumentChunk, DocumentIngestionJob, EmbeddingRecord, KnowledgeBase
 from ..services.embedding_space import EmbeddingSpaceError, embedding_space_identity
@@ -67,6 +69,10 @@ class EmbeddingSpaceTests(TestCase):
     def test_provider_failure_is_marked_retryable_even_when_prior_index_stays_ready(self):
         with patch("apps.agent_api.services.ingestion_jobs.dispatch_ingestion_job"):
             job = schedule_document_ingestion(self.document, force=True)
+        job.status = DocumentIngestionJob.Status.QUEUED
+        job.attempts = 1
+        job.lease_expires_at = timezone.now() + timedelta(minutes=10)
+        job.save(update_fields=["status", "attempts", "lease_expires_at", "updated_at"])
         with patch(
             "apps.agent_api.services.rag.ingest.build_document_index", side_effect=EmbeddingRequestError("RuntimeError")
         ):

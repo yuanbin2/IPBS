@@ -20,9 +20,9 @@ from .services.evaluation import SCORER_VERSION, summarize_results
 from .services.ingestion_jobs import dispatch_due_ingestion_jobs, process_ingestion_job
 
 
-@shared_task(acks_late=True, reject_on_worker_lost=True)
+@shared_task(acks_late=True, reject_on_worker_lost=True, soft_time_limit=8 * 60, time_limit=9 * 60)
 def ingest_document_task(job_id: str) -> dict:
-    """At-least-once worker entry; the durable job UUID is the idempotency key."""
+    """At-least-once worker entry; limits expire before the ten-minute DB lease."""
     return process_ingestion_job(str(job_id))
 
 

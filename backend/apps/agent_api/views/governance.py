@@ -89,6 +89,16 @@ class ApprovalRequestDetailView(APIView):
                         status=BlogArticle.Status.PUBLISHED
                     ).update(status=BlogArticle.Status.REJECTED)
 
+            # 目录发布被拒：清理失效的待审快照，公开旧版与私有草稿保持不变
+            if approval.action == ApprovalRequest.Action.PUBLISH_BLOG_COLLECTION:
+                from ..models import BlogCollection
+
+                BlogCollection.objects.filter(
+                    pk=approval.payload.get("collection_id"),
+                    workspace_key=get_workspace_key(request),
+                    pending_approval=approval,
+                ).update(pending_snapshot=None, pending_approval=None, updated_at=timezone.now())
+
             return Response(serialize_approval_request(approval))
 
         try:
@@ -177,7 +187,9 @@ class MCPToolExecuteView(APIView):
             )
             return approval_required_response(approval)
 
-        execution = LocalMCPToolRunner(Path(settings.BASE_DIR).parent).run(tool.name, query)
+        execution = LocalMCPToolRunner(Path(settings.BASE_DIR).parent, workspace_key=get_workspace_key(request)).run(
+            tool.name, query
+        )
         tool.last_used_at = timezone.now()
         tool.call_count += 1
         if execution.output and "error" not in execution.output.lower():
@@ -206,7 +218,7 @@ class MCPToolHealthCheckView(APIView):
         try:
             from agent.mcp_tools import LocalMCPToolRunner
 
-            runner = LocalMCPToolRunner(Path(settings.BASE_DIR).parent)
+            runner = LocalMCPToolRunner(Path(settings.BASE_DIR).parent, workspace_key=get_workspace_key(request))
 
             # 尝试执行一个简单的测试查询
             test_query = "health check test"
@@ -241,7 +253,7 @@ class MCPToolBulkHealthCheckView(APIView):
 
         from agent.mcp_tools import LocalMCPToolRunner
 
-        runner = LocalMCPToolRunner(Path(settings.BASE_DIR).parent)
+        runner = LocalMCPToolRunner(Path(settings.BASE_DIR).parent, workspace_key=get_workspace_key(request))
 
         results = []
         for tool in tools:

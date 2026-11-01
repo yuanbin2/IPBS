@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
+from django.test import TestCase, override_settings
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
@@ -18,6 +18,7 @@ from ..services.rag import (
     SearchResult,
     expand_search_results_with_neighbors,
     local_embedding,
+    query_entity_terms,
     search_knowledge_base,
 )
 from ..services.vector_store import VectorMatch
@@ -366,3 +367,70 @@ class KnowledgeRagTests(OperatorApiTestCase):
         self.assertEqual(results[0].chunk_id, 42)
         self.assertIn("重庆三峡科技大学", results[0].content)
         mocked_search_pgvector.assert_called_once()
+
+
+class QueryEntityExtractionTests(TestCase):
+    """B-055：人名后接谓词时不得截断实体，否则知识库检索会完全落空。"""
+
+    SCHOOL_PHRASINGS = (
+        "卫晓斌属于哪个学校",
+        "卫晓斌来自哪个学校",
+        "卫晓斌毕业于哪个学校",
+        "卫晓斌就读于哪个学校",
+        "卫晓斌的学校",
+        "卫晓斌什么学校的",
+        "卫晓斌是哪个学校",
+        "卫晓斌在哪个学校",
+        "卫晓斌是哪所学校的",
+        "卫晓斌毕业于哪里",
+        "卫晓斌相关信息",
+    )
+
+    def test_every_school_phrasing_extracts_the_full_name(self):
+        for question in self.SCHOOL_PHRASINGS:
+            with self.subTest(question=question):
+                self.assertIn("卫晓斌", query_entity_terms(question))
+
+    def test_full_name_ranks_before_truncated_fragment(self):
+        # 下游 expand_multilingual_query 只用 entities[0] 生成拼音别名，
+        # 必须是完整姓名而不是被截断的「晓斌」。
+        self.assertEqual(query_entity_terms("卫晓斌属于哪个学校")[0], "卫晓斌")
+
+    def test_pronoun_only_question_extracts_nothing(self):
+        # 「他」需要上游结合对话历史解析；这里不应伪造出「他毕业于」这类实体。
+        self.assertEqual(query_entity_terms("他毕业于哪个学校"), [])
+
+    def test_predicate_fragments_are_never_returned_as_entities(self):
+        for question in self.SCHOOL_PHRASINGS:
+            for entity in query_entity_terms(question):
+                with self.subTest(question=question, entity=entity):
+                    self.assertFalse(
+                        any(entity.endswith(verb) for verb in ("属于", "来自", "毕业于", "就读于")),
+                        f"{entity!r} 仍带着谓词尾巴",
+                    )
+
+
+class QueryEntityPreservationTests(TestCase):
+    """B-055：LLM 改写丢掉实体时必须回退用原问题检索。"""
+
+    def test_falls_back_when_rewrite_drops_the_name(self):
+        from agent.query_rewriting import preserve_query_entities
+
+        original = "卫晓斌属于哪个学校"
+        dropped = "Wei Xiaobin university affiliation institution"
+        self.assertEqual(preserve_query_entities(original, dropped), original)
+
+    def test_keeps_rewrite_when_entities_survive(self):
+        from agent.query_rewriting import preserve_query_entities
+
+        original = "卫晓斌属于哪个学校"
+        kept = "卫晓斌 毕业院校 教育背景 Xiaobin Wei"
+        self.assertEqual(preserve_query_entities(original, kept), kept)
+
+    def test_passthrough_when_original_has_no_entity(self):
+        from agent.query_rewriting import preserve_query_entities
+
+        self.assertEqual(
+            preserve_query_entities("这个项目用了什么技术栈", "项目 技术栈 架构"),
+            "项目 技术栈 架构",
+        )

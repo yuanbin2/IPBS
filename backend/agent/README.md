@@ -1,39 +1,5 @@
-# Agent Workspace
+# 后端 Agent 运行时代码
 
-这里放 LangChain、LangGraph、RAG、MCP 与评估相关代码。
+该 Python 包由 Django Agent API 和 Celery 任务调用，是当前后端 Agent/RAG 的代码实现之一；它不是仓库根目录的旧学习日程。入口包含 `multi_agent.py`、`simple_agent.py`、`security.py`、`rag_tools.py`、`mcp_tools.py` 和 `specialized_agents.py`。具体调用由 `backend/apps/agent_api/views/chat.py`、`views/common.py`、`tasks.py` 与测试覆盖。
 
-## Day 2: LangChain Tool Calling
-
-第二天实现了 LangChain Agent loop：
-
-```text
-用户输入 -> GPT-4o mini 判断工具 -> 调用 LangChain tool -> 汇总结果
-```
-
-已接入 3 个工具：
-
-- `blog_search`：检索 README、架构文档和博客草稿
-- `current_user_profile`：返回当前学习者和项目上下文
-- `calculator`：执行简单四则运算
-
-后端入口：
-
-```text
-POST /api/agent/chat/
-```
-
-## Day 3: LangGraph StateGraph
-
-当前 Agent 已升级为 LangGraph `StateGraph`：
-
-```text
-classify_question -> retrieve_or_direct -> generate_answer -> save_history
-```
-
-其中 `classify_question` 后面有 conditional edge：
-
-- `retrieve`：需要项目资料、当前用户资料或计算，进入工具节点
-- `direct`：普通问题直接生成回答
-
-聊天历史由 Django ORM 保存到 `Conversation`、`Message`、`AgentRun`。
-
+旧文档中“Day 2 GPT-4o mini 固定工具循环”“三工具清单”已过时；当前供应商、路由和权限按运行配置与 Agent 服务实现，不应从本文推断默认模型或生产能力。开发入口见仓库[README](../../README.md)，架构和未验证范围见[当前架构](../../docs/architecture.md)与[缺陷跟踪表](../../docs/缺陷跟踪表V2.0.md)。

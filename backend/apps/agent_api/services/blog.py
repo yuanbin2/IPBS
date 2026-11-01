@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from dataclasses import dataclass
 
 from django.db import transaction
@@ -7,15 +10,36 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import slugify
 
-from ..models import ArticleCategory, ArticleTag, BlogArticle, Document
+from ..models import ArticleCategory, ArticleTag, BlogArticle, BlogArticleRevision, Document
 from .ingestion_jobs import schedule_document_ingestion
 from .rag import get_default_knowledge_base
 
 ARTICLE_LIST_LIMIT = 50
 
+# 正文图片既可能是 Markdown 语法，也可能是富文本编辑器留下的 <img>。
+_MARKDOWN_IMAGE_RE = re.compile(r"!\[[^\]]*\]\(\s*<?([^\s)>]+)>?")
+_HTML_IMAGE_RE = re.compile(r"""<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+_UNSAFE_URL_PREFIXES = ("javascript:", "vbscript:", "data:", "file:")
+_MAX_COVER_URL_LENGTH = 2048
+
 
 class ArticleAccessError(Exception):
     """调用方无权以当前身份查看请求的文章列表（如未登录查看草稿）。"""
+
+
+def article_publication_fingerprint(article: BlogArticle) -> str:
+    """Bind a publish approval to the exact article content being reviewed."""
+    snapshot = {
+        "title": article.title,
+        "summary": article.summary,
+        "cover_image": article.cover_image,
+        "content": article.content,
+        "category_id": article.category_id,
+        "tags": list(article.tags.order_by("pk").values_list("pk", flat=True)),
+        "status": article.status,
+        "publication_version": article.publication_version,
+    }
+    return hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -137,6 +161,44 @@ def set_article_tags(article: BlogArticle, tag_names: list[str]) -> None:
         )
         tags.append(tag)
     article.tags.set(tags)
+
+
+def is_safe_image_url(url: str) -> bool:
+    """只接受 http(s) 绝对地址与站内相对路径，挡掉 javascript:/data: 之类。"""
+    if not url or len(url) > _MAX_COVER_URL_LENGTH:
+        return False
+    lowered = url.strip().lower()
+    if lowered.startswith(_UNSAFE_URL_PREFIXES):
+        return False
+    return lowered.startswith(("http://", "https://", "/", "./", "../"))
+
+
+def first_image_url(content: str) -> str | None:
+    """正文里出现的第一张图片链接；Markdown 与 <img> 按位置竞争，data: URI 跳过。"""
+    if not content:
+        return None
+    candidates: list[tuple[int, str]] = []
+    for pattern in (_MARKDOWN_IMAGE_RE, _HTML_IMAGE_RE):
+        for match in pattern.finditer(content):
+            candidates.append((match.start(1), match.group(1)))
+    candidates.sort(key=lambda item: item[0])
+    for _position, raw in candidates:
+        url = raw.strip().strip("\"'").strip()
+        if not is_safe_image_url(url):
+            continue
+        return url
+    return None
+
+
+def fill_default_cover(target: BlogArticle | BlogArticleRevision) -> str | None:
+    """未填封面时用正文第一张图片兜底；返回补上的链接，没补返回 None。"""
+    if (target.cover_image or "").strip():
+        return None
+    url = first_image_url(target.content or "")
+    if not url:
+        return None
+    target.cover_image = url
+    return url
 
 
 @transaction.atomic

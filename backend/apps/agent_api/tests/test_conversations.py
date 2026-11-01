@@ -87,3 +87,58 @@ class ConversationTests(OperatorApiTestCase):
         payload = response.json()
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]["matched_message_id"], matched.id)
+
+    def test_conversation_list_paginates_with_limit_and_offset(self):
+        """列表分页：offset=0 取最新一页，offset 翻页取更早的，默认 limit 生效。"""
+        titles = [f"paged conv {index}" for index in range(22)]
+        for title in titles:
+            conversation = Conversation.objects.create(
+                title=title, workspace_key="default", owner_username=self.test_user.username
+            )
+            Message.objects.create(
+                conversation=conversation,
+                role=Message.Role.USER,
+                content=f"body of {title}",
+            )
+        # Meta.ordering = ["-updated_at"]，越晚创建越靠前（最新优先）。
+        newest_first = list(reversed(titles))
+
+        default_payload = self.client.get(
+            "/api/agent/conversations/",
+            HTTP_HOST="localhost",
+        ).json()
+        self.assertEqual(len(default_payload), 20)
+        self.assertEqual(
+            [item["title"] for item in default_payload],
+            newest_first[:20],
+        )
+
+        first_page = self.client.get(
+            "/api/agent/conversations/?limit=2&offset=0",
+            HTTP_HOST="localhost",
+        ).json()
+        self.assertEqual([item["title"] for item in first_page], newest_first[:2])
+
+        second_page = self.client.get(
+            "/api/agent/conversations/?limit=2&offset=2",
+            HTTP_HOST="localhost",
+        ).json()
+        self.assertEqual([item["title"] for item in second_page], newest_first[2:4])
+
+        tail_page = self.client.get(
+            "/api/agent/conversations/?limit=2&offset=20",
+            HTTP_HOST="localhost",
+        ).json()
+        self.assertEqual([item["title"] for item in tail_page], newest_first[20:22])
+
+        beyond_payload = self.client.get(
+            "/api/agent/conversations/?limit=2&offset=99",
+            HTTP_HOST="localhost",
+        ).json()
+        self.assertEqual(beyond_payload, [])
+
+        fallback_payload = self.client.get(
+            "/api/agent/conversations/?limit=not-a-number",
+            HTTP_HOST="localhost",
+        ).json()
+        self.assertEqual(len(fallback_payload), 20)

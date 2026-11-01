@@ -9,13 +9,22 @@ from __future__ import annotations
 import re
 
 from .agent_types import SourceCitation, ToolResult
+from .model_accounting import model_purpose
+from .query_rewriting import preserve_query_entities
 from .rag_prompts import RAG_QUERY_REWRITE_PROMPT
+from .telemetry import observe_stage
 from .tools import SafeCalculator, search_knowledge
 
 USER_PROFILE_ANSWER = (
     "当前用户正在构建企业知识智能体平台 + 个人博客智能体系统；"
     "技术路线是 Vue 3 + Django + LangChain/LangGraph + RAG + MCP。"
 )
+
+
+def grade_source_relevance(sources: list[SourceCitation], minimum_score: float) -> tuple[float, list[SourceCitation]]:
+    """Apply the same relevance boundary in the graph and its error fallback."""
+    best_score = max((source.score for source in sources), default=0.0)
+    return best_score, sources if sources and best_score >= minimum_score else []
 
 
 def run_required_non_rag_tool(message: str) -> ToolResult | None:
@@ -38,10 +47,14 @@ def rewrite_query_text(llm, message: str) -> str:
     if llm is None:
         return f"{message} 相关定义 背景 方法 结论"
 
-    rewritten_message = (RAG_QUERY_REWRITE_PROMPT | llm).invoke({"message": message})
-    return str(rewritten_message.content).strip() or f"{message} 相关资料"
+    with model_purpose("retrieval_query_rewrite"):
+        rewritten_message = (RAG_QUERY_REWRITE_PROMPT | llm).invoke({"message": message})
+    rewritten = str(rewritten_message.content).strip() or f"{message} 相关资料"
+    # B-055：改写不得丢掉原问题里的实体，否则回退到原问题。
+    return preserve_query_entities(message, rewritten)
 
 
+@observe_stage("retrieval")
 def search_sources(query: str, *, workspace_key: str, project_root) -> tuple[ToolResult, list[SourceCitation]]:
     try:
         from apps.agent_api.services.rag import (

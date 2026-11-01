@@ -32,6 +32,7 @@ from ..models import (
     ApprovalRequest,
     BlogArticle,
     BlogArticleRevision,
+    BlogCollection,
     Conversation,
     ConversationProject,
     Document,
@@ -41,7 +42,13 @@ from ..models import (
     SecurityAuditEvent,
 )
 from ..serializers import serialize_approval_request
-from ..services.blog import publish_article_to_knowledge_base, set_article_tags
+from ..services.blog import (
+    article_publication_fingerprint,
+    fill_default_cover,
+    publish_article_to_knowledge_base,
+    set_article_tags,
+)
+from ..services.blog_image_cleanup import article_image_names, delete_unreferenced_blog_images
 from ..services.evaluation import SCORER_VERSION
 
 DEFAULT_MESSAGE_LIMIT = 30
@@ -181,7 +188,7 @@ DEFAULT_MCP_TOOLS = [
     {
         "name": "local_file_search",
         "display_name": "本地文件搜索",
-        "description": "在 README、docs 和 agent 目录中搜索公开项目资料。",
+        "description": "在根目录 README 与 docs/ 下全部 Markdown 说明文档中按关键词检索（含设计、API、数据库与缺陷跟踪文档），返回「文件:行号」便于定位；不含源码与知识库。",
         "category": MCPTool.Category.FILESYSTEM,
         "permission_scope": "read:project_public_files",
         "is_enabled": True,
@@ -216,12 +223,6 @@ DEFAULT_MCP_TOOLS = [
 def ensure_default_mcp_tools() -> None:
     for tool in DEFAULT_MCP_TOOLS:
         MCPTool.objects.get_or_create(name=tool["name"], defaults=tool)
-    # web_search should be enabled by default for internet search to work.
-    # The get_or_create above only sets defaults on first creation; if the row
-    # already existed with is_enabled=False (e.g. from an earlier seed), the
-    # migration 0012_enable_web_search handles enabling.  As a safety net we
-    # also enable it here in case the migration ran before the row existed.
-    MCPTool.objects.filter(name="web_search", is_enabled=False).update(is_enabled=True)
 
 
 def env_file_is_git_tracked() -> bool:
@@ -627,7 +628,7 @@ def maybe_create_blog_delete_approval(message: str, request) -> ApprovalRequest 
         action=ApprovalRequest.Action.DELETE_BLOG_ARTICLE,
         workspace_key=get_workspace_key(request),
         title=f"删除博客：{article.title}",
-        description="对话触发的删除博客请求，需要管理员审批后才会删除文章和对应知识库文档。",
+        description="对话触发的删除博客请求；管理员审批后删除文章和对应知识库文档，并清理不再被引用的博客图片。",
         payload={"article_slug": article.slug, "article_id": article.id, "title": article.title},
         requester=(
             str(request.data.get("requester", "chat-agent")).strip() if hasattr(request, "data") else "chat-agent"
@@ -679,12 +680,16 @@ def execute_approval_request(approval: ApprovalRequest) -> str:
     if approval.action == ApprovalRequest.Action.DELETE_BLOG_ARTICLE:
         article = get_object_or_404(BlogArticle, slug=payload.get("article_slug"), workspace_key=approval.workspace_key)
         title = article.title
+        image_names = article_image_names(article)
         knowledge_document = article.knowledge_document
         article.delete()
         if knowledge_document:
             if knowledge_document.source_file:
                 knowledge_document.source_file.delete(save=False)
             knowledge_document.delete()
+        # Storage cannot join the DB transaction. Only remove files after commit,
+        # and only when no article, revision, note, or other content still uses them.
+        transaction.on_commit(lambda: delete_unreferenced_blog_images(image_names))
         return f"博客文章已删除：{title}"
 
     if approval.action == ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE:
@@ -695,6 +700,15 @@ def execute_approval_request(approval: ApprovalRequest) -> str:
                 workspace_key=approval.workspace_key,
             )
             revision_id = payload.get("revision_id")
+            if revision_id is None:
+                expected_fingerprint = payload.get("article_fingerprint")
+                if expected_fingerprint:
+                    if article_publication_fingerprint(article) != expected_fingerprint:
+                        raise ValueError("文章内容已变化，请重新提交发布审批")
+                elif article.updated_at > approval.created_at:
+                    # Older pending approvals predate fingerprints. They can only
+                    # proceed if no API save has occurred since their creation.
+                    raise ValueError("文章内容可能已变化，请重新提交发布审批")
             if revision_id is not None:
                 revision = get_object_or_404(
                     BlogArticleRevision.objects.select_for_update(), pk=revision_id, article=article
@@ -710,8 +724,18 @@ def execute_approval_request(approval: ApprovalRequest) -> str:
                 article.category = revision.category
                 article.save(update_fields=["title", "summary", "cover_image", "content", "category", "updated_at"])
                 set_article_tags(article, revision.tags)
+            # 发布兜底：封面为空时用正文第一张图片（修订版同样适用）。
+            if fill_default_cover(article):
+                article.save(update_fields=["cover_image", "updated_at"])
             was_published = article.status == BlogArticle.Status.PUBLISHED
-            publish_article_to_knowledge_base(article)
+            sync_knowledge = payload.get("add_to_knowledge_base") is True or bool(article.knowledge_document_id)
+            if sync_knowledge:
+                publish_article_to_knowledge_base(article)
+            else:
+                article.status = BlogArticle.Status.PUBLISHED
+                if article.published_at is None:
+                    article.published_at = timezone.now()
+                article.save(update_fields=["status", "published_at", "updated_at"])
             if revision_id is not None or not was_published:
                 article.publication_version += 1
                 article.save(update_fields=["publication_version", "updated_at"])
@@ -719,7 +743,42 @@ def execute_approval_request(approval: ApprovalRequest) -> str:
                 revision.status = BlogArticleRevision.Status.APPROVED
                 revision.reviewed_at = timezone.now()
                 revision.save(update_fields=["status", "reviewed_at"])
-            return f"博客文章已发布，知识库索引已提交后台处理：{article.title}"
+            if sync_knowledge:
+                return f"博客文章已发布，知识库索引已提交后台处理：{article.title}"
+            return f"博客文章已发布：{article.title}"
+
+    if approval.action == ApprovalRequest.Action.PUBLISH_BLOG_COLLECTION:
+        from ..services.blog_collections import snapshot_sha256
+
+        with transaction.atomic():
+            collection = get_object_or_404(
+                BlogCollection.objects.select_for_update(),
+                pk=payload.get("collection_id"),
+                workspace_key=approval.workspace_key,
+            )
+            if collection.pending_approval_id != approval.pk:
+                raise ValueError("目录待审已失效，需要作者重新提交")
+            snapshot = collection.pending_snapshot
+            if not snapshot:
+                raise ValueError("待审快照缺失")
+            if payload.get("snapshot_hash") != snapshot_sha256(snapshot):
+                raise ValueError("待审快照校验失败")
+            if payload.get("submit_version") != snapshot.get("draft_version"):
+                raise ValueError("待审快照版本校验失败")
+            collection.published_snapshot = snapshot
+            collection.publication_version += 1
+            collection.pending_snapshot = None
+            collection.pending_approval = None
+            collection.save(
+                update_fields=[
+                    "published_snapshot",
+                    "publication_version",
+                    "pending_snapshot",
+                    "pending_approval",
+                    "updated_at",
+                ]
+            )
+            return f"领域目录已公开（第 {collection.publication_version} 版）：{collection.title}"
 
     if approval.action == ApprovalRequest.Action.EXECUTE_MCP_TOOL and payload.get("tool_name"):
         try:
@@ -730,7 +789,9 @@ def execute_approval_request(approval: ApprovalRequest) -> str:
         tool = get_object_or_404(MCPTool, pk=payload.get("tool_id"), workspace_key=approval.workspace_key)
         if not tool.is_enabled:
             raise ValueError(f"MCP 工具已禁用：{tool.display_name}")
-        execution = LocalMCPToolRunner(Path(settings.BASE_DIR).parent).run(tool.name, str(payload.get("query", "")))
+        execution = LocalMCPToolRunner(Path(settings.BASE_DIR).parent, workspace_key=approval.workspace_key).run(
+            tool.name, str(payload.get("query", ""))
+        )
         tool.last_used_at = timezone.now()
         tool.save(update_fields=["last_used_at", "updated_at"])
         return f"MCP 工具已执行：{tool.display_name}\n\n{execution.output}"

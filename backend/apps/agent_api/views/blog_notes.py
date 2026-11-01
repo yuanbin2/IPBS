@@ -1,6 +1,8 @@
 """Owner-only private notes. Notes never enter article approval or public RAG."""
 
 import math
+import re
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from django.db.models import F, Q
 from django.shortcuts import get_object_or_404
@@ -39,6 +41,9 @@ def serialize_note(note):
         "anchor_offset": note.anchor_offset,
         "source_article": note.source_article_id,
         "source_article_slug": note.source_article.slug if note.source_article_id else None,
+        "source_url": note.source_url or "",
+        "source_title": note.source_title or "",
+        "captured_at": note.captured_at.isoformat() if note.captured_at else None,
         "version": note.version,
         "deleted_at": note.deleted_at.isoformat() if note.deleted_at else None,
         "created_at": note.created_at.isoformat(),
@@ -84,6 +89,42 @@ def parse_note_fields(data, principal, *, partial=False):
             ):
                 return None, "来源文章不可访问"
             fields["source_article"] = article
+    # B-043 外部网页剪藏来源：只做形态校验，服务器不因保存 URL 而抓取它。
+    if "source_url" in data:
+        raw_url = data["source_url"]
+        if raw_url is None or raw_url == "":
+            fields["source_url"] = ""
+        elif not isinstance(raw_url, str) or len(raw_url) > 2048:
+            return None, "来源链接长度无效"
+        else:
+            try:
+                parsed = urlparse(raw_url.strip())
+            except ValueError:
+                return None, "来源链接格式无效"
+            if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.password:
+                return None, "来源链接必须是不含账号密码的 http/https 地址"
+            if any(ord(char) < 32 for char in raw_url):
+                return None, "来源链接包含非法字符"
+            # 去掉常见跟踪参数，避免把营销参数长期留在私有笔记里
+            cleaned_query = urlencode(
+                {
+                    k: v
+                    for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+                    if not re.match(r"^utm_|^spm$|^from$|^share$|^scene$", k, re.IGNORECASE)
+                }
+            )
+            fields["source_url"] = urlunparse(parsed._replace(query=cleaned_query))
+    if "source_title" in data:
+        raw_title = data["source_title"]
+        if raw_title is None:
+            fields["source_title"] = ""
+        elif not isinstance(raw_title, str) or len(raw_title) > 200:
+            return None, "来源标题长度无效"
+        else:
+            fields["source_title"] = re.sub("[\x00-\x1f\x7f]", " ", raw_title).strip()
+    # 外部网页来源与本站文章来源互斥：网页 URL 不得伪装成本站文章。
+    if fields.get("source_url") and fields.get("source_article"):
+        return None, "外部网页来源与本站文章只能选其一"
     return fields, None
 
 
@@ -118,7 +159,12 @@ class PrivateNoteListCreateView(APIView):
         if deleted:
             notes = notes.filter(deleted_at__isnull=False)
         if query:
-            notes = notes.filter(Q(title__icontains=query) | Q(content__icontains=query) | Q(quote__icontains=query))
+            notes = notes.filter(
+                Q(title__icontains=query)
+                | Q(content__icontains=query)
+                | Q(quote__icontains=query)
+                | Q(source_title__icontains=query)
+            )
         total = notes.count()
         start = (page - 1) * page_size
         return Response(

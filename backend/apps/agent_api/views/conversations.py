@@ -5,9 +5,30 @@ from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..models import Conversation
+from ..models import Conversation, UserProfile
 from ..serializers import serialize_conversation
-from .common import get_conversation_owner, get_message_limit, get_workspace_key
+from .common import get_conversation_owner, get_message_limit, get_workspace_key, require_roles
+
+DEFAULT_CONVERSATION_LIMIT = 20
+
+MAX_CONVERSATION_LIMIT = 50
+
+
+def get_conversation_pagination(request) -> tuple[int, int]:
+    """解析会话列表分页参数。
+
+    limit 默认 20、上限 50；非法值回退默认，负数 limit 被钳制为 1。
+    offset 默认 0，非法或负数归 0。返回值保证切片永远是有效区间。
+    """
+    try:
+        limit = int(request.query_params.get("limit", DEFAULT_CONVERSATION_LIMIT))
+    except (TypeError, ValueError):
+        limit = DEFAULT_CONVERSATION_LIMIT
+    try:
+        offset = int(request.query_params.get("offset", 0))
+    except (TypeError, ValueError):
+        offset = 0
+    return max(1, min(limit, MAX_CONVERSATION_LIMIT)), max(0, offset)
 
 
 class ConversationListView(APIView):
@@ -15,8 +36,12 @@ class ConversationListView(APIView):
     permission_classes = []
 
     def get(self, request):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
         query = str(request.query_params.get("q", "")).strip()
         project_filter = request.query_params.get("project")
+        limit, offset = get_conversation_pagination(request)
         conversations = Conversation.objects.filter(
             workspace_key=get_workspace_key(request),
             owner_username=get_conversation_owner(request),
@@ -32,7 +57,7 @@ class ConversationListView(APIView):
             ).distinct()
 
         results = []
-        for conversation in conversations[:30]:
+        for conversation in conversations[offset : offset + limit]:
             matched_message_id = None
             if query:
                 match = conversation.messages.filter(content__icontains=query).first()
@@ -51,6 +76,9 @@ class ConversationDetailView(APIView):
     permission_classes = []
 
     def get(self, request, pk: int):
+        denied = require_roles(request, [UserProfile.Role.OPERATOR])
+        if denied:
+            return denied
         conversation = get_object_or_404(
             Conversation,
             pk=pk,

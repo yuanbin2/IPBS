@@ -39,6 +39,7 @@ class SourceCitation:
 class AgentState(TypedDict, total=False):
     # 节点之间只通过这份状态传递数据，避免节点依赖隐式全局变量。
     message: str
+    history: ConversationHistory
     route: Route
     query: str
     rewritten_query: str

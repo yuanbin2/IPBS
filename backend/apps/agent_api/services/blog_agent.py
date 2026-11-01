@@ -17,6 +17,8 @@ from pathlib import Path
 
 from langchain_core.prompts import ChatPromptTemplate
 
+from agent.model_accounting import model_purpose
+
 from ..models import BlogArticle
 from . import blog_public_retrieval as retrieval
 from .blog_article_summary import (
@@ -359,13 +361,14 @@ class PublicBlogAgent:
                 ),
             ]
         )
-        return (prompt | self.llm).invoke(
-            {
-                "question": question,
-                "source_context": self._format_sources(sources),
-                "history": self._format_history(history),
-            }
-        )
+        with model_purpose("public_blog_answer"):
+            return (prompt | self.llm).invoke(
+                {
+                    "question": question,
+                    "source_context": self._format_sources(sources),
+                    "history": self._format_history(history),
+                }
+            )
 
     @staticmethod
     def _format_history(history: list[dict[str, str]]) -> str:

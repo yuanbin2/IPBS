@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from celery.result import AsyncResult
 from django.db import transaction
 from django.db.models import Q
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -28,11 +28,14 @@ def ingestion_response_payload(document: Document, job: DocumentIngestionJob) ->
     payload = {
         **serialize_document(document),
         "task_id": str(job.pk),
+        "request_id": job.request_id,
         "ingestion_job": {
             "id": str(job.pk),
             "generation": job.generation,
             "status": job.status,
             "failure_code": job.failure_code or None,
+            "attempts": job.attempts,
+            "timings": job.timings,
         },
     }
     if job.status == DocumentIngestionJob.Status.COMPLETED:
@@ -217,10 +220,10 @@ class DocumentListUploadView(APIView):
         # 不落本地 Document/摄入任务；失败返回 502 并带原因
         if str(request.data.get("target", "local")).strip().lower() == "ragagent":
             from ..services.rag_agent_client import RagAgentError, upload_document_to_rag_agent
+
             content_type = getattr(upload, "content_type", "") or suffix.lstrip(".")
             try:
-                remote = upload_document_to_rag_agent(
-                    upload.name, upload.read(), content_type=content_type)
+                remote = upload_document_to_rag_agent(upload.name, upload.read(), content_type=content_type)
             except RagAgentError as exc:
                 return error_response(
                     f"RAG-Agent 上传失败：{exc}",
@@ -283,9 +286,7 @@ class RagAgentDocumentListView(APIView):
         try:
             remote_documents = list_documents_from_rag_agent()
         except RagAgentError:
-            return Response(
-                {"available": False, "error": "RAG-Agent 服务不可达（未启动或异常）", "documents": []}
-            )
+            return Response({"available": False, "error": "RAG-Agent 服务不可达（未启动或异常）", "documents": []})
         documents = [
             {
                 "document_id": str(item.get("id") or item.get("document_id") or ""),
@@ -370,15 +371,14 @@ class TaskStatusView(APIView):
                 },
                 "failure_code": job.failure_code or None,
                 "generation": job.generation,
+                "request_id": job.request_id,
+                "attempts": job.attempts,
+                "timings": job.timings,
             }
             return Response(payload)
-        task = AsyncResult(task_id)
-        payload = {"id": task.id, "state": task.state, "ready": task.ready()}
-        if task.successful():
-            payload["result"] = task.result
-        elif task.failed():
-            payload["error"] = str(task.result)
-        return Response(payload)
+        # The durable job is authoritative. A deleted or foreign job must not fall
+        # back to an unscoped Celery result that may still mention old content.
+        raise Http404
 
 
 class KnowledgeSearchView(APIView):

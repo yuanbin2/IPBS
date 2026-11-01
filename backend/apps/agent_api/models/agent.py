@@ -1,4 +1,7 @@
+import uuid
+
 from django.db import models
+from django.utils import timezone
 
 from .constants import DEFAULT_WORKSPACE_KEY
 
@@ -53,6 +56,7 @@ class Message(models.Model):
         AGENT = "agent", "Agent"
 
     conversation = models.ForeignKey(Conversation, related_name="messages", on_delete=models.CASCADE)
+    agent_run = models.ForeignKey("AgentRun", related_name="messages", on_delete=models.SET_NULL, null=True, blank=True)
     role = models.CharField(max_length=16, choices=Role.choices)
     content = models.TextField()
     tool_calls = models.JSONField(default=list, blank=True)
@@ -66,15 +70,35 @@ class Message(models.Model):
 
 
 class AgentRun(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
     conversation = models.ForeignKey(Conversation, related_name="agent_runs", on_delete=models.CASCADE)
+    run_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    request_id = models.CharField(max_length=36, blank=True, default="", db_index=True)
     workspace_key = models.CharField(max_length=80, default=DEFAULT_WORKSPACE_KEY, db_index=True)
     input_message = models.TextField()
+    request_fingerprint = models.CharField(max_length=64, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.SUCCEEDED, db_index=True)
+    cancel_requested = models.BooleanField(default=False)
+    result = models.JSONField(default=dict, blank=True)
+    error_code = models.CharField(max_length=80, blank=True)
     route = models.CharField(max_length=32, blank=True)
     tool_calls = models.JSONField(default=list, blank=True)
     sources = models.JSONField(default=list, blank=True)
     trace = models.JSONField(default=list, blank=True)
     token_usage = models.JSONField(default=dict, blank=True)
+    model_calls = models.JSONField(default=list, blank=True)
+    model_accounting = models.JSONField(default=dict, blank=True)
+    stage_timings = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(default=timezone.now)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]

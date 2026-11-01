@@ -21,12 +21,11 @@ RETRIEVAL_KEYWORDS = [
     "作者单位",
     "任职单位",
     "来自哪里",
-    "数据库",
     "自己的数据库",
+    "我的数据库",
     "资料库",
     "检索",
     "搜索",
-    "找",
     "查找",
     "查询项目",
     "项目资料",
@@ -34,19 +33,31 @@ RETRIEVAL_KEYWORDS = [
     "项目相关",
     "本地文档",
     "知识库",
+    "我的文档",
+    "我的笔记",
     "上传的文档",
+    "上传的资料",
+    "这份资料",
+    "那份资料",
+    "资料里",
+    "资料中",
+    "附件",
+    "简历",
+    "私有资料",
     "文档里",
+    "文档中",
     "引用",
     "来源",
-    "网络",
-    "网上",
     "相关的东西",
     "相关资料",
-    "成功的",
     "成功案例",
-    "rag",
-    "readme",
     "博客草稿",
+    "散射成像",
+    "散射介质",
+    "散斑相关",
+    "散斑",
+    "scattering imaging",
+    "speckle correlation",
 ]
 
 DEGREE_RANK = {"博士": 0, "PhD": 0, "硕士": 1, "研究生": 1, "Master": 1, "本科": 2, "学士": 2, "Bachelor": 2, "": 3}
@@ -62,6 +73,42 @@ def needs_tool_or_project_context(message: str) -> bool:
         return True
 
     return any(keyword in lowered for keyword in RETRIEVAL_KEYWORDS)
+
+
+def is_contextual_follow_up(message: str) -> bool:
+    text = message.strip()
+    return len(text) <= 40 and bool(
+        text.startswith(
+            ("他", "她", "它", "这份", "那份", "这个", "那个", "这篇", "那篇", "那里面", "这里面", "继续", "还有")
+        )
+        or any(marker in text for marker in ("刚才", "上面", "上述", "前面", "其中"))
+        or text.endswith("呢？")
+        or text.endswith("呢?")
+    )
+
+
+def requires_workspace_retrieval(message: str, history: list[dict] | None = None) -> bool:
+    """Only inherit retrieval intent when the new question refers to prior context."""
+    if needs_tool_or_project_context(message):
+        return True
+    history = history or []
+    if not history or not is_contextual_follow_up(message):
+        return False
+    recent_users = [item.get("content", "") for item in history if item.get("role") == "user"][-2:]
+    if recent_users:
+        from .supervisor_routing import is_mcp_request
+
+        if is_mcp_request(recent_users[-1]):
+            return False
+    if recent_users and needs_tool_or_project_context(recent_users[-1]):
+        return True
+    if (
+        len(recent_users) > 1
+        and is_contextual_follow_up(recent_users[-1])
+        and needs_tool_or_project_context(recent_users[-2])
+    ):
+        return True
+    return any(item.get("sources") for item in history[-2:])
 
 
 def asks_for_web_search(message: str) -> bool:
@@ -169,10 +216,7 @@ def build_grounded_fallback_answer(
         "我先根据本地知识库找到了这些与问题相关的依据：\n\n"
         + "\n".join(bullets)
         + web_note
-        + "\n\n基于这些资料，可以这样理解：项目相关能力之所以成立，关键在于它不是单一聊天框，"
-        "而是把知识库检索、博客内容沉淀、多智能体路由、MCP 工具、人审审批、可观测评估、权限安全和 Docker/CI 部署串成闭环。"
-        "其中“成功”的判断依据包括：资料能被上传和检索，Agent 回答能展示来源和 trace，高风险动作会进入审批，"
-        "工具调用可治理，运行效果可评估，最终系统可以部署和演示。"
+        + "\n\n以上仅为检索片段；未配置模型，无法进一步综合或核实结论。"
     )
 
 

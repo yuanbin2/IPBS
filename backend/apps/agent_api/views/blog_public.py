@@ -20,6 +20,7 @@ from ..models import (
     BlogArticle,
     BlogComment,
     BlogCommentReport,
+    BlogSetting,
     SecurityAuditEvent,
     UserProfile,
 )
@@ -62,27 +63,113 @@ class BlogArchiveView(APIView):
         return Response([{"month": month, "articles": items} for month, items in archive.items()])
 
 
+def load_blog_settings() -> BlogSetting:
+    """站点设置为单例行；首次访问即落库，读失败不影响公开浏览。"""
+    return BlogSetting.load()
+
+
+def public_settings_payload(settings: BlogSetting) -> dict:
+    return {
+        "site_title": settings.site_title,
+        "site_tagline": settings.site_tagline,
+        "author_name": settings.author_name,
+        "about_title": settings.about_title,
+        "about_content": settings.about_content,
+        "about_highlights": settings.about_highlights if isinstance(settings.about_highlights, list) else [],
+        "footer_text": settings.footer_text,
+        "articles_per_page": settings.articles_per_page,
+    }
+
+
+# 设置为空时的回退默认值：与历史硬编码保持一致，避免升级后内容变化
+ABOUT_DEFAULTS = {
+    "title": "关于这个知识型博客",
+    "content": (
+        "这个博客不是普通 CMS，而是个人技术经历和 Agent 知识库的入口。"
+        "文章选择加入知识库后，访客不仅能阅读文章，也能向 Agent 询问项目经历、"
+        "架构思路、论文方向和技术栈选择。"
+    ),
+    "highlights": [
+        "Vue 3 + Django 的全栈项目",
+        "LangChain / LangGraph Agentic RAG",
+        "选择加入知识库的博客文章会向量化并进入个人知识库",
+        "可交互的个人技术简历",
+    ],
+}
+
+
 class BlogAboutView(APIView):
     authentication_classes = []
     permission_classes = []
 
     def get(self, request):
+        settings = load_blog_settings()
         return Response(
             {
-                "title": "关于这个知识型博客",
-                "content": (
-                    "这个博客不是普通 CMS，而是个人技术经历和 Agent 知识库的入口。"
-                    "文章发布后会自动进入知识库，访客不仅能阅读文章，也能向 Agent 询问项目经历、"
-                    "架构思路、论文方向和技术栈选择。"
-                ),
-                "highlights": [
-                    "Vue 3 + Django 的全栈项目",
-                    "LangChain / LangGraph Agentic RAG",
-                    "博客文章自动向量化并进入个人知识库",
-                    "可交互的个人技术简历",
-                ],
+                "title": settings.about_title or ABOUT_DEFAULTS["title"],
+                "content": settings.about_content or ABOUT_DEFAULTS["content"],
+                "highlights": settings.about_highlights or ABOUT_DEFAULTS["highlights"],
+                "author_name": settings.author_name,
             }
         )
+
+
+class BlogSettingsView(APIView):
+    """站点设置：公开读（不含敏感字段——本模型也没有敏感字段），管理员写。"""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        settings = load_blog_settings()
+        return Response(public_settings_payload(settings))
+
+    def put(self, request):
+        user = jwt_user_from_request(request)
+        if user is None:
+            return error_response("请先登录后再修改站点设置", ErrorCode.NOT_AUTHENTICATED, status.HTTP_401_UNAUTHORIZED)
+        role = getattr(getattr(user, "agent_profile", None), "role", None)
+        if role not in {UserProfile.Role.ADMIN, UserProfile.Role.OPERATOR}:
+            return error_response("只有管理员可以修改站点设置", ErrorCode.FORBIDDEN, status.HTTP_403_FORBIDDEN)
+
+        data = request.data if isinstance(request.data, dict) else {}
+        settings = load_blog_settings()
+        text_fields = {
+            "site_title": 120,
+            "site_tagline": 200,
+            "author_name": 80,
+            "about_title": 120,
+            "footer_text": 200,
+        }
+        for field, limit in text_fields.items():
+            if field in data:
+                value = str(data.get(field) or "").strip()
+                if len(value) > limit:
+                    return error_response(
+                        f"{field} 不能超过 {limit} 字符", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST
+                    )
+                setattr(settings, field, value)
+        if "about_content" in data:
+            value = str(data.get("about_content") or "").strip()
+            if len(value) > 2000:
+                return error_response("about_content 不能超过 2000 字符", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            settings.about_content = value
+        if "about_highlights" in data:
+            highlights = data.get("about_highlights")
+            if not isinstance(highlights, list) or len(highlights) > 6:
+                return error_response("about_highlights 必须是不超过 6 项的列表", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            cleaned = [str(item).strip()[:80] for item in highlights if str(item).strip()]
+            settings.about_highlights = cleaned
+        if "articles_per_page" in data:
+            try:
+                per_page = int(data.get("articles_per_page"))
+            except (TypeError, ValueError):
+                return error_response("articles_per_page 必须是整数", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            if not 4 <= per_page <= 24:
+                return error_response("articles_per_page 需在 4–24 之间", ErrorCode.VALIDATION_ERROR, status.HTTP_400_BAD_REQUEST)
+            settings.articles_per_page = per_page
+        settings.save()
+        return Response(public_settings_payload(settings))
 
 
 class BlogCommentCreateView(APIView):

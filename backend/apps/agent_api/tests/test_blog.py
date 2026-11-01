@@ -183,7 +183,8 @@ class BlogArticleTests(OperatorApiTestCase):
         self.assertEqual(article.content, "New private content")
         self.assertEqual(article.publication_version, 2)
         self.assertEqual(BlogArticleRevision.objects.get(article=article).status, BlogArticleRevision.Status.APPROVED)
-        self.assertIn("New private content", article.knowledge_document.content_text)
+        self.assertIsNone(article.knowledge_document_id)
+        self.assertEqual(Document.objects.count(), 0)
 
     def test_rejected_or_stale_published_revision_never_changes_public_article(self):
         article = BlogArticle.objects.create(
@@ -242,6 +243,168 @@ class BlogArticleTests(OperatorApiTestCase):
         )
         self.assertEqual(stale.status_code, 409)
 
+    def test_editing_pending_draft_invalidates_old_publish_approval(self):
+        created = self.client.post(
+            "/api/agent/blog/articles/",
+            {"title": "Review draft", "content": "Reviewed content"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(created.status_code, 202)
+        slug = created.json()["article"]["slug"]
+        old_approval_id = created.json()["approval"]["id"]
+
+        edited = self.client.patch(
+            f"/api/agent/blog/articles/{slug}/",
+            {"content": "Changed after approval request"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(edited.status_code, 200)
+        self.assertEqual(ApprovalRequest.objects.get(pk=old_approval_id).status, ApprovalRequest.Status.REJECTED)
+
+        self.authenticate_test_user(UserProfile.Role.ADMIN)
+        stale = self.client.post(
+            f"/api/agent/approvals/{old_approval_id}/",
+            {"decision": "approve"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(stale.status_code, 400)
+        self.assertEqual(BlogArticle.objects.get(slug=slug).status, BlogArticle.Status.DRAFT)
+
+        self.client.defaults["HTTP_AUTHORIZATION"] = f"Bearer {self.test_token}"
+        submitted_again = self.client.post(
+            f"/api/agent/blog/articles/{slug}/publish/",
+            {},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(submitted_again.status_code, 202)
+        new_approval_id = submitted_again.json()["approval"]["id"]
+        self.authenticate_test_user(UserProfile.Role.ADMIN)
+        approved = self.client.post(
+            f"/api/agent/approvals/{new_approval_id}/",
+            {"decision": "approve"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(approved.status_code, 200)
+        self.assertEqual(approved.json()["status"], ApprovalRequest.Status.EXECUTED)
+        repeated = self.client.post(
+            f"/api/agent/approvals/{new_approval_id}/",
+            {"decision": "approve"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(repeated.status_code, 400)
+        article = BlogArticle.objects.get(slug=slug)
+        self.assertEqual(article.status, BlogArticle.Status.PUBLISHED)
+        self.assertEqual(article.content, "Changed after approval request")
+        self.assertEqual(article.publication_version, 1)
+
+    def test_approval_rejects_draft_changed_without_timestamp_update(self):
+        created = self.client.post(
+            "/api/agent/blog/articles/",
+            {"title": "Fingerprint", "content": "Reviewed content"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        slug = created.json()["article"]["slug"]
+        approval_id = created.json()["approval"]["id"]
+        BlogArticle.objects.filter(slug=slug).update(content="Unreviewed content")
+
+        self.authenticate_test_user(UserProfile.Role.ADMIN)
+        response = self.client.post(
+            f"/api/agent/approvals/{approval_id}/",
+            {"decision": "approve"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ApprovalRequest.objects.get(pk=approval_id).status, ApprovalRequest.Status.FAILED)
+        self.assertEqual(BlogArticle.objects.get(slug=slug).status, BlogArticle.Status.DRAFT)
+
+    @override_settings(AGENT_SECURITY_ENFORCED=True)
+    def test_revoked_admin_cannot_approve_pending_article(self):
+        created = self.client.post(
+            "/api/agent/blog/articles/",
+            {"title": "Approval role", "content": "Reviewed content"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        approval_id = created.json()["approval"]["id"]
+        reviewer, _ = self.authenticate_test_user(UserProfile.Role.ADMIN)
+        reviewer_profile = reviewer.agent_profile
+        reviewer_profile.role = UserProfile.Role.OPERATOR
+        reviewer_profile.save(update_fields=["role"])
+        denied = self.client.post(
+            f"/api/agent/approvals/{approval_id}/",
+            {"decision": "approve"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(ApprovalRequest.objects.get(pk=approval_id).status, ApprovalRequest.Status.PENDING)
+
+    def test_two_pending_publish_requests_do_not_publish_twice(self):
+        created = self.client.post(
+            "/api/agent/blog/articles/",
+            {"title": "Once", "content": "Reviewed content"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        slug = created.json()["article"]["slug"]
+        first_id = created.json()["approval"]["id"]
+        second = self.client.post(
+            f"/api/agent/blog/articles/{slug}/publish/",
+            {},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(second.status_code, 202)
+        second_id = second.json()["approval"]["id"]
+
+        self.authenticate_test_user(UserProfile.Role.ADMIN)
+        first = self.client.post(
+            f"/api/agent/approvals/{first_id}/",
+            {"decision": "approve"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(first.json()["status"], ApprovalRequest.Status.EXECUTED)
+        repeated = self.client.post(
+            f"/api/agent/approvals/{second_id}/",
+            {"decision": "approve"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(repeated.json()["status"], ApprovalRequest.Status.FAILED)
+        self.assertEqual(BlogArticle.objects.get(slug=slug).publication_version, 1)
+
+    def test_legacy_approval_without_fingerprint_rejects_later_save(self):
+        article = BlogArticle.objects.create(
+            title="Legacy approval", slug="legacy-approval", content="Reviewed content"
+        )
+        approval = ApprovalRequest.objects.create(
+            action=ApprovalRequest.Action.PUBLISH_BLOG_ARTICLE,
+            workspace_key=article.workspace_key,
+            title="Publish legacy draft",
+            payload={"article_slug": article.slug, "article_id": article.pk},
+        )
+        article.content = "Changed content"
+        article.save(update_fields=["content", "updated_at"])
+        self.authenticate_test_user(UserProfile.Role.ADMIN)
+        result = self.client.post(
+            f"/api/agent/approvals/{approval.pk}/",
+            {"decision": "approve"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(result.json()["status"], ApprovalRequest.Status.FAILED)
+        article.refresh_from_db()
+        self.assertEqual(article.status, BlogArticle.Status.DRAFT)
+
     @patch.dict("os.environ", {**NO_MODEL_ENV, "OPENAI_API_KEY": "test-key"})
     def test_agentic_retrieve_returns_tool_call_and_sources_key(self):
         agent = SimpleToolCallingAgent(Path(settings.BASE_DIR).parent)
@@ -273,6 +436,7 @@ class BlogArticleTests(OperatorApiTestCase):
                 "category": "项目复盘",
                 "tags": ["LangGraph", "RAG"],
                 "publish": True,
+                "add_to_knowledge_base": True,
             },
             content_type="application/json",
             HTTP_HOST="localhost",
@@ -302,6 +466,57 @@ class BlogArticleTests(OperatorApiTestCase):
         self.assertGreaterEqual(DocumentChunk.objects.count(), 1)
 
     @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_publish_without_knowledge_opt_in_stays_out_until_explicit_sync(self):
+        response = self.client.post(
+            "/api/agent/blog/articles/",
+            {
+                "title": "Public article without knowledge sync",
+                "content": "This article should be public without creating a knowledge document.",
+                "publish": True,
+            },
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 202)
+        payload = response.json()
+        article_slug = payload["article"]["slug"]
+        self.assertIs(payload["approval"]["payload"]["add_to_knowledge_base"], False)
+
+        self.authenticate_test_user(UserProfile.Role.ADMIN)
+        approved = post_and_run_commit_callbacks(
+            self,
+            f"/api/agent/approvals/{payload['approval']['id']}/",
+            {"decision": "approve"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(approved.status_code, 200)
+        article = BlogArticle.objects.get(slug=article_slug)
+        self.assertEqual(article.status, BlogArticle.Status.PUBLISHED)
+        self.assertIsNone(article.knowledge_document_id)
+        self.assertEqual(Document.objects.count(), 0)
+        self.assertEqual(DocumentChunk.objects.count(), 0)
+
+        sync = self.client.post(
+            f"/api/agent/blog/articles/{article_slug}/publish/",
+            {"add_to_knowledge_base": True},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(sync.status_code, 202)
+        approved_sync = post_and_run_commit_callbacks(
+            self,
+            f"/api/agent/approvals/{sync.json()['approval']['id']}/",
+            {"decision": "approve"},
+            content_type="application/json",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(approved_sync.status_code, 200)
+        article.refresh_from_db()
+        self.assertIsNotNone(article.knowledge_document_id)
+        self.assertEqual(Document.objects.count(), 1)
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
     def test_blog_article_delete_removes_linked_knowledge_document(self):
         create_response = self.client.post(
             "/api/agent/blog/articles/",
@@ -310,6 +525,7 @@ class BlogArticleTests(OperatorApiTestCase):
                 "author_name": "Interview Candidate",
                 "content": "This article should leave no searchable knowledge behind.",
                 "publish": True,
+                "add_to_knowledge_base": True,
             },
             content_type="application/json",
             HTTP_HOST="localhost",
@@ -1209,6 +1425,60 @@ class BlogArticleTests(OperatorApiTestCase):
         )
 
         self.assertEqual(response.status_code, 429)
+
+    def test_blog_agent_history_get_pagination(self):
+        """GET 历史分页：默认取最新 limit 条、before 游标翻更早、has_more_before 语义、非法 limit 回退。"""
+        session = BlogAgentSession.objects.create(session_key="history-page")
+        for index in range(15):
+            BlogAgentMessage.objects.create(
+                session=session,
+                role=BlogAgentMessage.Role.USER,
+                content=f"m{index}",
+            )
+
+        # 不带参数：默认取最新 10 条，按 id 升序返回，还有更早消息
+        response = self.client.get(
+            "/api/agent/blog/agent/chat/?session_key=history-page",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["session_key"], "history-page")
+        self.assertEqual(
+            [message["content"] for message in payload["messages"]], [f"m{index}" for index in range(5, 15)]
+        )
+        self.assertTrue(payload["has_more_before"])
+        self.assertTrue(payload["messages"][0]["id"] < payload["messages"][-1]["id"])
+
+        # 带 before：取该 id 之前（更早）的 3 条，仍有更早消息
+        first_page_head_id = payload["messages"][0]["id"]
+        response = self.client.get(
+            f"/api/agent/blog/agent/chat/?session_key=history-page&before={first_page_head_id}&limit=3",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual([message["content"] for message in payload["messages"]], ["m2", "m3", "m4"])
+        self.assertTrue(payload["has_more_before"])
+
+        # 再翻一次到底：只剩最早 2 条，has_more_before 为 False
+        second_page_head_id = payload["messages"][0]["id"]
+        response = self.client.get(
+            f"/api/agent/blog/agent/chat/?session_key=history-page&before={second_page_head_id}&limit=3",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual([message["content"] for message in payload["messages"]], ["m0", "m1"])
+        self.assertFalse(payload["has_more_before"])
+
+        # 非法 limit 回退默认 10 条
+        response = self.client.get(
+            "/api/agent/blog/agent/chat/?session_key=history-page&limit=abc",
+            HTTP_HOST="localhost",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["messages"]), 10)
 
     def test_blog_about_returns_interactive_resume_copy(self):
         response = self.client.get(

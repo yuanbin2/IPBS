@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from django.db.models import F, Q
 
@@ -16,6 +16,14 @@ from .text import cosine_similarity, keyword_tokens
 
 VECTOR_SCORE_WEIGHT = 0.72
 KEYWORD_SCORE_WEIGHT = 0.28
+# 检索后重排（rerank）：无模型依赖的规则重排，信号为「实体命中 > 标题命中 > 关键词覆盖」。
+# 注意：以下四个权重与上面的融合权重同为经验初值，尚无 A/B 评测支撑，
+# 待按缺陷表 B-056 的评测方案用 Recall@5/MRR@10 标定后再定稿。
+RERANK_SCORE_WEIGHT = 0.4
+RERANK_ENTITY_WEIGHT = 0.45
+RERANK_TITLE_WEIGHT = 0.35
+RERANK_COVERAGE_WEIGHT = 0.2
+RERANK_AFFILIATION_WEIGHT = 0.15
 logger = logging.getLogger(__name__)
 BILINGUAL_QUERY_ALIASES = {
     "散射成像": "scattering imaging imaging through scattering media",
@@ -44,6 +52,11 @@ class SearchResult:
     score: float
 
 
+def compact_query_text(query: str) -> str:
+    """去掉空白与常见填充词，便于判断「文档标题是否出现在问句里」。"""
+    return re.sub(r"[\s的地得看一下请帮我介绍关于]", "", query.lower())
+
+
 def keyword_similarity(query: str, title: str, content: str) -> float:
     query_terms = keyword_tokens(query)
     if not query_terms:
@@ -57,7 +70,7 @@ def keyword_similarity(query: str, title: str, content: str) -> float:
     # Chinese queries often have no whitespace (for example
     # "看一下卫晓斌的简历"). If the normalized document title appears in the
     # query, it is a much stronger signal than noisy embedding similarity.
-    compact_query = re.sub(r"[\s的地得看一下请帮我介绍关于]", "", query_lower)
+    compact_query = compact_query_text(query)
     compact_title = re.sub(r"\s+", "", title_lower)
     for entity in query_entity_terms(query):
         if entity in compact_title or entity in content:
@@ -124,29 +137,136 @@ def hybrid_relevance_score(query: str, title: str, content: str, vector_score: f
     return (VECTOR_SCORE_WEIGHT * normalized_vector_score) + (KEYWORD_SCORE_WEIGHT * keyword_score)
 
 
+def rerank_signal(
+    query: str,
+    title: str,
+    content: str,
+    entity_terms: list[str] | None = None,
+) -> float:
+    """重排信号：实体命中 > 标题整体命中 > 关键词覆盖率，归一到 0~1。
+
+    与 ``keyword_similarity`` 的区别：这里只用「是否命中」这类强信号做**排序**，
+    不做向量分参与，避免在向量噪声较大时把正确文档压到后面（B-055 的放大器场景）。
+    """
+    terms = query_entity_terms(query) if entity_terms is None else entity_terms
+    title_lower = title.lower()
+    content_lower = content.lower()
+    compact_query = compact_query_text(query)
+    compact_title = re.sub(r"\s+", "", title_lower)
+
+    signal = 0.0
+    # 实体（人名/机构名）出现在标题里是最强信号，只在正文里次之。
+    if any(entity and entity in compact_title for entity in terms):
+        signal += RERANK_ENTITY_WEIGHT
+    elif any(entity and entity in content for entity in terms):
+        signal += RERANK_ENTITY_WEIGHT * 0.6
+
+    title_entity = re.sub(
+        r"(?:个人)?(?:简历|履历|资料|文档|论文|文章|报告|附件)$",
+        "",
+        compact_title,
+    )
+    title_hit = (len(compact_title) >= 2 and compact_title in compact_query) or (
+        len(title_entity) >= 2 and title_entity in compact_query
+    )
+    if title_hit:
+        signal += RERANK_TITLE_WEIGHT
+
+    query_terms = keyword_tokens(query)
+    if query_terms:
+        hits = sum(1 for term in query_terms if term in content_lower)
+        signal += RERANK_COVERAGE_WEIGHT * (hits / len(query_terms))
+
+    # 「哪个学校/毕业院校」类问题：同一文档内含教育信号的切片应排在最前（Recall@1）。
+    if is_affiliation_query(query) and contains_education_signal(content):
+        signal += RERANK_AFFILIATION_WEIGHT
+
+    return min(signal, 1.0)
+
+
+def rerank_search_results(
+    query: str,
+    results: list[SearchResult],
+    *,
+    entity_terms: list[str] | None = None,
+    weight: float = RERANK_SCORE_WEIGHT,
+) -> list[SearchResult]:
+    """把召回结果按「融合分 + 重排信号」重新排序并返回新列表（不改动入参）。"""
+    if not results:
+        return []
+    terms = query_entity_terms(query) if entity_terms is None else entity_terms
+    reranked = [
+        replace(
+            item,
+            score=(1 - weight) * item.score + weight * rerank_signal(query, item.document_title, item.content, terms),
+        )
+        for item in results
+    ]
+    reranked.sort(key=lambda item: item.score, reverse=True)
+    return reranked
+
+
+# 人名/机构名后面常紧跟的谓词与疑问片段。它们一旦被 {2,4} 窗口吸进候选，
+# 就会把完整姓名截断（「卫晓斌属于哪个学校」→「晓斌属于」），
+# 因此统一在长度判断之前剥离（B-055）。
+_ENTITY_PREDICATE_SUFFIX = (
+    r"来自|属于|毕业于|就读于|任职于|就职于|工作于|任教于|"
+    r"就读|毕业|任职|就职|工作|任教|"
+    r"是|在|的|什么|哪"
+)
+_ENTITY_FILLER_PREFIX = "^(?:请问|请|帮我|帮忙|查询|检索|搜索|看一下|查一下|找一下|介绍一下|关于|想知道|想了解|了解|想问)"
+# 姓名与后缀之间允许夹一个谓词：「卫晓斌**毕业于**哪个学校」。不显式允许时，
+# {2,4} 窗口只能取到「斌毕业于」这种被截断的片段（B-055）。
+_ENTITY_LINK = (
+    r"(?:来自|属于|毕业于|就读于|任职于|就职于|工作于|任教于|"
+    r"就读|毕业|任职|就职|工作|任教)?"
+)
+# 称谓夹在姓名与谓词之间的写法：「卫晓斌**同学**来自哪里」。
+_ENTITY_TITLE = r"(?:同学|老师|先生|女士|博士|教授|同事)?"
+
+
+def _normalize_entity_candidate(candidate: str) -> str:
+    """剥离填充前缀与尾部谓词，只保留人名/机构名本身。"""
+    candidate = re.sub(_ENTITY_FILLER_PREFIX, "", candidate)
+    while True:
+        trimmed = re.sub(rf"(?:{_ENTITY_PREDICATE_SUFFIX})$", "", candidate)
+        if trimmed == candidate:
+            break
+        candidate = trimmed
+    return re.sub(r"[的是在]$", "", candidate)
+
+
 def query_entity_terms(query: str) -> list[str]:
     compact = re.sub(r"[\s，。！？；：,.!?;:、（）()\[\]【】《》\"'“”‘’]+", "", query)
-    prefixes = r"(?:请|帮我|查询|检索|搜索|看一下|介绍一下|关于)?"
+    # 前缀按“长的放前面”，否则「请问…」会被「请」先吃掉、把人名截成「问卫晓斌」。
+    prefixes = r"(?:请问|请|帮我|帮忙|查询|检索|搜索|看一下|查一下|找一下|介绍一下|关于|想知道|想了解|了解|想问)?"
     suffixes = (
         r"相关信息|个人信息|基本信息|相关资料|个人资料|简历信息|简历|介绍|是谁|"
-        r"的信息|的资料|的简历|是哪个学校的?|是哪所学校的?|是什么学校的?|"
-        r"哪个学校|哪所学校|毕业院校|就读学校|毕业于哪里|就读于哪里|来自哪里"
+        r"的信息|的资料|的简历|的学校|的大学|的院校|的单位|"
+        r"是哪个学校的?|是哪所学校的?|是什么学校的?|是哪个大学的?|是哪所大学的?|"
+        r"哪个学校的?|哪所学校的?|什么学校的?|哪个大学的?|哪所大学的?|"
+        r"哪个学校|哪所学校|什么学校|哪个大学|哪所大学|哪个院校|哪个学院|"
+        r"毕业院校|毕业学校|就读学校|就读院校|工作单位|任职单位|"
+        r"毕业于哪里|就读于哪里|来自哪里"
     )
 
-    candidates = [
-        match.group(1) for match in re.finditer(rf"{prefixes}([\u4e00-\u9fff]{{2,4}})(?:{suffixes})", compact)
+    raw_candidates = [
+        match.group(1)
+        for match in re.finditer(rf"{prefixes}([\u4e00-\u9fff]{{2,4}}){_ENTITY_TITLE}{_ENTITY_LINK}(?:{suffixes})", compact)
     ]
     for suffix in re.split(r"\|", suffixes):
         plain_suffix = suffix.replace("?", "")
         if plain_suffix and compact.endswith(plain_suffix):
-            candidates.append(compact[: -len(plain_suffix)])
+            raw_candidates.append(compact[: -len(plain_suffix)])
 
     entities: list[str] = []
-    for candidate in candidates:
-        candidate = re.sub(r"^(请|帮我|查询|检索|搜索|看一下|介绍一下|关于)", "", candidate)
-        candidate = re.sub(r"[的是在]+$", "", candidate)
+    for raw in raw_candidates:
+        candidate = _normalize_entity_candidate(raw)
         if 2 <= len(candidate) <= 4 and candidate not in entities:
             entities.append(candidate)
+    # 完整姓名必须排在截断片段之前：下游 expand_multilingual_query 只用
+    # entities[0] 生成拼音别名，「卫晓斌」应优先于「晓斌」。
+    entities.sort(key=len, reverse=True)
     return entities
 
 
@@ -192,6 +312,8 @@ def search_knowledge_base(
     workspace_key: str | None = None,
 ) -> list[SearchResult]:
     """在指定知识库/工作区中执行带文档多样性的混合检索。"""
+    # 实体从**原始问题**抽取后再用于重排：改写串可能丢掉中文姓名（B-055）。
+    entity_terms = query_entity_terms(query)
     query = expand_multilingual_query(query)
     query_vector = embed_query(query)
     identity = embedding_space_identity(len(query_vector))
@@ -227,6 +349,8 @@ def search_knowledge_base(
             knowledge_base_id=knowledge_base_id,
             workspace_key=workspace_key,
         )
+    # 排序链路：向量召回 → 混合打分 → 规则重排 → 文档多样性配额。
+    scored = rerank_search_results(query, scored, entity_terms=entity_terms)
     return diversify_search_results(scored, limit)
 
 

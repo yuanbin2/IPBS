@@ -7,6 +7,7 @@ Supervisor 只负责识别意图、执行安全策略并把请求交给专用 Ag
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -71,6 +72,48 @@ def _safe_stream_event(event: dict) -> dict:
     if changed and safe.get("type") == "response" and "security_filter -> output redacted" not in safe.get("trace", []):
         safe["trace"] = [*safe.get("trace", []), "security_filter -> output redacted"]
     return safe
+
+
+class _SafeAnswerDeltas:
+    """Release complete text boundaries while withholding possible secret tokens.
+
+    The final answer is authoritative; a snapshot repairs any provider whose
+    streamed chunks differ from its final message.
+    """
+
+    _sensitive_start = re.compile(r"(?i)sk-|api[_-]?key|secret|password|token")
+    _boundary = re.compile(r"[\s，。！？；：,.!?;:]")
+
+    def __init__(self):
+        self.raw = ""
+        self.emitted = ""
+        self.blocked = False
+
+    def feed(self, text: str) -> str:
+        self.raw += text
+        if self.blocked:
+            return ""
+        sensitive = self._sensitive_start.search(self.raw)
+        safe_end = sensitive.start() if sensitive else len(self.raw)
+        boundaries = list(self._boundary.finditer(self.raw[:safe_end]))
+        if len(boundaries) < 2:
+            return ""
+        prefix, _ = redact_sensitive_output(self.raw[: boundaries[-2].end()])
+        if not prefix.startswith(self.emitted):
+            self.blocked = True
+            return ""
+        delta = prefix[len(self.emitted) :]
+        self.emitted = prefix
+        return delta
+
+    def finish(self, final_answer: str) -> dict | None:
+        safe_answer, _ = redact_sensitive_output(final_answer)
+        if not self.emitted:
+            return None
+        if not safe_answer.startswith(self.emitted):
+            return {"type": "answer_snapshot", "text": safe_answer}
+        remaining = safe_answer[len(self.emitted) :]
+        return {"type": "answer_delta", "text": remaining} if remaining else None
 
 
 class MultiAgentSupervisor:
@@ -253,6 +296,7 @@ class MultiAgentSupervisor:
         # RAG agent — stream LangGraph execution
         if route_decision.selected_agent == "rag_agent":
             seen_trace = set()
+            body_deltas = _SafeAnswerDeltas()
             for trace_entry in base_trace:
                 seen_trace.add(trace_entry)
             for event in self.rag_agent.chat_stream(message, history=history):
@@ -260,9 +304,16 @@ class MultiAgentSupervisor:
                     if event["data"] not in seen_trace:
                         seen_trace.add(event["data"])
                         yield _safe_stream_event(event)
+                elif event["type"] == "answer_delta":
+                    safe_delta = body_deltas.feed(event.get("text", ""))
+                    if safe_delta:
+                        yield {"type": "answer_delta", "text": safe_delta}
                 elif event["type"] == "response":
                     answer, redacted = redact_sensitive_output(event["answer"])
                     extra_trace = ["security_filter -> output redacted"] if redacted else []
+                    final_delta = body_deltas.finish(answer)
+                    if final_delta:
+                        yield final_delta
                     yield _safe_stream_event(
                         {
                             "type": "response",

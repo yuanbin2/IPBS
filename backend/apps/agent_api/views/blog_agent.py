@@ -31,6 +31,20 @@ def _redact_public_payload(value):
     return value
 
 
+# GET 历史分页：默认 10 条、上限 50（与 conversations 的 limit 风格一致）。
+DEFAULT_BLOG_AGENT_HISTORY_LIMIT = 10
+MAX_BLOG_AGENT_HISTORY_LIMIT = 50
+
+
+def get_blog_agent_history_limit(request) -> int:
+    """解析历史消息条数；非法值回退默认，负数钳制为 1。"""
+    try:
+        limit = int(request.query_params.get("limit", DEFAULT_BLOG_AGENT_HISTORY_LIMIT))
+    except (TypeError, ValueError):
+        limit = DEFAULT_BLOG_AGENT_HISTORY_LIMIT
+    return max(1, min(limit, MAX_BLOG_AGENT_HISTORY_LIMIT))
+
+
 class BlogAgentChatView(APIView):
     authentication_classes = []
     permission_classes = []
@@ -122,16 +136,33 @@ class BlogAgentChatView(APIView):
     def get(self, request):
         session_key = str(request.query_params.get("session_key", "")).strip()
         if not session_key:
-            return Response({"messages": []})
+            return Response({"messages": [], "has_more_before": False})
 
         session = get_object_or_404(BlogAgentSession, session_key=session_key)
-        messages = session.messages.all().order_by("-id")[:20]
+        limit = get_blog_agent_history_limit(request)
+        messages_queryset = session.messages.all()
+
+        # before 为消息 id 游标：有则取该 id 之前（更早）的 limit 条，无则取最新 limit 条；均按 id 升序返回。
+        raw_before = str(request.query_params.get("before", "")).strip()
+        before_id: int | None = None
+        if raw_before:
+            try:
+                before_id = int(raw_before)
+            except (TypeError, ValueError):
+                before_id = None
+        if before_id is not None and before_id >= 1:
+            messages = list(messages_queryset.filter(id__lt=before_id).order_by("-id")[:limit])
+        else:
+            messages = list(messages_queryset.order_by("-id")[:limit])
+        messages = list(reversed(messages))
+        has_more_before = messages_queryset.filter(id__lt=messages[0].id).exists() if messages else False
         return Response(
             {
                 "session_key": session.session_key,
                 "messages": [
-                    _redact_public_payload(serialize_blog_agent_message(message)) for message in reversed(messages)
+                    _redact_public_payload(serialize_blog_agent_message(message)) for message in messages
                 ],
+                "has_more_before": has_more_before,
             }
         )
 

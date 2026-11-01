@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
+from agent.model_accounting import model_purpose
+
 WRITING_MODES = {
     "task_list": (
         "把写作目标拆成可执行的 Markdown 任务清单。使用 `- [ ]`，按资料准备、写作、"
@@ -72,6 +74,7 @@ class BlogWritingAgent:
             api_key=api_key,
             base_url=self._normalize_base_url(base_url),
             temperature=0.35,
+            max_retries=0,
         )
 
     def generate(self, *, mode: str, instruction: str, draft: dict[str, str]) -> WritingAgentResult:
@@ -103,17 +106,18 @@ class BlogWritingAgent:
                 ),
             ]
         )
-        message = (prompt | self.llm).invoke(
-            {
-                "mode_instruction": WRITING_MODES[mode],
-                "instruction": instruction or "请结合标题和已有草稿完成当前任务。",
-                "title": draft.get("title", "") or "（未填写）",
-                "summary": draft.get("summary", "") or "（未填写）",
-                "category": draft.get("category", "") or "（未填写）",
-                "tags": draft.get("tags", "") or "（未填写）",
-                "content": draft.get("content", "") or "（当前没有正文）",
-            }
-        )
+        with model_purpose("writing_assistant"):
+            message = (prompt | self.llm).invoke(
+                {
+                    "mode_instruction": WRITING_MODES[mode],
+                    "instruction": instruction or "请结合标题和已有草稿完成当前任务。",
+                    "title": draft.get("title", "") or "（未填写）",
+                    "summary": draft.get("summary", "") or "（未填写）",
+                    "category": draft.get("category", "") or "（未填写）",
+                    "tags": draft.get("tags", "") or "（未填写）",
+                    "content": draft.get("content", "") or "（当前没有正文）",
+                }
+            )
         markdown = self._clean_markdown(str(message.content))
         if not markdown:
             raise RuntimeError("写作助手没有返回内容")

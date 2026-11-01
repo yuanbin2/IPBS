@@ -3,6 +3,7 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.db import connection
 from django.db.models import F
 from django.test import TransactionTestCase
@@ -10,7 +11,13 @@ from django.utils import timezone
 
 from ..models import Document, DocumentChunk, DocumentIngestionJob, EmbeddingRecord, KnowledgeBase
 from ..services.embedding_space import embedding_space_identity
-from ..services.ingestion_jobs import dispatch_ingestion_job, process_ingestion_job, schedule_document_ingestion
+from ..services.ingestion_jobs import (
+    JOB_LEASE,
+    dispatch_due_ingestion_jobs,
+    dispatch_ingestion_job,
+    process_ingestion_job,
+    schedule_document_ingestion,
+)
 from ..services.rag.search import search_knowledge_base
 from ..services.rag.text import local_embedding
 from .support import NO_MODEL_ENV
@@ -46,6 +53,12 @@ class DocumentIngestionOutboxTests(TransactionTestCase):
         )
         return chunk
 
+    def queue_job(self, job):
+        job.status = DocumentIngestionJob.Status.QUEUED
+        job.attempts = max(job.attempts, 1)
+        job.lease_expires_at = timezone.now() + JOB_LEASE
+        job.save(update_fields=["status", "attempts", "lease_expires_at", "updated_at"])
+
     def test_outbox_callback_runs_only_after_job_and_source_commit(self):
         document = self.make_document()
         observed = []
@@ -69,6 +82,7 @@ class DocumentIngestionOutboxTests(TransactionTestCase):
         document.save(update_fields=["content_text", "updated_at"])
         with patch("apps.agent_api.services.ingestion_jobs.dispatch_ingestion_job"):
             job = schedule_document_ingestion(document)
+        self.queue_job(job)
 
         from ..services.rag.ingest import build_document_index as build, persist_document_index as persist
 
@@ -111,6 +125,8 @@ class DocumentIngestionOutboxTests(TransactionTestCase):
             document.content_text = "latest workspace-a indexed phrase"
             document.save(update_fields=["content_text", "updated_at"])
             new_job = schedule_document_ingestion(document)
+        self.queue_job(old_job)
+        self.queue_job(new_job)
 
         stale = process_ingestion_job(str(old_job.pk))
         self.assertEqual(stale["status"], DocumentIngestionJob.Status.SUPERSEDED)
@@ -121,6 +137,7 @@ class DocumentIngestionOutboxTests(TransactionTestCase):
         )
         with patch("apps.agent_api.services.ingestion_jobs.dispatch_ingestion_job"):
             other_job = schedule_document_ingestion(other)
+        self.queue_job(other_job)
         process_ingestion_job(str(other_job.pk))
 
         self.assertEqual(
@@ -139,6 +156,7 @@ class DocumentIngestionOutboxTests(TransactionTestCase):
         document.save(update_fields=["content_text", "updated_at"])
         with patch("apps.agent_api.services.ingestion_jobs.dispatch_ingestion_job"):
             job = schedule_document_ingestion(document, force=True)
+        self.queue_job(job)
 
         from ..services.embedding_space import EmbeddingSpaceError
 
@@ -165,7 +183,8 @@ class DocumentIngestionOutboxTests(TransactionTestCase):
             job = schedule_document_ingestion(document)
         job.status = DocumentIngestionJob.Status.QUEUED
         job.attempts = 1
-        job.save(update_fields=["status", "attempts", "updated_at"])
+        job.lease_expires_at = timezone.now() + JOB_LEASE
+        job.save(update_fields=["status", "attempts", "lease_expires_at", "updated_at"])
 
         from ..services.rag.ingest import build_document_index as build
 
@@ -220,3 +239,150 @@ class DocumentIngestionOutboxTests(TransactionTestCase):
         self.assertEqual(job.failure_code, "broker_unavailable")
         self.assertEqual(document.status, Document.Status.FAILED)
         self.assertEqual(document.ingestion_error_code, "broker_unavailable")
+        with patch("apps.agent_api.services.ingestion_jobs.dispatch_ingestion_job"):
+            replacement = schedule_document_ingestion(document, force=True)
+        self.assertEqual(replacement.generation, job.generation + 1)
+        self.assertEqual(replacement.status, DocumentIngestionJob.Status.PENDING)
+        self.assertEqual(DocumentIngestionJob.objects.get(pk=job.pk).status, DocumentIngestionJob.Status.FAILED)
+
+    def test_late_publish_failure_cannot_overwrite_newer_dispatch_attempt(self):
+        document = self.make_document(content="broker race")
+        with patch("apps.agent_api.services.ingestion_jobs.dispatch_ingestion_job"):
+            job = schedule_document_ingestion(document)
+
+        def newer_attempt_then_fail(*_args, **_kwargs):
+            DocumentIngestionJob.objects.filter(pk=job.pk).update(attempts=2)
+            raise ConnectionError("publish result arrived late")
+
+        with patch("apps.agent_api.tasks.ingest_document_task.apply_async", side_effect=newer_attempt_then_fail):
+            self.assertFalse(dispatch_ingestion_job(str(job.pk)))
+        job.refresh_from_db()
+        self.assertEqual(job.attempts, 2)
+        self.assertEqual(job.status, DocumentIngestionJob.Status.QUEUED)
+        self.assertEqual(job.failure_code, "")
+
+    def test_redelivered_message_cannot_bypass_outbox_backoff_or_lease(self):
+        document = self.make_document(content="backoff is owned by the outbox")
+        with patch("apps.agent_api.services.ingestion_jobs.dispatch_ingestion_job"):
+            job = schedule_document_ingestion(document)
+        with patch("apps.agent_api.services.rag.ingest.build_document_index") as build:
+            self.assertTrue(process_ingestion_job(str(job.pk))["deferred"])
+            self.queue_job(job)
+            job.status = DocumentIngestionJob.Status.RETRY
+            job.next_attempt_at = timezone.now() + timedelta(minutes=1)
+            job.save(update_fields=["status", "next_attempt_at", "updated_at"])
+            self.assertTrue(process_ingestion_job(str(job.pk))["deferred"])
+            job.status = DocumentIngestionJob.Status.PROCESSING
+            job.lease_expires_at = timezone.now() - timedelta(seconds=1)
+            job.save(update_fields=["status", "lease_expires_at", "updated_at"])
+            self.assertTrue(process_ingestion_job(str(job.pk))["duplicate"])
+            job.status = DocumentIngestionJob.Status.QUEUED
+            job.save(update_fields=["status", "updated_at"])
+            self.assertTrue(process_ingestion_job(str(job.pk))["deferred"])
+            build.assert_not_called()
+        job.refresh_from_db()
+        self.assertEqual(job.attempts, 1)
+        self.assertFalse(document.chunks.exists())
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_old_generation_finishing_after_reindex_cannot_activate_old_chunks(self):
+        document = self.make_document(content="old generation")
+        with patch("apps.agent_api.services.ingestion_jobs.dispatch_ingestion_job"):
+            old_job = schedule_document_ingestion(document)
+        self.queue_job(old_job)
+
+        from ..services.rag.ingest import build_document_index as build
+
+        def reindex_during_build(snapshot):
+            old_index = build(snapshot)
+            document.content_text = "new generation"
+            document.save(update_fields=["content_text", "updated_at"])
+            with patch("apps.agent_api.services.ingestion_jobs.dispatch_ingestion_job"):
+                self.new_job = schedule_document_ingestion(document, force=True)
+            self.queue_job(self.new_job)
+            return old_index
+
+        with patch("apps.agent_api.services.rag.ingest.build_document_index", side_effect=reindex_during_build):
+            stale = process_ingestion_job(str(old_job.pk))
+        self.assertEqual(stale["status"], DocumentIngestionJob.Status.SUPERSEDED)
+        self.assertFalse(document.chunks.exists())
+        ready = process_ingestion_job(str(self.new_job.pk))
+        self.assertEqual(ready["status"], Document.Status.READY)
+        document.refresh_from_db()
+        self.assertEqual(document.active_ingestion_generation, self.new_job.generation)
+        self.assertEqual(list(document.chunks.values_list("content", flat=True)), ["new generation"])
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_deleted_document_cannot_be_reactivated_by_in_flight_worker(self):
+        document = self.make_document(content="deleted while embedding")
+        with patch("apps.agent_api.services.ingestion_jobs.dispatch_ingestion_job"):
+            job = schedule_document_ingestion(document)
+        self.queue_job(job)
+        document_id = document.pk
+
+        def delete_during_build(_snapshot):
+            Document.objects.get(pk=document_id).delete()
+            return (["obsolete"], [[0.0] * 384], None)
+
+        with patch("apps.agent_api.services.rag.ingest.build_document_index", side_effect=delete_during_build):
+            result = process_ingestion_job(str(job.pk))
+        self.assertEqual(result["status"], "deleted")
+        self.assertFalse(Document.objects.filter(pk=document_id).exists())
+        self.assertFalse(DocumentChunk.objects.filter(document_id=document_id).exists())
+        self.assertFalse(EmbeddingRecord.objects.filter(chunk__document_id=document_id).exists())
+        self.assertEqual(process_ingestion_job(str(job.pk))["status"], "deleted")
+
+    def test_deleted_document_during_failed_build_does_not_retry_or_resurrect(self):
+        document = self.make_document(content="deleted before build raises")
+        with patch("apps.agent_api.services.ingestion_jobs.dispatch_ingestion_job"):
+            job = schedule_document_ingestion(document)
+        self.queue_job(job)
+        document_id = document.pk
+
+        def delete_then_fail(_snapshot):
+            Document.objects.get(pk=document_id).delete()
+            raise RuntimeError("source file disappeared")
+
+        with patch("apps.agent_api.services.rag.ingest.build_document_index", side_effect=delete_then_fail):
+            result = process_ingestion_job(str(job.pk))
+        self.assertEqual(result["status"], "deleted")
+        self.assertFalse(Document.objects.filter(pk=document_id).exists())
+        self.assertFalse(DocumentIngestionJob.objects.filter(pk=job.pk).exists())
+        self.assertFalse(DocumentChunk.objects.filter(document_id=document_id).exists())
+
+    @patch.dict("os.environ", NO_MODEL_ENV)
+    def test_soft_timeout_retries_and_worker_loss_is_recovered_after_lease(self):
+        from ..tasks import ingest_document_task
+
+        self.assertLess(ingest_document_task.soft_time_limit, ingest_document_task.time_limit)
+        self.assertLess(ingest_document_task.time_limit, JOB_LEASE.total_seconds())
+        document = self.make_document(content="retry after timeout")
+        with patch("apps.agent_api.services.ingestion_jobs.dispatch_ingestion_job"):
+            job = schedule_document_ingestion(document)
+        job.status = DocumentIngestionJob.Status.QUEUED
+        job.attempts = 1
+        job.lease_expires_at = timezone.now() + JOB_LEASE
+        job.save(update_fields=["status", "attempts", "lease_expires_at", "updated_at"])
+        with patch("apps.agent_api.services.rag.ingest.build_document_index", side_effect=SoftTimeLimitExceeded()):
+            result = process_ingestion_job(str(job.pk))
+        self.assertEqual(result["status"], "retry")
+        job.refresh_from_db()
+        self.assertEqual(job.status, DocumentIngestionJob.Status.RETRY)
+        self.assertEqual(job.failure_code, "ingestion_timeout")
+        self.assertFalse(document.chunks.exists())
+
+        # A hard-killed worker cannot update the row; beat reclaims only an expired lease.
+        job.status = DocumentIngestionJob.Status.PROCESSING
+        job.next_attempt_at = None
+        job.lease_expires_at = timezone.now() + timedelta(minutes=1)
+        job.save(update_fields=["status", "next_attempt_at", "lease_expires_at", "updated_at"])
+        with patch("apps.agent_api.tasks.ingest_document_task.apply_async", return_value=None) as publish:
+            self.assertEqual(dispatch_due_ingestion_jobs(), 0)
+            publish.assert_not_called()
+            job.lease_expires_at = timezone.now() - timedelta(seconds=1)
+            job.save(update_fields=["lease_expires_at", "updated_at"])
+            self.assertEqual(dispatch_due_ingestion_jobs(), 1)
+            publish.assert_called_once()
+        job.refresh_from_db()
+        self.assertEqual(job.status, DocumentIngestionJob.Status.QUEUED)
+        self.assertEqual(job.attempts, 2)

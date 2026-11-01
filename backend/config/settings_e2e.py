@@ -38,6 +38,10 @@ STORAGES = {  # noqa: F405
         "BACKEND": "django.core.files.storage.FileSystemStorage",
         "OPTIONS": {"location": MEDIA_ROOT, "base_url": MEDIA_URL},  # noqa: F405
     },
+    "private_note_media": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "OPTIONS": {"location": E2E_DATA_ROOT / "private-notes"},
+    },
 }
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True

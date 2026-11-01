@@ -1,29 +1,16 @@
-# Models 模型层
+# Django 模型层
 
-本目录是 `agent_api` 的独立数据模型层。模型仍属于同一个 Django App，因此拆成 Python
-包而不是移动到项目根目录：这样既能按业务领域分文件，也能保持既有 migration、app label
-和数据库表名稳定。
+本目录是 `agent_api` Django App 的模型包。按领域拆分 Python 文件，但保留同一 app label 与迁移空间。`__init__.py` 统一导出模型，迁移位于 `backend/apps/agent_api/migrations/`。
 
-## 文件职责
+| 文件 | 当前领域 |
+| --- | --- |
+| `agent.py` | 对话、项目、消息、运行记录 |
+| `auth.py` | 用户角色/工作空间 profile、安全审计 |
+| `knowledge.py` | 知识库、文档、切片、embedding、入库任务 |
+| `blog.py` | 博客文章与修订、评论治理、私有笔记/图片、领域目录 |
+| `governance.py` | 审批与 MCP 工具 |
+| `evaluation.py` | Agent 观测、评测用例/运行/数据集/批次 |
 
-| 文件 | 领域 | Model |
-|---|---|---|
-| `agent.py` | 私有对话与 Agent 执行 | `Conversation`、`Message`、`AgentRun` |
-| `auth.py` | 用户扩展与安全审计 | `UserProfile`、`SecurityAuditEvent` |
-| `knowledge.py` | 知识库与向量检索 | `KnowledgeBase`、`Document`、`DocumentChunk`、`EmbeddingRecord` |
-| `blog.py` | 博客与公开博客 Agent | `ArticleCategory`、`ArticleTag`、`BlogArticle`、`BlogComment`、`BlogAgentSession`、`BlogAgentMessage`、`BlogAgentSecurityEvent` |
-| `governance.py` | 审批和 MCP 工具治理 | `ApprovalRequest`、`MCPTool` |
-| `evaluation.py` | 可观测性与评测 | `AgentObservation`、`EvaluationCase`、`EvaluationRun` |
-| `constants.py` | 模型共享常量 | 默认工作空间等 |
-| `__init__.py` | 对外统一导出 | 保持 `from apps.agent_api.models import ...` 的稳定导入方式 |
+修改流程：更新模型后在仓库根运行 `.venv\Scripts\python.exe backend\manage.py makemigrations`（POSIX 使用 `.venv/bin/python backend/manage.py ...`），检查并提交生成的 migration，再运行对应迁移和模型/API 回归。不要手工修改已应用迁移。Workspace 与 owner 的实际约束按字段、View 权限和测试核对；旧的字段示例与规划不覆盖代码。
 
-完整字段设计、设计原因、关系图和示例数据见
-[`docs/models-design.md`](../../../../docs/models-design.md)。
-
-## 修改规则
-
-1. View、Serializer、Service 不直接定义数据库字段。
-2. 新模型放入对应领域文件，并在 `__init__.py` 导出。
-3. 字段或关系变化后执行 `python manage.py makemigrations`。
-4. 多租户业务数据应带 `workspace_key`，私有会话还应带所有者标识。
-5. 固定状态使用 `TextChoices`；动态执行详情可使用 `JSONField`。
+当前数据库运行模式与私有/公开媒体边界见[数据库说明](../../../../docs/database-current.md)。字段变更以模型 + migrations + 测试为事实来源。

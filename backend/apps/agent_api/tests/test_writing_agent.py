@@ -79,6 +79,7 @@ class BlogWritingAgentTests(SecurityTransportTestCase):
             api_key="shared-key",
             base_url="https://example.test/v1",
             temperature=0.35,
+            max_retries=0,
         )
 
     @patch("apps.agent_api.services.writing_agent.ChatOpenAI")
@@ -105,6 +106,7 @@ class BlogWritingAgentTests(SecurityTransportTestCase):
             api_key="dedicated-key",
             base_url="https://writer.example.test/v1",
             temperature=0.35,
+            max_retries=0,
         )
 
     def test_writing_agent_removes_outer_markdown_fence(self):

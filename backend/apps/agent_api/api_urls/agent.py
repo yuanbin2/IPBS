@@ -1,6 +1,6 @@
 from django.urls import path
 
-from ..views.chat import AgentChatStreamView, AgentChatView
+from ..views.chat import AgentChatRunCancelView, AgentChatRunView, AgentChatStreamView, AgentChatView
 from ..views.conversations import ConversationDetailView, ConversationListView
 from ..views.observability import (
     EvaluationBatchCompareView,
@@ -18,6 +18,8 @@ from ..views.observability import (
 urlpatterns = [
     path("chat/", AgentChatView.as_view(), name="agent-chat"),
     path("chat/stream/", AgentChatStreamView.as_view(), name="agent-chat-stream"),
+    path("chat/runs/<uuid:run_id>/", AgentChatRunView.as_view(), name="agent-chat-run"),
+    path("chat/runs/<uuid:run_id>/cancel/", AgentChatRunCancelView.as_view(), name="agent-chat-run-cancel"),
     path("conversations/", ConversationListView.as_view(), name="conversation-list"),
     path("conversations/<int:pk>/", ConversationDetailView.as_view(), name="conversation-detail"),
     path("observability/", ObservabilityDashboardView.as_view(), name="observability-dashboard"),

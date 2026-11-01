@@ -9,6 +9,7 @@ class ApprovalRequest(models.Model):
         DELETE_KNOWLEDGE_BASE = "delete_knowledge_base", "Delete knowledge base"
         DELETE_BLOG_ARTICLE = "delete_blog_article", "Delete blog article"
         PUBLISH_BLOG_ARTICLE = "publish_blog_article", "Publish blog article"
+        PUBLISH_BLOG_COLLECTION = "publish_blog_collection", "Publish blog collection"
         EXECUTE_SQL = "execute_sql", "Execute SQL"
         EXECUTE_MCP_TOOL = "execute_mcp_tool", "Execute MCP tool"
         EXTERNAL_DEPLOY = "external_deploy", "External deploy"

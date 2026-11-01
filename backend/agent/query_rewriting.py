@@ -11,6 +11,7 @@ import re
 from langchain_core.prompts import ChatPromptTemplate
 
 from .agent_types import ConversationHistory
+from .model_accounting import model_purpose
 
 MAX_REWRITTEN_CHARS = 160
 
@@ -64,12 +65,18 @@ def fallback_contextual_search_query(message: str, history: ConversationHistory)
     if not previous_questions:
         return message.strip()
     context = " ".join(previous_questions[-2:])
-    return f"{context} {message.strip()}"[:240]
+    if "比较" in message or "对比" in message:
+        titles = _recent_source_titles(history)
+        if titles:
+            context = f"来源标题：{'、'.join(titles)} {context}"
+    current = message.strip()
+    return f"{context[: max(0, 239 - len(current))]} {current}"[:240]
 
 
 def _rewrite(llm, prompt, message: str, history: ConversationHistory, fallback: str) -> str:
     try:
-        rewritten = str((prompt | llm).invoke({"history": format_history(history), "message": message}).content)
+        with model_purpose("query_rewrite"):
+            rewritten = str((prompt | llm).invoke({"history": format_history(history), "message": message}).content)
         rewritten = re.sub(r"[\r\n]+", " ", rewritten).strip(" `\"'，。")
         return rewritten[:MAX_REWRITTEN_CHARS] or fallback
     except Exception:
@@ -85,20 +92,77 @@ def rewrite_web_search_query(llm, message: str, history: ConversationHistory | N
     return _rewrite(llm, WEB_SEARCH_REWRITE_PROMPT, message, history, fallback)
 
 
+def preserve_query_entities(original: str, rewritten: str) -> str:
+    """改写结果丢掉原问题实体时，退回原问题（B-055）。
+
+    知识库检索靠中文姓名/机构名做标题与内容加成。LLM 改写是非确定性的，实测同一问题
+    会产出不含「卫晓斌」的英文串（如 `Wei Xiaobin university affiliation institution`），
+    检索随即完全落空。这里做一次确定性校验：原问题能抽出实体、而改写串丢了其中任何一个，
+    就直接用原问题检索，不让非确定性的改写决定检索成败。
+    """
+    if not rewritten or rewritten == original:
+        return rewritten or original
+    try:
+        from apps.agent_api.services.rag import query_entity_terms
+    except Exception:  # 脱离 Django 的纯函数调用场景不做拦截
+        return rewritten
+    entities = query_entity_terms(original)
+    if entities and any(entity not in rewritten for entity in entities):
+        return original
+    return rewritten
+
+
 def rewrite_retrieval_query(llm, message: str, history: ConversationHistory | None = None) -> str:
     """Resolve follow-up references before searching the private knowledge base."""
     history = history or []
     fallback = fallback_contextual_search_query(message, history)
     if llm is None or not history or fallback == message.strip():
         return fallback
-    return _rewrite(llm, RETRIEVAL_REWRITE_PROMPT, message, history, fallback)
+    rewritten = preserve_query_entities(message, _rewrite(llm, RETRIEVAL_REWRITE_PROMPT, message, history, fallback))
+    if "比较" in message or "对比" in message:
+        titles = _recent_source_titles(history)
+        if titles and any(title not in rewritten for title in titles):
+            return fallback
+    return rewritten
 
 
 def format_history(history: ConversationHistory) -> str:
+    return _format_history(history, max_chars=2400, include_source_titles=True)
+
+
+def format_answer_history(history: ConversationHistory) -> str:
+    """Bounded dialogue context for answer generation; source text stays in current retrieval results."""
+    return _format_history(history, max_chars=4000, include_source_titles=True)
+
+
+def _recent_source_titles(history: ConversationHistory) -> list[str]:
+    titles: list[str] = []
+    for item in history[-10:]:
+        for source in item.get("sources") or []:
+            if not isinstance(source, dict):
+                continue
+            title = str(source.get("document_title", "")).strip()[:80]
+            if title and title not in titles:
+                titles.append(title)
+    return titles[-4:]
+
+
+def _format_history(history: ConversationHistory, *, max_chars: int, include_source_titles: bool) -> str:
     if not history:
         return "（新会话，无历史消息）"
     labels = {"user": "用户", "agent": "助手"}
-    return "\n".join(
-        f"{labels.get(item.get('role', ''), item.get('role', '消息'))}：{item.get('content', '')[:1200]}"
-        for item in history[-10:]
-    )
+    lines = []
+    remaining = max_chars
+    for item in reversed(history[-10:]):
+        role = str(item.get("role", ""))
+        content = str(item.get("content", ""))[:800]
+        line = f"{labels.get(role, '消息')}：{content}"
+        if include_source_titles:
+            titles = _recent_source_titles([item])
+            if titles:
+                line += f"\n本轮来源标题：{'、'.join(titles)}"
+        if remaining <= 0:
+            break
+        lines.append(line[:remaining])
+        remaining -= min(len(line), remaining) + 1
+    return "\n".join(reversed(lines))

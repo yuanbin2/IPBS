@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from .agent_types import AgentResponse, ConversationHistory, ToolResult
 from .llm_support import empty_token_usage, extract_token_usage
+from .model_accounting import model_purpose
 from .query_rewriting import format_history
 from .rag_prompts import INTERNET_ANSWER_PROMPT
 
@@ -30,9 +31,10 @@ def answer_with_external_context(
             token_usage=empty_token_usage(),
         )
     try:
-        final_message = (INTERNET_ANSWER_PROMPT | llm).invoke(
-            {"message": message, "context": context, "history": format_history(history or [])}
-        )
+        with model_purpose("internet_answer"):
+            final_message = (INTERNET_ANSWER_PROMPT | llm).invoke(
+                {"message": message, "context": context, "history": format_history(history or [])}
+            )
         return AgentResponse(
             answer=str(final_message.content),
             tool_calls=[tool_call],

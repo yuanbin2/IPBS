@@ -181,7 +181,7 @@ def run_mcp_tool_agent(project_root, workspace_key: str, message: str) -> MultiA
             supervisor_decision=decision("mcp_tool_agent", "MCP Tool Agent", "tool requires approval", 1.0),
         )
 
-    execution = LocalMCPToolRunner(project_root).run(selected_tool, message)
+    execution = LocalMCPToolRunner(project_root, workspace_key=workspace_key).run(selected_tool, message)
     registry_item.last_used_at = timezone.now()
     registry_item.save(update_fields=["last_used_at", "updated_at"])
     answer = (
@@ -262,7 +262,7 @@ def run_internet_agent(
             supervisor_decision=internet_decision,
         )
     search_query = rag_agent.rewrite_web_search_query(message, history or [])
-    execution = LocalMCPToolRunner(project_root).run("web_search", search_query)
+    execution = LocalMCPToolRunner(project_root, workspace_key=workspace_key).run("web_search", search_query)
     tool.last_used_at = timezone.now()
     tool.save(update_fields=["last_used_at", "updated_at"])
     if web_search_output_unusable(execution.output):

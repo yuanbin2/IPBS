@@ -13,6 +13,8 @@ from django.db import transaction
 from django.utils import timezone
 from langchain_openai import OpenAIEmbeddings
 
+from agent.telemetry import observe_stage
+
 from ...models import Document, DocumentChunk, EmbeddingRecord, KnowledgeBase
 from ...models.constants import DEFAULT_WORKSPACE_KEY
 from ..embedding_space import (
@@ -200,6 +202,7 @@ def persist_document_index(document, chunks, vectors, identity, *, generation: i
         upsert_chunk_vector(chunk, identity, vector)
 
 
+@observe_stage("embedding")
 def embed_texts(texts: list[str]) -> list[list[float]]:
     mode = embedding_mode()
     if mode == "remote":

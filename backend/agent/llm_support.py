@@ -28,7 +28,9 @@ def build_openai_chat(*, api_key: str, model: str, base_url: str, temperature: f
 
     if not api_key:
         return None
-    return ChatOpenAI(model=model, api_key=api_key, base_url=base_url, temperature=temperature)
+    # SDK-internal retries do not expose per-attempt usage to LangChain callbacks.
+    # Keep attempts observable at the caller boundary instead of silently hiding them.
+    return ChatOpenAI(model=model, api_key=api_key, base_url=base_url, temperature=temperature, max_retries=0)
 
 
 def empty_token_usage() -> TokenUsage:

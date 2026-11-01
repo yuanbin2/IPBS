@@ -2,7 +2,8 @@
 
 纯函数、无 IO，可独立单测（见 tests/test_agent.py 的 SupervisorRoutingTests）；
 判定顺序即优先级：治理/审批 > MCP 能力 > 系统事实 > 私有文档 > 话题匹配 >
-检索关键词 > 工具 > 审查 > 统计 > 博客 > 写作 > 兜底 RAG。
+检索关键词 > 工具 > 审查 > 统计 > 博客 > 写作 > 兜底知识能力入口。
+Supervisor 选专用 Agent；兜底入口的内部查询分析器再决定直接回答或检索。
 """
 
 from __future__ import annotations
@@ -89,7 +90,7 @@ RETRIEVAL_KEYWORDS = [
     "依据",
 ]
 
-FOLLOW_UP_MARKERS = ["那", "它", "这个", "继续", "详细", "呢", "上述", "上面", "刚才", "然后"]
+FOLLOW_UP_MARKERS = ["那", "他", "她", "它", "其", "这个", "这份", "继续", "详细", "呢", "上述", "上面", "刚才", "然后"]
 
 
 def contains_any(lowered: str, keywords: list[str]) -> bool:
@@ -147,11 +148,14 @@ def routing_message(message: str, history: list[dict[str, str]]) -> str:
     # history; including the old question here can incorrectly route them to RAG.
     if contains_any(message.lower(), ["审查", "检查回答", "检查刚才", "核对回答", "核对引用", "review"]):
         return message
-    is_follow_up = len(message) <= 18 or contains_any(message.lower(), FOLLOW_UP_MARKERS)
+    is_follow_up = contains_any(message.lower(), FOLLOW_UP_MARKERS)
     if not is_follow_up or not history:
         return message
     previous_user_messages = [item.get("content", "") for item in history if item.get("role") == "user"]
     if not previous_user_messages:
+        return message
+    # A past tool request is not authorization to invoke a tool in this turn.
+    if is_mcp_request(previous_user_messages[-1]):
         return message
     return f"上一问题：{previous_user_messages[-1]}\n当前追问：{message}"
 
@@ -231,7 +235,7 @@ def decide(message: str) -> SupervisorDecision:
         return decision(
             "rag_agent",
             "Private Knowledge RAG Agent",
-            "short technical topic requires agent-generated multilingual retrieval",
+            "short technical topic handed to knowledge-capable agent",
             0.9,
         )
 
@@ -239,7 +243,7 @@ def decide(message: str) -> SupervisorDecision:
         return decision(
             "rag_agent",
             "Private Knowledge RAG Agent",
-            "retrieval-first policy searches the current workspace knowledge base",
+            "request may need current workspace knowledge",
             0.91,
         )
 
@@ -278,8 +282,8 @@ def decide(message: str) -> SupervisorDecision:
     if contains_any(lowered, ["写", "润色", "总结", "提纲", "标题", "摘要", "改写", "文案"]):
         return decision(
             "rag_agent",
-            "Retrieval-first Writing Agent",
-            "writing request must retrieve relevant workspace context before generation",
+            "Writing or Knowledge Agent",
+            "writing request handed to inner direct-or-retrieve decision",
             0.78,
         )
 
@@ -296,7 +300,7 @@ def decide(message: str) -> SupervisorDecision:
 
     return decision(
         "rag_agent",
-        "Retrieval-first General Agent",
-        "ordinary questions search the workspace before model-only generation",
+        "General or Knowledge Agent",
+        "inner query analyzer chooses direct answer or workspace retrieval",
         0.62,
     )
