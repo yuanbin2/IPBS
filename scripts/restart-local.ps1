@@ -7,8 +7,8 @@ $managePy = Join-Path $projectRoot 'backend\manage.py'
 $viteJs = Join-Path $projectRoot 'frontend\node_modules\vite\bin\vite.js'
 $frontendDir = Join-Path $projectRoot 'frontend'
 $runDir = Join-Path $projectRoot '.run'
-$backendUrl = 'http://127.0.0.1:8001'
-$frontendUrl = 'http://127.0.0.1:5174'
+$backendPort = 8001
+$frontendPort = 5174
 
 if (-not (Test-Path -LiteralPath $pythonExe -PathType Leaf) -or
     -not (Test-Path -LiteralPath $viteJs -PathType Leaf)) {
@@ -23,9 +23,7 @@ $env:BLOG_LOCAL_MODE = 'true'
 $env:DJANGO_SETTINGS_MODULE = 'config.settings'
 $env:LANGSMITH_TRACING = 'false'
 $env:LANGCHAIN_TRACING_V2 = 'false'
-$env:VITE_API_PROXY_TARGET = $backendUrl
 $env:VITE_API_BASE_URL = ''
-$env:VITE_PORT = '5174'
 
 Write-Host "Preparing local database: $projectRoot\backend\db.sqlite3"
 & $pythonExe $managePy migrate --noinput
@@ -67,22 +65,57 @@ function Test-LocalPortAvailable([int]$port) {
 
 Stop-RecordedProcess 'backend' $pythonExe
 Stop-RecordedProcess 'frontend' $nodeExe
-foreach ($port in @(8001, 5174)) {
+
+# Wait for the recorded processes to release their preferred ports. When an
+# untracked process keeps holding a port, fall back to the next free port in
+# the allowed range instead of failing.
+function Wait-PortReleased([int]$port) {
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
-        if (Test-LocalPortAvailable $port) { break }
+        if (Test-LocalPortAvailable $port) { return $true }
         Start-Sleep -Milliseconds 250
     }
-    if (-not (Test-LocalPortAvailable $port)) {
-        throw "Port $port is occupied by another process; no replacement server was started."
+    return (Test-LocalPortAvailable $port)
+}
+
+function Select-FreePort([int]$preferred, [int]$max) {
+    for ($p = $preferred; $p -le $max; $p++) {
+        if (Test-LocalPortAvailable $p) { return $p }
     }
+    throw "No free port found in range $preferred..$max."
+}
+
+if (-not (Wait-PortReleased 8001)) {
+    $backendPort = Select-FreePort 8002 8011
+    Write-Warning "Port 8001 is still occupied by another process; backend will use port $backendPort instead."
+}
+if (-not (Wait-PortReleased 5174)) {
+    $frontendPort = Select-FreePort 5175 5184
+    Write-Warning "Port 5174 is still occupied by another process; frontend will use port $frontendPort instead."
+}
+
+$backendUrl = "http://127.0.0.1:$backendPort"
+$frontendUrl = "http://127.0.0.1:$frontendPort"
+$env:VITE_API_PROXY_TARGET = $backendUrl
+$env:VITE_PORT = "$frontendPort"
+
+# PowerShell 5.1's Start-Process throws a duplicate-key error when the
+# environment block contains case-variant twins (e.g. http_proxy/HTTP_PROXY).
+# Normalize them: delete every variant, then keep a single uppercase entry
+# with the original value so proxy settings are preserved.
+foreach ($name in @('http_proxy', 'https_proxy', 'no_proxy')) {
+    $value = [Environment]::GetEnvironmentVariable($name, 'Process')
+    if ($null -eq $value) { continue }
+    [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+    [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+    [Environment]::SetEnvironmentVariable($name.ToUpperInvariant(), $value, 'Process')
 }
 
 $backendProcess = $null
 $frontendProcess = $null
 try {
-    $backendProcess = Start-Process -FilePath $pythonExe -ArgumentList @($managePy, 'runserver', '127.0.0.1:8001', '--noreload') -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $runDir 'backend.stdout.log') -RedirectStandardError (Join-Path $runDir 'backend.stderr.log')
+    $backendProcess = Start-Process -FilePath $pythonExe -ArgumentList @($managePy, 'runserver', "127.0.0.1:$backendPort", '--noreload') -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $runDir 'backend.stdout.log') -RedirectStandardError (Join-Path $runDir 'backend.stderr.log')
     @{ id = $backendProcess.Id; startedUtcTicks = $backendProcess.StartTime.ToUniversalTime().Ticks } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runDir 'backend.pid.json')
-    $frontendProcess = Start-Process -FilePath $nodeExe -ArgumentList @($viteJs, '--host', '127.0.0.1', '--port', '5174', '--strictPort') -WorkingDirectory $frontendDir -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $runDir 'frontend.stdout.log') -RedirectStandardError (Join-Path $runDir 'frontend.stderr.log')
+    $frontendProcess = Start-Process -FilePath $nodeExe -ArgumentList @($viteJs, '--host', '127.0.0.1', '--port', "$frontendPort", '--strictPort') -WorkingDirectory $frontendDir -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $runDir 'frontend.stdout.log') -RedirectStandardError (Join-Path $runDir 'frontend.stderr.log')
     @{ id = $frontendProcess.Id; startedUtcTicks = $frontendProcess.StartTime.ToUniversalTime().Ticks } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runDir 'frontend.pid.json')
 
     $ready = $false

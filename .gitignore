@@ -7,6 +7,7 @@ __pycache__/
 .mypy_cache/
 db.sqlite3
 media/
+private-note-media/
 staticfiles/
 node_modules/
 dist/
@@ -22,7 +23,21 @@ celerybeat-schedule*
 app-desktop/.edge-profile/
 desktop-app/.edge-profile/
 frontend/frontend/
+frontend/public/models/ocr/
+frontend/public/ort/
+frontend/public/vendor/
 
 # Playwright test artifacts
 frontend/playwright-report/
 frontend/test-results/
+
+# 本地工作区杂项（不入库）
+.workbuddy/
+.zcodeignore
+.patch-wire.cjs
+frontend/.patch-*.cjs
+frontend/.tmp-dbg-ext/
+frontend/*.tsbuildinfo
+/test-results/
+/IPBS/
+lark-doc-*.md

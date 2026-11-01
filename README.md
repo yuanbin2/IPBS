@@ -1,186 +1,83 @@
-# 智能个人博客系统
+# 智能个人博客与知识 Agent
 
-基于 Django + LangGraph 的个人博客与知识智能体系统：RBAC 权限、博客、Agentic RAG、多智能体路由、Human-in-the-loop 审批、MCP 工具与可观测评估。
+这是一个 Django + Vue 的个人博客与知识助手项目。仓库包含博客/草稿、私有笔记、知识库检索、Agent 对话与审批、浏览器剪藏扩展，以及浏览器本地截图 OCR 校对。功能实现情况和未验收范围以[缺陷跟踪表](docs/缺陷跟踪表V2.0.md)为准。
 
-这个仓库是一个企业级 Agent 工程化学习项目。第一阶段目标是搭建可启动的 monorepo，并逐步完成个人博客、企业知识库、Agentic RAG、多智能体协作、Human-in-the-loop、MCP 工具接入、可观测性和 CI/CD。
+## 快速启动
 
-## 项目亮点
+### Windows
 
-- 个人博客内容可自动进入知识库，成为 Agent 回答的个人经历来源。
-- Multi-Agent Supervisor 根据问题类型路由到 RAG、Blog、MCP、SQL Analysis、Review、Approval、Writing 等 Agent。
-- Human-in-the-loop 审批覆盖删除、发布和 MCP 工具调用等敏感操作。
-- MCP 工具注册表支持启用/禁用、权限范围、审批开关和调用记录。
-- 可观测性记录 trace、latency、tool success rate，并内置 30 条评估题。
-- 安全层包含登录注册、RBAC、workspace 隔离、prompt injection 拦截、输出脱敏和安全审计。
-- Docker Compose 一键启动 Vue/Nginx、Django、PostgreSQL、Redis、RabbitMQ、Celery Worker、Celery Beat。
+安装 Python 3.12+、Node.js 20+，在仓库根目录运行：
 
-## 文档导航
-
-- [Blog 设计文档 V2.0（当前改造方案）](docs/Blog设计文档V2.0.md)
-- [数据库设计文档 V2.0](docs/数据库设计文档V2.0.md)
-- [评测与测试升级方案 V2.0（含 2026-09-29 基线）](docs/评测与测试升级方案V2.0.md)
-- [缺陷跟踪表 V2.0（逐项修复与验收）](docs/缺陷跟踪表V2.0.md)
-- [发布阻断审查 V2.0（本地证据与待办）](docs/发布阻断审查V2.0.md)
-- [写作、阅读与笔记体验升级计划 V2.1（B-025～B-028）](docs/写作阅读与笔记体验升级计划V2.1.md)
-- [HTML 导入 Markdown 博客设计 V2.4（B-040，待实现）](docs/HTML导入Markdown博客设计V2.4.md)
-- [智能体答案质量与人工复核计划 V2.4（待实施）](docs/智能体答案质量与人工复核计划V2.4.md)
-- [历史设计蓝图与迭代手册](docs/design-blueprint.md)
-- [全项目架构分析（历史快照）](docs/architecture-analysis.md)
-- [岗位准备、从零搭建、学习清单与面试题](docs/job-preparation-guide.md)
-- [部署说明](docs/deployment.md)
-- [API 文档](docs/api.md)
-- [系统架构图](docs/system-architecture.md)
-- [项目修复与验证报告](docs/repair-report.md)
-- [评估报告（历史快照）](docs/evaluation-report.md)
-- [简历包装](docs/resume.md)
-- [演示视频脚本](docs/demo-script.md)
-- [最终总结博客](docs/final-blog-post.md)
-
-> 面试和发布评审以 V2 设计、数据库、评测方案及缺陷表为当前索引；旧架构分析和评估报告仅保留历史对比。CI 的每次运行给出该提交的门禁结果；本地测试通过不代表真实 Railway、worker、PostgreSQL 与人工评测均已验收。
-
-提交后的 GitHub Actions `CI evidence summary` 会按当前 commit 自动列出后端、真实 PostgreSQL、前端构建、浏览器 E2E 和 Compose 门禁状态。报告是流水线结果索引；模型质量、Railway 实站、人工标注与真实用户性能仍按 V2 缺陷表逐项验收。
-
-## 架构
-
-```text
-frontend/  Vue 3 + Vite + TypeScript + Pinia + Element Plus
-backend/   Django + Django REST Framework + ASGI
-agent/     LangChain + LangGraph agent workflows
-docs/      架构文档、学习笔记、博客草稿
-deploy/    Docker Compose、Nginx、部署配置
-```
-
-## 技术栈
-
-| 层级 | 技术 | 负责能力 |
-| --- | --- | --- |
-| 前端 | Vue 3, Vite, TypeScript, Pinia, Element Plus | 博客、管理台、聊天页、文档上传、流式输出 |
-| 后端 | Django, DRF, ASGI | 用户、权限、文章、知识库、Agent API |
-| 异步任务 | Celery, Redis | 文档解析、向量化、知识库重建、长任务 |
-| 数据库 | PostgreSQL, pgvector | 用户、文章、文档、向量、对话记录 |
-| Agent | LangChain, LangGraph | Agent loop、tools、state graph、HITL |
-| RAG | splitter, embedding, pgvector | 切分、检索、重排、引用来源 |
-| 工具协议 | MCP | 搜索、GitHub、文件、数据库工具接入 |
-| 可观测 | LangSmith | trace、debug、评估、成本与延迟分析 |
-| 工程质量 | pytest, pre-commit, GitHub Actions | 单测、接口测试、CI 检查 |
-
-## 本地启动
-
-### 最简单：本机一键启动
-
-需要先安装 Python 3.12+ 和 Node.js 20+。
-
-Windows 直接双击：
-
-```bash
+```bat
 start.bat
 ```
 
-Linux/macOS：
+首次启动脚本会创建 `.venv`、安装 `backend/requirements.txt` 与前端依赖、构建前端、迁移本地 SQLite，然后在 `http://127.0.0.1:8001/` 启动 Django。脚本明确设置 `BLOG_LOCAL_MODE=true`，此模式仅适合本地开发/演示，不代表 PostgreSQL、异步 worker 或生产安全配置已验收。
 
-```bash
-chmod +x start.sh
-./start.sh
-```
+Linux/macOS 使用 `./start.sh`（需先 `chmod +x start.sh`），同样使用 SQLite 本地模式和 8001 端口。
 
-脚本会自动创建虚拟环境、安装依赖、构建前端、执行数据库迁移，并使用
-SQLite、本地内存缓存和同步任务模式启动完整项目，不要求预先安装
-PostgreSQL、Redis 或 RabbitMQ。启动后访问 `http://127.0.0.1:8000/`。
-这种模式下向量检索会使用 Django/SQLite 兼容兜底，方便本机调试。
+### 前端热更新开发
 
-依赖已安装后，可用 `restart.bat`（Windows）或 `./restart.sh`（Git Bash、Linux/macOS）
-重启开发版前后端。重启脚本固定后端 `http://127.0.0.1:8001`、前端
-`http://127.0.0.1:5174`，将前端 API 代理到该后端，并继续使用
-`backend/db.sqlite3`。启动成功后打开 `/blog`；注册入口在 `/login`。
-如果端口被无法确认属于本项目的进程占用，脚本会停止并提示，不会清理其他服务。
+首次按上面的步骤准备依赖后，Windows 可运行 `restart.bat`，Linux/macOS 可运行 `./restart.sh`。脚本启动后端 `127.0.0.1:8001` 与 Vite `127.0.0.1:5174`，访问 `http://127.0.0.1:5174/blog`。它会先检查端口，只结束本项目记录且可验证的旧进程；如果端口被其他程序占用会停止并提示。
 
-未配置模型 API Key 时，RAG、本地检索、博客、审批和基础 Agent 功能仍可
-运行，模型回答会自动使用本地降级路径。需要真实大模型和远程 embedding
-时，再将 `.env.example` 复制为 `.env` 并填写对应 Key。
-
-### Docker 一键启动
-
-```bash
-cp .env.example .env
-docker compose up -d --build
-```
-
-Windows PowerShell 可使用：
+也可在两个终端手动启动：
 
 ```powershell
+# 终端 1：仓库根目录；已有本地虚拟环境及依赖
+$env:BLOG_LOCAL_MODE = 'true'
+.venv\Scripts\python.exe backend\manage.py runserver 127.0.0.1:8001
+
+# 终端 2：仓库根目录
+npm --prefix frontend run dev -- --host 127.0.0.1 --port 5174 --strictPort
+```
+
+`frontend` 单独运行 `npm run dev` 的默认端口是 5173，默认 API 代理目标为 8000；需要本地完整博客时优先使用 `restart.bat` / `restart.sh`，或按上面命令显式设置匹配端口与代理。
+
+## Docker Compose
+
+Docker Compose 启动 Nginx/Vue、Django、PostgreSQL 16 + pgvector、Redis、RabbitMQ、Celery worker 与 beat。默认只把 HTTP 入口绑定到宿主机 `127.0.0.1:8080`，供已配置的 TLS 代理转发；内部数据库、缓存和消息队列不发布宿主机端口。PowerShell 首次准备：
+
+```powershell
+if (Test-Path .env) { throw '已有 .env；不要覆盖' }
 Copy-Item .env.example .env
-# 生成一个私有密钥，并将输出填入 .env 的 DJANGO_SECRET_KEY
-python -c "import secrets; print(secrets.token_urlsafe(48))"
+# 私下配置 DJANGO_SECRET_KEY、数据库/RabbitMQ 密码、站点域名与已验证的 TLS 代理标志。
+docker compose config --quiet
 docker compose up -d --build
 ```
 
-非本地运行要求 `DJANGO_SECRET_KEY` 至少 50 个字符、`DJANGO_DEBUG=false`、`AGENT_SECURITY_ENFORCED=true`，并明确确认请求经过 TLS 终止代理。Railway 会自动提供 `RAILWAY_PUBLIC_DOMAIN` 和 HTTPS 转发头；其他平台须设置 `DJANGO_HTTPS_TERMINATED=true` 并按该平台确认代理行为。生产检查强制 HTTPS、Secure Session/CSRF Cookie 和 1 小时 HSTS；HSTS 子域与 preload 暂未启用。缺少安全配置会阻止服务启动。请勿把生成的密钥提交到 Git。
+POSIX shell 应先检查 `.env` 不存在再创建。不要提交 `.env`，也不要运行会输出解析后密钥的 `docker compose config`（应加 `--quiet`）。停止容器可用 `docker compose down`；**不要使用 `docker compose down -v`，它会删除数据库及媒体卷。**调试端口覆盖文件、TLS 代理契约与安全检查见[部署说明](docs/deployment.md)。Railway、对象存储、多实例及生产恢复行为仍需按缺陷表实站验收。
 
-访问：`http://localhost/`。Docker 模式会启动完整的 PostgreSQL、Redis、
-RabbitMQ 和 Celery 基础设施。
-知识库向量会写入 PostgreSQL 的 pgvector 索引表 `agent_api_vectorindex`，
-检索时使用数据库侧向量距离 Top-K，再结合关键词分数重排；可通过
-`RAG_VECTOR_BACKEND=django` 临时退回旧兼容检索。
+## 主要功能与边界
 
-联网搜索通过注册的 `web_search` MCP 工具执行。用户明确输入“网页搜索/
-联网搜索”时会直接调用该工具；普通问题只有打开聊天输入框旁的“联网”开关
-才会联网增强。如果后端所在机器需要代理访问外网，可在 `.env` 中设置
-`WEB_SEARCH_PROXY=http://127.0.0.1:7890`。
+- 博客文章、版本修订、草稿和审核发布；新用户注册为 visitor，不会因公开注册获得 operator/admin 权限。
+- 私有笔记按用户和工作空间隔离；私有笔记图片经认证读取，不由 Nginx 公开静态暴露。公开博客图片使用受控读取路径。
+- 通用网页剪藏扩展默认交接到私有笔记草稿，可显式选博客文章草稿；扩展仅在用户操作时读取当前页面。安装和截图流程见[扩展说明](browser-extension/README.md)。
+- HTML 文件可经校验、预览后导入博客草稿；外链图片会按当前预览/确认流程处理。它不是任意网页的无审核直发工具。
+- 力扣链接预览/刷题文章辅助与领域目录可用；站点全文抓取、未授权题面/题解获取不提供。领域目录外部批量迁移见相应设计状态。
+- 截图 OCR 在浏览器本地处理，支持扩展截图交接及本地图片、拼接图校对、候选配图确认、手动裁剪。OCR/像素候选不保证召回；CSS 背景、canvas 等区域可显示像素建议，仍需用户核对。截图原图不会因识别而自动保存或发布；只有用户确认裁图后才上传图片，文章发布仍须主动提交审核。详情见[长截图 OCR 说明](docs/长截图OCR转Markdown与私有笔记设计V3.0.md)和[跨屏图片设计及限制](docs/截图OCR跨屏图片识别设计V3.1.md)。
+- 个人知识库、文档解析与向量检索可在本地演示；生产 pgvector、worker、embedding 供应商、真实语料和答案质量仍以缺陷表验收状态为准。
 
-部署说明见 [docs/deployment.md](docs/deployment.md)，接口文档见 [docs/api.md](docs/api.md)，架构图见 [docs/system-architecture.md](docs/system-architecture.md)。
+## 测试与构建
 
-### 手动开发模式
+从仓库根目录运行：
 
-```bash
-python -m venv .venv
-.venv/Scripts/python -m pip install -r backend/requirements.txt
-npm --prefix frontend install
-npm --prefix frontend run build
-set BLOG_LOCAL_MODE=true
-.venv/Scripts/python backend/manage.py migrate
-.venv/Scripts/python backend/manage.py runserver 127.0.0.1:8000
+```powershell
+npm --prefix frontend run test:unit
+npm --prefix frontend run build:check
+$tests = Get-ChildItem browser-extension/tests -Filter '*.test.js' | Select-Object -ExpandProperty FullName
+node --test $tests
 ```
 
-Linux/macOS 将 `.venv/Scripts/python` 改为 `.venv/bin/python`，并使用
-`export BLOG_LOCAL_MODE=true`。如需前端热更新，可另开终端运行：
+Playwright 端到端测试：
 
-```bash
-npm --prefix frontend run dev
+```powershell
+$env:E2E_BROWSER_CHANNEL = 'msedge'
+$env:E2E_FRONTEND_PORT = '54327'
+npm --prefix frontend run test:e2e -- e2e/screenshot-handoff.spec.ts
 ```
 
-健康检查：`http://127.0.0.1:8000/api/health/`
+具体浏览器安装、服务启动与单个测试筛选见[文档索引](docs/README.md)。合成样本回归不代表真实网页识别率或生产部署验收。
 
-## 第 1 天完成项
+## 文档入口
 
-- 初始化 monorepo：`frontend/`、`backend/`、`agent/`、`docs/`、`deploy/`
-- 创建 Django + DRF + ASGI 后端工程
-- 配置 PostgreSQL、Redis、环境变量、日志
-- 创建 Vue3 + Vite + TypeScript 前端工程
-- 接入 Pinia、Vue Router、Element Plus
-- 添加 Docker Compose 和 Nginx 配置草稿
-- 写清项目目标、架构图、技术栈和第一篇博客草稿
-
-## 第 2 天完成项
-
-- 在 `agent/` 中实现最小 Agent tool-calling loop
-- 实现博客检索、当前用户资料、简单计算器 3 个工具
-- 后端新增 `POST /api/agent/chat/`
-- 前端新增 `/chat` Agent 聊天页面
-- 支持展示工具调用名称、输入、输出
-
-## 第 3 天完成项
-
-- 将第二天 Agent 改造成 LangGraph `StateGraph`
-- 实现 `classify_question -> retrieve_or_direct -> generate_answer -> save_history`
-- 增加 conditional edge，普通问题直接回答，工具型问题进入工具节点
-- 后端持久化 `Conversation`、`Message`、`AgentRun`
-- 前端聊天页支持刷新后加载历史记录
-
-## 第 9-14 天完成项
-
-- Human-in-the-loop：删除、发布、敏感操作进入审批队列。
-- MCP 工具：本地文件、Git、网页搜索占位、安全数据库统计工具注册表。
-- 可观测性：Agent trace、耗时、工具成功率、评估集和评估运行。
-- 权限安全：登录、RBAC、workspace 隔离、安全审计、prompt injection 防护、输出脱敏。
-- Docker + CI/CD：Django、Vue、PostgreSQL、Redis、Celery、Nginx Compose 部署，GitHub Actions 覆盖测试、构建和 Compose 校验。
-- 简历与演示：项目简历描述、评估报告、演示脚本和最终复盘博客。
+从[文档索引](docs/README.md)进入当前使用/开发文档、API、架构、数据库、部署与测试、进行中的设计和历史资料。扩展、长截图 OCR、私有图片、HTML 导入、领域目录和各测试入口均有专门链接。

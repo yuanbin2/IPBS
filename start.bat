@@ -17,31 +17,24 @@ if errorlevel 1 (
 )
 
 if not exist ".venv\Scripts\python.exe" (
-  echo [1/5] Creating the Python virtual environment...
+  echo [1/4] Creating the Python virtual environment...
   python -m venv .venv
   if errorlevel 1 exit /b 1
 )
 
-echo [2/5] Installing backend dependencies...
+echo [2/4] Installing backend dependencies...
 ".venv\Scripts\python.exe" -m pip install -r backend\requirements.txt
 if errorlevel 1 exit /b 1
 
-echo [3/5] Installing and building frontend dependencies...
+echo [3/4] Installing and building frontend dependencies...
 call npm --prefix frontend install --no-audit --no-fund
 if errorlevel 1 exit /b 1
 call npm --prefix frontend run build
 if errorlevel 1 exit /b 1
 
-set "BLOG_LOCAL_MODE=true"
-set "LANGSMITH_TRACING=false"
-set "LANGCHAIN_TRACING_V2=false"
-
-echo [4/5] Preparing the local SQLite database...
-".venv\Scripts\python.exe" backend\manage.py migrate --noinput
-if errorlevel 1 exit /b 1
-
-echo [5/5] Starting the project...
-echo Open http://127.0.0.1:8001/ in your browser.
-".venv\Scripts\python.exe" backend\manage.py runserver 127.0.0.1:8001 --noreload
-
-endlocal
+echo [4/4] Starting backend and frontend...
+rem restart.bat delegates to scripts\restart-local.ps1, which runs migrations,
+rem starts both servers with automatic port fallback and health checks.
+call "%~dp0restart.bat" %*
+set "RESULT=%ERRORLEVEL%"
+endlocal & exit /b %RESULT%

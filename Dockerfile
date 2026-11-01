@@ -1,3 +1,11 @@
+FROM node:20-alpine AS frontend_index
+
+WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend ./
+RUN npm run build
+
 FROM python:3.10-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,10 +22,12 @@ COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install -r /app/backend/requirements.txt
 
 COPY backend /app/backend
+COPY --from=frontend_index /app/dist /app/frontend/dist
 COPY deploy/backend/entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh \
     && useradd --create-home --shell /bin/bash appuser \
+    && mkdir -p /app/private-note-media \
     && chown -R appuser:appuser /app
 
 USER appuser

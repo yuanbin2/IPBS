@@ -43,6 +43,10 @@ jobs:
           DJANGO_HTTPS_TERMINATED: "true"
           RAILWAY_ENVIRONMENT_NAME: ci
           RAILWAY_PUBLIC_DOMAIN: blog-ci.up.railway.app
+          DATABASE_URL: postgres://ci_user:ci-only-password@127.0.0.1:5432/ci_check
+          REDIS_URL: redis://127.0.0.1:6379/0
+          REDIS_CACHE_URL: redis://127.0.0.1:6379/1
+          RABBITMQ_URL: amqp://ci_user:ci-only-password@127.0.0.1:5672/ci_check
           BLOG_MEDIA_STORAGE: file
           OPENAI_API_KEY: ""
           OPENAI_EMBEDDING_API_KEY: ""
@@ -160,7 +164,7 @@ jobs:
           retention-days: 7
 
   frontend:
-    name: Frontend type check and build
+    name: Frontend unit tests, type check and build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -172,15 +176,55 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Node 24 runs the existing node --test TypeScript test files directly.
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Run frontend unit tests
+        run: npm run test:unit
+
       - name: Build
         run: npm run build:check -- --logLevel error
+
+  screenshot-tray:
+    name: Windows screenshot tray offline tests
+    runs-on: windows-latest
+    timeout-minutes: 10
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: "pip"
+          cache-dependency-path: tools/screenshot-tray/requirements.txt
+
+      - name: Install screenshot tray dependencies
+        run: python -m pip install -r tools/screenshot-tray/requirements.txt
+
+      - name: Run screenshot tray offline tests
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tools/screenshot-tray/tests -v 2>&1 | Tee-Object -FilePath screenshot-tray-tests.log
+          $testExit = $LASTEXITCODE
+          if ($testExit -ne 0) { exit $testExit }
+
+      - name: Keep screenshot test failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-tray-offline-failure
+          path: screenshot-tray-tests.log
+          if-no-files-found: ignore
+          retention-days: 7
 
   upload-e2e:
     name: Chromium upload and draft E2E
@@ -248,7 +292,7 @@ jobs:
   ci-evidence:
     name: CI evidence summary
     if: always()
-    needs: [backend, backend-postgres, frontend, upload-e2e, docker]
+    needs: [backend, backend-postgres, frontend, screenshot-tray, upload-e2e, docker]
     runs-on: ubuntu-latest
     steps:
       - name: Write result for this exact commit
@@ -256,6 +300,7 @@ jobs:
           BACKEND_RESULT: ${{ needs.backend.result }}
           POSTGRES_RESULT: ${{ needs['backend-postgres'].result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
+          SCREENSHOT_RESULT: ${{ needs['screenshot-tray'].result }}
           E2E_RESULT: ${{ needs['upload-e2e'].result }}
           DOCKER_RESULT: ${{ needs.docker.result }}
         run: |
@@ -268,7 +313,8 @@ jobs:
             echo '| --- | --- |'
             echo "| Backend default + security suite | ${BACKEND_RESULT} |"
             echo "| Real PostgreSQL/pgvector integration | ${POSTGRES_RESULT} |"
-            echo "| Frontend type check + production build | ${FRONTEND_RESULT} |"
+            echo "| Frontend unit tests + type check + production build | ${FRONTEND_RESULT} |"
+            echo "| Windows screenshot tray offline tests | ${SCREENSHOT_RESULT} |"
             echo "| Chromium browser E2E | ${E2E_RESULT} |"
             echo "| Compose configuration + image build | ${DOCKER_RESULT} |"
             echo

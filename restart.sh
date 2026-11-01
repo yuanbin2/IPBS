@@ -18,8 +18,6 @@ cd "$root"
 python_bin="$root/.venv/bin/python"
 vite_bin="$root/frontend/node_modules/vite/bin/vite.js"
 run_dir="$root/.run"
-backend_url=http://127.0.0.1:8001
-frontend_url=http://127.0.0.1:5174
 
 for required in "$python_bin" "$vite_bin"; do
   if [ ! -f "$required" ]; then
@@ -31,13 +29,32 @@ command -v node >/dev/null || { echo "Node.js is required." >&2; exit 1; }
 command -v curl >/dev/null || { echo "curl is required." >&2; exit 1; }
 mkdir -p "$run_dir"
 
-export BLOG_LOCAL_MODE=true DJANGO_SETTINGS_MODULE=config.settings
-export LANGSMITH_TRACING=false LANGCHAIN_TRACING_V2=false
-export VITE_API_PROXY_TARGET="$backend_url" VITE_API_BASE_URL= VITE_PORT=5174
+# Port handling mirrors scripts/restart-local.ps1: prefer the standard ports,
+# but fall back to the next free port instead of failing when an untracked
+# process keeps holding them.
+port_free() {
+  "$python_bin" - "$1" <<'PYEOF'
+import socket, sys
+try:
+    s = socket.socket()
+    s.bind(("127.0.0.1", int(sys.argv[1])))
+    s.close()
+except OSError:
+    sys.exit(1)
+PYEOF
+}
 
-echo "Preparing the existing local database: $root/backend/db.sqlite3"
-"$python_bin" "$root/backend/manage.py" migrate --noinput
-"$python_bin" "$root/backend/manage.py" check
+select_port() {
+  local preferred="$1" max="$2" p
+  for ((p = preferred; p <= max; p++)); do
+    if port_free "$p"; then
+      echo "$p"
+      return 0
+    fi
+  done
+  echo "No free port found in range $preferred..$max." >&2
+  return 1
+}
 
 stop_owned_pid() {
   local name="$1" expected="$2" file="$run_dir/$1.pid" process_id args
@@ -57,20 +74,31 @@ stop_owned_pid() {
 stop_owned_pid backend "$root/backend/manage.py"
 stop_owned_pid frontend "$vite_bin"
 
-"$python_bin" -c 'import socket,sys; ports=(8001,5174); sockets=[]
-try:
- for port in ports:
-  s=socket.socket(); s.bind(("127.0.0.1",port)); sockets.append(s)
-except OSError as exc:
- print(f"Port {port} is occupied; leaving the other application untouched: {exc}",file=sys.stderr); sys.exit(1)
-finally:
- for s in sockets: s.close()'
+backend_port=$(select_port 8001 8011)
+if [ "$backend_port" != 8001 ]; then
+  echo "Port 8001 is occupied by another process; backend will use port $backend_port instead." >&2
+fi
+frontend_port=$(select_port 5174 5184)
+if [ "$frontend_port" != 5174 ]; then
+  echo "Port 5174 is occupied by another process; frontend will use port $frontend_port instead." >&2
+fi
 
-nohup "$python_bin" "$root/backend/manage.py" runserver 127.0.0.1:8001 --noreload >"$run_dir/backend.log" 2>&1 &
+backend_url="http://127.0.0.1:$backend_port"
+frontend_url="http://127.0.0.1:$frontend_port"
+
+export BLOG_LOCAL_MODE=true DJANGO_SETTINGS_MODULE=config.settings
+export LANGSMITH_TRACING=false LANGCHAIN_TRACING_V2=false
+export VITE_API_PROXY_TARGET="$backend_url" VITE_API_BASE_URL= VITE_PORT="$frontend_port"
+
+echo "Preparing the existing local database: $root/backend/db.sqlite3"
+"$python_bin" "$root/backend/manage.py" migrate --noinput
+"$python_bin" "$root/backend/manage.py" check
+
+nohup "$python_bin" "$root/backend/manage.py" runserver "127.0.0.1:$backend_port" --noreload >"$run_dir/backend.log" 2>&1 &
 echo "$!" >"$run_dir/backend.pid"
 (
   cd "$root/frontend"
-  nohup node "$vite_bin" --host 127.0.0.1 --port 5174 --strictPort >"$run_dir/frontend.log" 2>&1 &
+  nohup node "$vite_bin" --host 127.0.0.1 --port "$frontend_port" --strictPort >"$run_dir/frontend.log" 2>&1 &
   echo "$!" >"$run_dir/frontend.pid"
 )
 
