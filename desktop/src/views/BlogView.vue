@@ -81,7 +81,7 @@ const draft = ref({
     "",
     "- 用 Django 管理博客和知识库数据",
     "- 用 LangGraph 编排 Agentic RAG 流程",
-    "- 让博客文章发布后自动成为 Agent 的知识来源",
+    "- 可选择将博客文章加入知识库，成为 Agent 的知识来源",
     "",
     "> 博客内容本身就是 Agent 的知识来源。"
   ].join("\n")
@@ -279,7 +279,7 @@ async function applyFilter(params: Record<string, string>) {
   await loadArticles(params);
 }
 
-async function publishDraft() {
+async function publishDraft(addToKnowledgeBase = false) {
   editorError.value = "";
   if (!draft.value.title.trim() || !draft.value.content.trim()) {
     editorError.value = "标题和正文不能为空。";
@@ -294,7 +294,8 @@ async function publishDraft() {
       body: JSON.stringify({
         ...draft.value,
         tags: draft.value.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
-        publish: true
+        publish: true,
+        add_to_knowledge_base: addToKnowledgeBase
       })
     });
     await loadArticles();
@@ -316,7 +317,11 @@ async function publishDraft() {
 async function syncArticleKnowledge(article: BlogArticle) {
   publishing.value = true;
   try {
-    const payload = await requestJson(`/api/agent/blog/articles/${encodeURIComponent(article.slug)}/publish/`, { method: "POST" });
+    const payload = await requestJson(`/api/agent/blog/articles/${encodeURIComponent(article.slug)}/publish/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ add_to_knowledge_base: true })
+    });
     await Promise.all([loadArticles(), loadArchive()]);
     if (payload.approval_required) {
       openApprovalDialog(payload.approval);
@@ -564,7 +569,7 @@ function askAgent(article: BlogArticle) {
 async function loadBlogAgentHistory() {
   if (!blogAgentSessionKey.value) return;
   try {
-    const payload = await requestJson(`/api/agent/blog/agent/chat/?session_key=${encodeURIComponent(blogAgentSessionKey.value)}`);
+    const payload = await requestJson(`/api/agent/blog/agent/chat/?session_key=${encodeURIComponent(blogAgentSessionKey.value)}&limit=20`);
     if (payload.messages?.length) {
       blogAgentMessages.value = payload.messages.map((message: any) => ({
         role: message.role,

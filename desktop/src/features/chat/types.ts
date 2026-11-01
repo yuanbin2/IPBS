@@ -14,9 +14,9 @@ export interface SourceCitation {
 }
 
 export interface TokenUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
 }
 
 export interface SupervisorDecision {
@@ -45,14 +45,18 @@ export interface ChatMessage {
 
 /** SSE event from the streaming chat endpoint */
 export interface StreamEvent {
-  type: "trace" | "response" | "approval" | "done" | "error";
+  type: "run" | "progress" | "trace" | "answer_delta" | "answer_snapshot" | "response" | "approval" | "done" | "error";
   data?: string;
+  text?: string;
+  status?: "pending" | "running" | "succeeded" | "failed" | "cancelled";
   answer?: string;
   tool_calls?: ToolCall[];
   sources?: SourceCitation[];
   trace?: string[];
   token_usage?: TokenUsage;
   supervisor?: SupervisorDecision;
+  approval_required?: boolean;
+  approval?: ApprovalRequest;
   conversation_id?: number;
   detail?: string;
 }

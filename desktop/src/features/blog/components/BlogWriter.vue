@@ -20,7 +20,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  publish: [];
+  publish: [addToKnowledgeBase: boolean];
   update: [];
   cancelEdit: [];
   applyTemplate: [content: string];
@@ -126,7 +126,7 @@ function scrollToHeading(item: HeadList, index: number) {
         <el-button
           type="primary"
           :loading="editingArticle ? updating : publishing"
-          @click="editingArticle ? emit('update') : emit('publish')"
+          @click="editingArticle ? emit('update') : emit('publish', true)"
         >
           {{ editingArticle ? '更新并重新提交' : '发布并加入知识库' }}
         </el-button>
@@ -228,7 +228,7 @@ function scrollToHeading(item: HeadList, index: number) {
       <el-button
         type="primary"
         :loading="editingArticle ? updating : publishing"
-        @click="editingArticle ? emit('update') : emit('publish')"
+        @click="editingArticle ? emit('update') : emit('publish', false)"
       >
         {{ editingArticle ? '更新并重新提交' : '发布文章' }}
       </el-button>

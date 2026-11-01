@@ -1,3 +1,5 @@
+> **实验性原型贡献说明**：开始前先读 [README.md](README.md) 的端口/API 限制；不要把本包视为根目录主应用的构建入口。当前 npm scripts 以 `package.json` 为准。
+
 # Contributing to Knowledge Agent Desktop
 
 感谢您对 Knowledge Agent Desktop 项目的关注！本文档将帮助您了解如何参与项目开发。

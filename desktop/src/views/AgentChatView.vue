@@ -13,8 +13,10 @@ import type {
   Conversation,
   ConversationDetail,
   SupervisorDecision,
+  StreamEvent,
   TokenUsage
 } from "../features/chat/types";
+import { applyAnswerEvent, SseEventParser } from "../features/chat/utils/streamProtocol";
 
 const MESSAGE_PAGE_SIZE = 30;
 const auth = useAuthStore();
@@ -35,6 +37,24 @@ const welcomeMessage: ChatMessage = {
 const input = ref("帮我检索 LangGraph 和 RAG 的关系");
 const historySearch = ref("");
 const loading = ref(false);
+let activeRequestController: AbortController | null = null;
+let activeRunId: string | null = null;
+
+function stopReceiving() {
+  activeRequestController?.abort();
+}
+
+async function cancelBackendExecution() {
+  if (!activeRunId) return;
+  try {
+    const response = await fetch(`/api/agent/chat/runs/${activeRunId}/cancel/`, { method: "POST" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const run = await response.json();
+    ElMessage.info(run.status === "cancelled" ? "本次运行已取消" : "已请求取消；当前模型调用可能仍在执行");
+  } catch (error) {
+    ElMessage.error(`取消请求失败：${error instanceof Error ? error.message : "未知错误"}`);
+  }
+}
 const internetEnabled = ref(false);
 const conversationsLoading = ref(false);
 const messagesLoading = ref(false);
@@ -84,8 +104,9 @@ async function loadConversations() {
     if (historySearch.value.trim()) {
       params.set("q", historySearch.value.trim());
     }
-    const query = params.toString();
-    const response = await fetch(`/api/agent/conversations/${query ? `?${query}` : ""}`);
+    // desktop 没有分页加载入口，显式请求上限 50 条以覆盖旧版（硬编码 30 条）的可见范围。
+    params.set("limit", "50");
+    const response = await fetch(`/api/agent/conversations/?${params.toString()}`);
     conversations.value = await response.json();
     if (!currentConversationId.value && conversations.value.length > 0) {
       await loadConversation(conversations.value[0]);
@@ -185,6 +206,10 @@ function startNewConversation() {
 async function sendMessage(prompt?: string) {
   const message = (prompt ?? input.value).trim();
   if (!message || loading.value) return;
+  const runId = crypto.randomUUID();
+  const controller = new AbortController();
+  activeRequestController = controller;
+  activeRunId = runId;
 
   messages.value.push({ role: "user", content: message });
   const pendingMessage = reactive<ChatMessage>({
@@ -207,8 +232,10 @@ async function sendMessage(prompt?: string) {
     const response = await fetch("/api/agent/chat/stream/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({
         message,
+        run_id: runId,
         conversation_id: currentConversationId.value,
         internet_enabled: internetEnabled.value
       })
@@ -221,65 +248,102 @@ async function sendMessage(prompt?: string) {
 
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
-    let buffer = "";
+    const parser = new SseEventParser();
+    let sawDone = false;
+    let sawResponse = false;
+
+    async function handleEvent(event: StreamEvent) {
+      if (event.type === "progress" || event.type === "trace") {
+        const detail = event.detail ?? event.data;
+        if (detail) pendingMessage.streamingTrace!.push(detail);
+      } else if (event.type === "answer_delta" || event.type === "answer_snapshot") {
+        pendingMessage.content = applyAnswerEvent(pendingMessage.content, event);
+        nextTick(() => scrollToBottom());
+      } else if (event.type === "response") {
+        sawResponse = true;
+        Object.assign(pendingMessage, {
+          content: applyAnswerEvent(pendingMessage.content, event),
+          toolCalls: event.tool_calls,
+          sources: event.sources,
+          trace: event.trace,
+          tokenUsage: event.token_usage,
+          supervisor: event.supervisor,
+          pending: false
+        });
+        latestTokenUsage.value = event.token_usage ?? null;
+        if (event.approval_required && event.approval && auth.session.role === "admin") {
+          pendingApproval.value = event.approval;
+          approvalDialogOpen.value = true;
+        }
+      } else if (event.type === "done") {
+        sawDone = true;
+        currentConversationId.value = event.conversation_id ?? null;
+        if (event.status === "cancelled") {
+          pendingMessage.content = "本次运行已取消，生成中的正文未保存。";
+          pendingMessage.pending = false;
+        }
+        await loadConversations();
+      } else if (event.type === "error") {
+        throw new Error(event.detail ?? "Unknown stream error");
+      }
+    }
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const jsonStr = line.slice(6).trim();
-        if (!jsonStr) continue;
-
-        try {
-          const event = JSON.parse(jsonStr);
-
-          if (event.type === "trace" && event.data) {
-            pendingMessage.streamingTrace!.push(event.data);
-            nextTick(() => scrollToBottom());
-          } else if (event.type === "response") {
-            Object.assign(pendingMessage, {
-              content: event.answer,
-              toolCalls: event.tool_calls,
-              sources: event.sources,
-              trace: event.trace,
-              tokenUsage: event.token_usage,
-              supervisor: event.supervisor,
-              pending: false
-            });
-            latestTokenUsage.value = event.token_usage ?? null;
-            if (event.approval_required && event.approval && auth.session.role === "admin") {
-              pendingApproval.value = event.approval;
-              approvalDialogOpen.value = true;
-            }
-          } else if (event.type === "done") {
-            currentConversationId.value = event.conversation_id;
-            await loadConversations();
-          } else if (event.type === "error") {
-            throw new Error(event.detail ?? "Unknown stream error");
-          }
-        } catch (parseError) {
-          if (parseError instanceof Error && parseError.message !== "Unknown stream error") {
-            // Skip malformed JSON lines
-          } else {
-            throw parseError;
-          }
-        }
-      }
+      for (const event of parser.push(decoder.decode(value, { stream: true }))) await handleEvent(event);
     }
+    for (const event of parser.push(decoder.decode())) await handleEvent(event);
+    for (const event of parser.finish()) await handleEvent(event);
+    if (!sawDone || (pendingMessage.pending && !sawResponse)) throw new Error("流式连接提前结束");
     await nextTick();
     scrollToBottom();
   } catch (error) {
-    Object.assign(pendingMessage, {
-      content: `请求失败：${error instanceof Error ? error.message : "未知错误"}`,
-      pending: false
-    });
+    let recovered = false;
+    try {
+      const runResponse = await fetch(`/api/agent/chat/runs/${runId}/`);
+      if (runResponse.ok) {
+        const run = await runResponse.json();
+        if (run.status === "succeeded" && run.result) {
+          Object.assign(pendingMessage, {
+            content: run.result.answer,
+            toolCalls: run.result.tool_calls,
+            sources: run.result.sources,
+            trace: run.result.trace,
+            tokenUsage: run.result.token_usage,
+            supervisor: run.result.supervisor,
+            pending: false
+          });
+          currentConversationId.value = run.conversation_id;
+          latestTokenUsage.value = run.result.token_usage ?? null;
+          await loadConversations();
+          recovered = true;
+        } else if (run.status === "running" || run.status === "pending") {
+          currentConversationId.value = run.conversation_id;
+          await loadConversations();
+          pendingMessage.content = `${controller.signal.aborted ? "已停止接收" : "连接已中断"}，后端仍在执行。运行 ID：${runId}。稍后刷新会话可查看结果；停止接收不等于取消后端执行。`;
+          pendingMessage.pending = false;
+          recovered = true;
+        } else if (run.status === "failed" || run.status === "cancelled") {
+          currentConversationId.value = run.conversation_id;
+          await loadConversations();
+          pendingMessage.content = `运行状态：${run.status}${run.error_code ? `，原因：${run.error_code}` : ""}（ID：${runId}）。生成中显示的部分正文未保存。`;
+          pendingMessage.pending = false;
+          recovered = true;
+        }
+      }
+    } catch {
+      // Keep the run ID visible when the status endpoint is also unavailable.
+    }
+    if (!recovered) {
+      Object.assign(pendingMessage, {
+        content: `请求失败：${error instanceof Error ? error.message : "未知错误"}（运行 ID：${runId}）`,
+        pending: false
+      });
+    }
   } finally {
+    if (activeRequestController === controller) activeRequestController = null;
+    if (activeRunId === runId) activeRunId = null;
     loading.value = false;
   }
 }
@@ -397,6 +461,8 @@ function formatAgentName(agentName: string) {
         :loading="loading"
         :can-send="canSend"
         @send="sendMessage()"
+        @stop="stopReceiving"
+        @cancel="cancelBackendExecution"
         @keydown="handleComposerKeydown"
       />
 

@@ -45,11 +45,11 @@ const emit = defineEmits<{
 
     <section class="token-card">
       <span>本轮 Token</span>
-      <strong v-if="latestTokenUsage">{{ latestTokenUsage.total_tokens }}</strong>
+      <strong v-if="latestTokenUsage">{{ latestTokenUsage.total_tokens ?? '未知' }}</strong>
       <strong v-else-if="chatLoading">统计中</strong>
       <strong v-else>0</strong>
       <small v-if="latestTokenUsage">
-        prompt {{ latestTokenUsage.prompt_tokens }} / completion {{ latestTokenUsage.completion_tokens }}
+        prompt {{ latestTokenUsage.prompt_tokens ?? '未知' }} / completion {{ latestTokenUsage.completion_tokens ?? '未知' }}
       </small>
       <small v-else>等待下一次回答</small>
     </section>

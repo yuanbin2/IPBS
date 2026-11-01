@@ -1,3 +1,5 @@
+> **历史原型变更记录**：版本条目描述早期 scaffold，不证明当前发行包、自动更新或跨平台安装已验收。当前原型限制见 [README.md](README.md)。
+
 # Changelog
 
 All notable changes to the Knowledge Agent Desktop project will be documented in this file.

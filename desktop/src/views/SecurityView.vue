@@ -39,7 +39,9 @@ async function loadSecurity() {
   loading.value = true;
   try {
     status.value = await requestJson("/api/agent/security/status/");
-    events.value = await requestJson("/api/agent/security/audit-events/");
+    // 后端改为 { events, total, has_more } 游标分页后，这里按当前页取列表。
+    const payload = await requestJson("/api/agent/security/audit-events/");
+    events.value = Array.isArray(payload) ? payload : payload?.events ?? [];
   } catch (error) {
     ElMessage.warning(error instanceof Error ? error.message : "安全信息加载失败");
   } finally {

@@ -1,3 +1,5 @@
+> **历史原型总结，不是当前验收报告**：下方“已完成”来自早期 Electron scaffold 记录。请以当前 `desktop/` 源码、脚本和单独的启动/打包测试为准；主项目入口见 [desktop/README.md](README.md)。
+
 # Knowledge Agent Desktop - Implementation Summary
 
 ## 项目概述

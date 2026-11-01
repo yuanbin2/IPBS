@@ -7,7 +7,7 @@ const router = useRouter();
 const features = [
   {
     title: "个人博客",
-    detail: "文章发布后自动进入知识库，成为 Agent 的个人经历来源。",
+    detail: "选择“发布并加入知识库”后，文章才会成为 Agent 的知识来源。",
     icon: Files
   },
   {

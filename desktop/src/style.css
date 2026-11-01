@@ -950,6 +950,14 @@ img {
   line-height: 1.7;
 }
 
+.agent-stream-plain {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.7;
+}
+
 .token-usage {
   display: flex;
   flex-wrap: wrap;

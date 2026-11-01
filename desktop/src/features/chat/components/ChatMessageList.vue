@@ -84,7 +84,8 @@ async function copyMessage(content: string) {
         >
           <el-icon><CopyDocument /></el-icon>
         </button>
-        <p>{{ message.content }}</p>
+        <pre v-if="message.role === 'agent' && message.pending && message.content" class="agent-stream-plain">{{ message.content }}</pre>
+        <p v-else>{{ message.content }}</p>
         <ChatThinkingPanel
           v-if="message.role === 'agent' && (message.streamingTrace?.length || message.trace?.length)"
           :traces="message.streamingTrace?.length ? message.streamingTrace : (message.trace ?? [])"
@@ -100,9 +101,9 @@ async function copyMessage(content: string) {
           <small>{{ message.supervisor.handoff }}</small>
         </section>
         <div v-if="message.role === 'agent' && message.tokenUsage" class="token-usage">
-          <span>Prompt {{ message.tokenUsage.prompt_tokens }}</span>
-          <span>Completion {{ message.tokenUsage.completion_tokens }}</span>
-          <strong>Total {{ message.tokenUsage.total_tokens }}</strong>
+          <span>Prompt {{ message.tokenUsage.prompt_tokens ?? '未知' }}</span>
+          <span>Completion {{ message.tokenUsage.completion_tokens ?? '未知' }}</span>
+          <strong>Total {{ message.tokenUsage.total_tokens ?? '未知' }}</strong>
         </div>
         <section v-if="message.sources?.length" class="source-list">
           <header>引用来源</header>
