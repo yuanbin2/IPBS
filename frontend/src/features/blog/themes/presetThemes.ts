@@ -1,27 +1,16 @@
 import type { BlogTheme } from './themeTypes';
 
+/**
+ * 新建/回退时使用的默认主题。
+ *
+ * 说明（B-054）：原先的 `default`（纯白底 #ffffff）与 `dark`（深灰底 #1e1e1e）两套预设已下线。
+ * 原因是主题变量只作用在 `.article-theme-container` 上，并不覆盖表格、目录、评论等区域，
+ * 深色底会出现「深色文字压在深色单元格上」这类低对比组合；纯白底则与页面暖灰底割裂。
+ * 这里显式指定默认主题，不再依赖数组顺序兜底。
+ */
+export const DEFAULT_THEME_ID = 'forest';
+
 export const presetThemes: BlogTheme[] = [
-  {
-    id: 'default',
-    name: '默认',
-    description: '深松绿配色，简洁专业',
-    bgColor: '#ffffff',
-    textColor: '#1a2623',
-    headingColor: '#1a2623',
-    linkColor: '#174b46',
-    codeBg: '#172420',
-    codeText: '#dbe5e1',
-    blockquoteBg: '#f4f6f5',
-    blockquoteBorder: '#174b46',
-    borderColor: '#dce4e1',
-    fontFamily: 'Inter, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
-    headingFont: 'Inter, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
-    fontSize: '15px',
-    lineHeight: '1.8',
-    contentWidth: '800px',
-    paragraphSpacing: '16px',
-    headingSpacing: '24px',
-  },
   {
     id: 'github',
     name: 'GitHub',
@@ -84,27 +73,6 @@ export const presetThemes: BlogTheme[] = [
     contentWidth: '760px',
     paragraphSpacing: '14px',
     headingSpacing: '28px',
-  },
-  {
-    id: 'dark',
-    name: '暗夜',
-    description: '深色主题，护眼舒适',
-    bgColor: '#1e1e1e',
-    textColor: '#d4d4d4',
-    headingColor: '#e0e0e0',
-    linkColor: '#569cd6',
-    codeBg: '#2d2d2d',
-    codeText: '#d4d4d4',
-    blockquoteBg: '#252525',
-    blockquoteBorder: '#569cd6',
-    borderColor: '#3e3e3e',
-    fontFamily: 'Inter, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
-    headingFont: 'Inter, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
-    fontSize: '15px',
-    lineHeight: '1.8',
-    contentWidth: '800px',
-    paragraphSpacing: '16px',
-    headingSpacing: '24px',
   },
   {
     id: 'forest',

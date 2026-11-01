@@ -479,6 +479,8 @@ test("private reading note survives refresh, stays account-private, and restores
   await page.getByRole("button", { name: "查找" }).click();
   await expect(page.getByRole("button", { name: new RegExp(title) })).toBeVisible();
   await page.getByRole("button", { name: new RegExp(title) }).click();
+  await expect(page.locator(".private-notes-reading .private-notes-markdown")).toContainText("仅本人可见的记录");
+  await page.getByRole("button", { name: "编辑笔记" }).click();
   await expect(page.locator(".private-notes-editor .vditor-wysiwyg")).toContainText("仅本人可见的记录");
 
   const otherContext = await browser.newContext();
@@ -502,6 +504,50 @@ test("private reading note survives refresh, stays account-private, and restores
   await page.getByRole("button", { name: "恢复" }).click();
   await page.getByText("查看回收站").click();
   await expect(page.getByRole("button", { name: new RegExp(title) })).toBeVisible();
+});
+
+test("private note reading/edit switching and screenshot import preserve the drawer scroll position", async ({ page }) => {
+  test.setTimeout(180_000);
+  await serveInstalledVditorAssets(page);
+  await login(page, operatorA);
+  const title = `Drawer navigation ${Date.now()}`;
+  const content = Array.from({ length: 48 }, (_, index) => `## Section ${index + 1}\n\nPrivate note paragraph ${index + 1} contains enough text to make the reading pane scroll independently.`).join("\n\n");
+  const created = await page.evaluate(async ({ title, content }) => {
+    const response = await fetch("/api/agent/blog/notes/", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, content }),
+    });
+    if (response.status !== 201) throw new Error(`note setup failed: ${response.status}`);
+    return response.json();
+  }, { title, content });
+  expect(created.id).toBeTruthy();
+  await page.getByRole("button", { name: "我的笔记", exact: true }).click();
+  const drawer = page.locator(".private-notes-drawer");
+  await expect(drawer).toBeVisible();
+  await drawer.getByLabel("搜索私有笔记").fill(title);
+  await drawer.getByRole("button", { name: "查找" }).click();
+  const noteRow = drawer.locator(".private-note-row").filter({ hasText: title });
+  await noteRow.getByRole("button", { name: title }).click();
+  await expect(drawer.locator(".private-notes-reading")).toContainText("Private note paragraph 48");
+  const main = drawer.locator(".private-notes-main");
+  await main.evaluate((element) => { element.scrollTop = Math.min(520, element.scrollHeight - element.clientHeight); });
+  const readingScroll = await main.evaluate((element) => element.scrollTop);
+  expect(readingScroll).toBeGreaterThan(0);
+  const editNoteButton = drawer.getByRole("button", { name: "编辑笔记" });
+  await editNoteButton.scrollIntoViewIfNeeded();
+  const beforeEditSwitch = await main.evaluate((element) => element.scrollTop);
+  await editNoteButton.click();
+  await expect(drawer.locator(".private-notes-editor")).toBeVisible();
+  expect(Math.abs(await main.evaluate((element) => element.scrollTop) - beforeEditSwitch)).toBeLessThan(8);
+
+  await main.evaluate((element) => { element.scrollTop = Math.min(270, element.scrollHeight - element.clientHeight); });
+  const beforeImport = await main.evaluate((element) => element.scrollTop);
+  expect(beforeImport).toBeGreaterThan(0);
+  await drawer.getByRole("button", { name: "导入截图" }).click();
+  const screenshotDialog = page.getByRole("dialog", { name: /截图识别为 Markdown/ });
+  await expect(screenshotDialog).toBeVisible();
+  await screenshotDialog.locator(".el-dialog__headerbtn").click();
+  await expect(screenshotDialog).toBeHidden();
+  expect(await main.evaluate((element) => element.scrollTop)).toBe(beforeImport);
 });
 
 test("note summary uses the writing endpoint only on request and stays editable and private", async ({ page }) => {
@@ -558,6 +604,7 @@ test("note summary uses the writing endpoint only on request and stays editable 
 });
 
 test("article search survives detail navigation and offers a clear empty state", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 560 });
   await page.goto("/blog?q=LangGraph");
   await expect(page.getByPlaceholder("输入算法、框架或项目关键词")).toHaveValue("LangGraph");
   const results = page.locator(".article-card");
@@ -576,6 +623,31 @@ test("article search survives detail navigation and offers a clear empty state",
   await page.getByRole("button", { name: "清除筛选" }).click();
   await expect(page.locator(".article-card").first()).toBeVisible();
   await expect(page).toHaveURL(/\/blog$/);
+  const lastArticle = page.locator(".article-card").last();
+  await lastArticle.scrollIntoViewIfNeeded();
+  const listScrollBeforeOpen = await page.evaluate(() => window.scrollY);
+  expect(listScrollBeforeOpen).toBeGreaterThan(0);
+  await lastArticle.click();
+  await expect(page.getByRole("button", { name: "返回文章列表" })).toBeVisible();
+  await page.getByRole("button", { name: "返回文章列表" }).click();
+  await expect(page).toHaveURL(/\/blog$/);
+  await expect.poll(() => page.evaluate(() => window.scrollY), { timeout: 5_000 }).toBeGreaterThanOrEqual(listScrollBeforeOpen - 32);
+});
+
+test("closing the fixed writing desk leaves the blog page viewport unchanged", async ({ page }) => {
+  await serveInstalledVditorAssets(page);
+  await page.setViewportSize({ width: 1280, height: 560 });
+  await login(page, operatorA);
+  await page.evaluate(() => window.scrollTo(0, 160));
+  const pageYBefore = await page.evaluate(() => window.scrollY);
+  expect(pageYBefore).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "写博客", exact: true }).click();
+  await expect(page.locator(".writer-overlay")).toBeVisible();
+  await expect(page.locator(".writer-overlay .vditor-wysiwyg")).toBeVisible();
+  await page.waitForTimeout(220);
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(page.locator(".writer-overlay")).toHaveCount(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(pageYBefore);
 });
 
 test("published article revision keeps the reader page stable until approval", async ({ page, browser }) => {

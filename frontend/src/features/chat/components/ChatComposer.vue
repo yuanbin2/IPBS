@@ -4,6 +4,8 @@ const emit = defineEmits<{
   "update:input": [value: string];
   "update:internetEnabled": [value: boolean];
   send: [];
+  stop: [];
+  cancel: [];
   keydown: [event: KeyboardEvent];
 }>();
 </script>
@@ -29,6 +31,8 @@ const emit = defineEmits<{
         @update:model-value="emit('update:internetEnabled', Boolean($event))"
       />
       <el-button type="primary" native-type="submit" :loading="loading" :disabled="!canSend">发送</el-button>
+      <el-button v-if="loading" native-type="button" title="停止接收，后端仍继续执行" @click="emit('stop')">停止接收</el-button>
+      <el-button v-if="loading" native-type="button" title="请求后端协作式取消，当前模型调用可能仍在执行" @click="emit('cancel')">请求取消执行</el-button>
     </div>
   </form>
 </template>

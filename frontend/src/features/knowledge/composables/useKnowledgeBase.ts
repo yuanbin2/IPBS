@@ -46,7 +46,12 @@ export function useKnowledgeBase() {
   const uploadTarget = ref<"local" | "ragagent">("local");
   const searchQuery = ref("RAG 如何结合 LangGraph");
   const searchResults = ref<SearchResult[]>([]);
+  const listError = ref("");
+  const documentError = ref("");
+  const searchError = ref("");
+  const hasSearched = ref(false);
   const loading = ref(false);
+  const documentsLoading = ref(false);
   const uploading = ref(false);
   const uploadProgress = ref(0);
   const uploadStage = ref<"idle" | "uploading" | "processing">("idle");
@@ -58,25 +63,38 @@ export function useKnowledgeBase() {
 
   async function loadKnowledgeBases() {
     loading.value = true;
+    listError.value = "";
     try {
       const response = await fetch("/api/agent/knowledge-bases/");
+      if (!response.ok) throw new Error(await errorMessage(response, "知识库列表加载失败"));
       knowledgeBases.value = await response.json();
       if (!selectedKnowledgeBaseId.value && knowledgeBases.value.length) {
         selectedKnowledgeBaseId.value = knowledgeBases.value[0].id;
       }
+    } catch (error) {
+      listError.value = error instanceof Error ? error.message : "知识库列表加载失败";
     } finally {
       loading.value = false;
     }
   }
 
   async function loadDocuments() {
+    documentError.value = "";
+    documentsLoading.value = true;
     const params = new URLSearchParams();
     if (selectedKnowledgeBaseId.value) {
       params.set("knowledge_base_id", String(selectedKnowledgeBaseId.value));
     }
     const query = params.toString();
-    const response = await fetch(`/api/agent/documents/${query ? `?${query}` : ""}`);
-    documents.value = await response.json();
+    try {
+      const response = await fetch(`/api/agent/documents/${query ? `?${query}` : ""}`);
+      if (!response.ok) throw new Error(await errorMessage(response, "文档列表加载失败"));
+      documents.value = await response.json();
+    } catch (error) {
+      documentError.value = error instanceof Error ? error.message : "文档列表加载失败";
+    } finally {
+      documentsLoading.value = false;
+    }
   }
 
   async function loadRagAgentDocuments() {
@@ -233,6 +251,7 @@ export function useKnowledgeBase() {
   async function searchKnowledge() {
     if (!searchQuery.value.trim()) return;
     searching.value = true;
+    searchError.value = "";
     try {
       const response = await fetch("/api/agent/knowledge-search/", {
         method: "POST",
@@ -243,7 +262,11 @@ export function useKnowledgeBase() {
           limit: 5
         })
       });
+      if (!response.ok) throw new Error(await errorMessage(response, "检索失败"));
       searchResults.value = await response.json();
+      hasSearched.value = true;
+    } catch (error) {
+      searchError.value = error instanceof Error ? error.message : "检索失败";
     } finally {
       searching.value = false;
     }
@@ -371,7 +394,8 @@ export function useKnowledgeBase() {
   return {
     knowledgeBases, documents, ragAgentDocuments, activeListSource,
     selectedKnowledgeBaseId, uploadFile, uploadTitle, uploadTarget,
-    searchQuery, searchResults, loading, uploading, uploadProgress, uploadStage, searching,
+    searchQuery, searchResults, listError, documentError, searchError, hasSearched,
+    loading, documentsLoading, uploading, uploadProgress, uploadStage, searching,
     reindexingDocumentId, deletingKnowledgeBaseId, deletingDocumentId,
     loadKnowledgeBases, loadDocuments, loadRagAgentDocuments, selectKnowledgeBase, handleFileChange,
     uploadDocument, searchKnowledge, reindexDocument, deleteKnowledgeBase, deleteDocument,

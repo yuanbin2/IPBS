@@ -165,8 +165,8 @@ function handleCreate(data: { name: string; description: string; category: Knowl
       />
     </div>
 
-    <!-- 分类筛选 -->
-    <div class="panel-categories">
+    <!-- 分类筛选（filter-chips：与博客页分类 chip 同一视觉语言） -->
+    <div class="panel-categories filter-chips">
       <el-radio-group v-model="selectedCategory" size="small">
         <el-radio-button label="all">全部</el-radio-button>
         <el-radio-button

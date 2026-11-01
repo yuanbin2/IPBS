@@ -12,6 +12,8 @@ import {
   type WriterContext
 } from "../utils/draftStorage";
 import VditorEditor from "./VditorEditor.vue";
+import { mergeTagNames, normalizeTagList } from "../utils/tagInput";
+import { defaultCoverImage } from "../utils/articleCover";
 
 const props = defineProps<{
   article: BlogArticle;
@@ -32,7 +34,7 @@ function articleDraft(article: BlogArticle): BlogDraft {
         summary: revision.summary,
         cover_image: revision.cover_image,
         category: revision.category,
-        tags: revision.tags.join(", "),
+        tags: normalizeTagList(revision.tags),
         content: revision.content
       }
     : {
@@ -40,14 +42,16 @@ function articleDraft(article: BlogArticle): BlogDraft {
         summary: article.summary || "",
         cover_image: article.cover_image || "",
         category: article.category?.name || "",
-        tags: article.tags.map((tag) => tag.name).join(", "),
+        tags: normalizeTagList(article.tags.map((tag) => tag.name)),
         content: article.content || ""
       };
 }
 
 const initialDraft = articleDraft(props.article);
 const cached = readWriterDraft(props.owner, context);
-const draft = ref<BlogDraft>(cached ? { ...cached.draft } : { ...initialDraft });
+const draft = ref<BlogDraft>(
+  cached ? { ...cached.draft, tags: normalizeTagList(cached.draft.tags) } : { ...initialDraft },
+);
 const editorRef = ref<InstanceType<typeof VditorEditor>>();
 const restored = ref(Boolean(cached));
 const saveStatus = ref(cached ? "已恢复这篇文章在本机保存的修改。" : "修改会自动保存在本机，提交后等待管理员审核。");
@@ -58,7 +62,9 @@ const showHeadingMarkers = ref(false);
 const actionsRef = ref<HTMLElement>();
 const actionsHeight = ref(52);
 const dirty = computed(() => JSON.stringify(draft.value) !== JSON.stringify(initialDraft));
-const displayTags = computed(() => draft.value.tags.split(",").map((tag) => tag.trim()).filter(Boolean));
+const displayTags = computed(() => normalizeTagList(draft.value.tags));
+const tagOptions = ref<string[]>([]);
+const tagCandidates = computed(() => mergeTagNames(tagOptions.value, draft.value.tags));
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let contentSyncTimer: ReturnType<typeof setInterval> | undefined;
 let actionsObserver: ResizeObserver | undefined;
@@ -141,6 +147,24 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
   event.returnValue = "";
 }
 
+const tagModel = computed<string[]>({
+  get: () => normalizeTagList(draft.value.tags),
+  set: (value) => {
+    draft.value.tags = normalizeTagList(value);
+  },
+});
+
+async function loadTagOptions() {
+  try {
+    const response = await fetch("/api/agent/blog/tags/");
+    if (!response.ok) return;
+    const list = (await response.json()) as Array<{ name?: string }>;
+    tagOptions.value = list.map((item) => String(item?.name ?? "").trim()).filter(Boolean);
+  } catch {
+    // 候选标签拿不到不影响编辑与提交，忽略即可。
+  }
+}
+
 onMounted(() => {
   if (actionsRef.value) {
     const actions = actionsRef.value;
@@ -154,6 +178,7 @@ onMounted(() => {
   // Vditor may normalize pasted or IME text after its input callback. Read its
   // Markdown state too, so autosave and submit always use what the user sees.
   contentSyncTimer = setInterval(syncVisualContent, 500);
+  void loadTagOptions();
 });
 onBeforeUnmount(() => {
   actionsObserver?.disconnect();
@@ -176,6 +201,9 @@ async function submitRevision() {
   persistDraft();
   saving.value = true;
   error.value = "";
+  // 未填封面时用正文第一张图片兜底，与发布接口的行为保持一致。
+  const autoCover = defaultCoverImage(draft.value.cover_image, draft.value.content);
+  if (autoCover) draft.value.cover_image = autoCover;
   try {
     const response = await fetch(`/api/agent/blog/articles/${encodeURIComponent(props.article.slug)}/`, {
       method: "PUT",
@@ -183,7 +211,7 @@ async function submitRevision() {
       body: JSON.stringify({
         ...draft.value,
         publication_version: props.article.publication_version,
-        tags: draft.value.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
+        tags: normalizeTagList(draft.value.tags)
       })
     });
     const payload = await response.json();
@@ -235,7 +263,22 @@ defineExpose({ hasUnsavedChanges: () => dirty.value && !submitted, persistDraft 
       <div class="inline-editor-metadata-fields">
         <div class="inline-editor-fields">
           <label>分类<el-input v-model="draft.category" aria-label="编辑文章分类" /></label>
-          <label>标签（用逗号分隔）<el-input v-model="draft.tags" aria-label="编辑文章标签" /></label>
+          <label class="inline-editor-tags-field">
+            标签
+            <el-select
+              v-model="tagModel"
+              multiple
+              filterable
+              allow-create
+              default-first-option
+              collapse-tags
+              :max-collapse-tags="3"
+              placeholder="选择或输入标签，回车确认"
+              aria-label="编辑文章标签"
+            >
+              <el-option v-for="name in tagCandidates" :key="name" :label="name" :value="name" />
+            </el-select>
+          </label>
         </div>
         <label>封面图片地址<el-input v-model="draft.cover_image" aria-label="编辑文章封面" /></label>
       </div>
@@ -260,6 +303,8 @@ defineExpose({ hasUnsavedChanges: () => dirty.value && !submitted, persistDraft 
 .inline-editor-status, .inline-editor-restored { color: var(--el-text-color-secondary); }
 .inline-article-editor label { display: grid; gap: 7px; font-weight: 600; }
 .inline-editor-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+/* 标签改为多选控件后需要独立成行，避免与标签文字挤在一行。 */
+.inline-editor-tags-field { display: grid; gap: 4px; align-content: start; }
 .inline-editor-metadata { border-bottom: 1px solid var(--el-border-color); }
 .inline-editor-metadata summary { padding: 8px 2px; cursor: pointer; color: var(--el-text-color-secondary); }
 .inline-editor-metadata-fields { display: grid; gap: 12px; padding: 12px 0 18px; }

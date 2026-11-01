@@ -4,6 +4,7 @@ import KnowledgeBaseSidebar from "../features/knowledge/components/KnowledgeBase
 import DocumentManager from "../features/knowledge/components/DocumentManager.vue";
 import KnowledgeSearchPanel from "../features/knowledge/components/KnowledgeSearchPanel.vue";
 import { useKnowledgeBase } from "../features/knowledge/composables/useKnowledgeBase";
+import PageFeedback from "../components/PageFeedback.vue";
 
 const knowledge = useKnowledgeBase();
 
@@ -20,6 +21,11 @@ const chunkCount = computed(() =>
 function refreshDocumentLists() {
   void knowledge.loadDocuments();
   void knowledge.loadRagAgentDocuments();
+}
+
+async function refreshAll() {
+  await knowledge.loadKnowledgeBases();
+  await Promise.all([knowledge.loadDocuments(), knowledge.loadRagAgentDocuments()]);
 }
 </script>
 
@@ -46,6 +52,14 @@ function refreshDocumentLists() {
         </div>
       </dl>
     </header>
+    <PageFeedback
+      v-if="knowledge.listError.value || knowledge.documentError.value"
+      :tone="knowledge.knowledgeBases.value.length || knowledge.documents.value.length ? 'partial' : 'error'"
+      :title="knowledge.knowledgeBases.value.length || knowledge.documents.value.length ? '部分资料暂时无法更新' : '资料列表暂时无法加载'"
+      :next-step="`${knowledge.listError.value || knowledge.documentError.value}。已有内容仍可查看；请检查连接后重试。`"
+      action-label="重试加载"
+      @action="refreshAll"
+    />
     <section class="knowledge-layout">
       <KnowledgeBaseSidebar
         :items="knowledge.knowledgeBases.value"
@@ -61,6 +75,8 @@ function refreshDocumentLists() {
       <section class="knowledge-main">
         <DocumentManager
           :documents="knowledge.documents.value"
+          :documents-loading="knowledge.documentsLoading.value"
+          :document-error="knowledge.documentError.value"
           :rag-agent-documents="knowledge.ragAgentDocuments.value.documents"
           :rag-agent-available="knowledge.ragAgentDocuments.value.available"
           :rag-agent-error="knowledge.ragAgentDocuments.value.error"
@@ -85,6 +101,8 @@ function refreshDocumentLists() {
           :query="knowledge.searchQuery.value"
           :results="knowledge.searchResults.value"
           :searching="knowledge.searching.value"
+          :error="knowledge.searchError.value"
+          :has-searched="knowledge.hasSearched.value"
           @update:query="knowledge.searchQuery.value = $event"
           @search="knowledge.searchKnowledge"
         />

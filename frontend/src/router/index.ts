@@ -6,6 +6,10 @@ import { useAuthStore } from "../stores/auth";
 const AgentChatView = () => import("../views/AgentChatView.vue");
 const AdminApprovalView = () => import("../views/AdminApprovalView.vue");
 const BlogView = () => import("../views/BlogView.vue");
+const BlogSettingsView = () => import("../features/blog/components/BlogSettingsView.vue");
+const CollectionDetailView = () => import("../views/CollectionDetailView.vue");
+const CollectionManagerView = () => import("../views/CollectionManagerView.vue");
+const CollectionsView = () => import("../views/CollectionsView.vue");
 const HomeView = () => import("../views/HomeView.vue");
 const KnowledgeBaseView = () => import("../views/KnowledgeBaseView.vue");
 const LoginView = () => import("../views/LoginView.vue");
@@ -38,6 +42,28 @@ const router = createRouter({
       path: "/chat",
       name: "agent-chat",
       component: AgentChatView
+    },
+    {
+      path: "/blog/collections",
+      name: "blog-collections",
+      component: CollectionsView,
+      meta: { public: true }
+    },
+    {
+      path: "/blog/collections/mine",
+      name: "blog-collection-mine",
+      component: CollectionManagerView
+    },
+    {
+      path: "/blog/collections/:publicId",
+      name: "blog-collection-detail",
+      component: CollectionDetailView,
+      meta: { public: true }
+    },
+    {
+      path: "/blog/settings",
+      name: "blog-settings",
+      component: BlogSettingsView
     },
     {
       path: "/blog/:slug?",

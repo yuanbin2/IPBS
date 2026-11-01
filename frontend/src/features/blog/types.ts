@@ -71,6 +71,8 @@ export interface BlogAgentSource {
 export interface BlogAgentChatMessage {
   role: "user" | "agent";
   content: string;
+  /** 后端持久化消息 id；欢迎语等本地消息无 id，作为加载更早消息的翻页游标依据。 */
+  id?: number;
   sources?: BlogAgentSource[];
   blocked?: boolean;
   pending?: boolean;

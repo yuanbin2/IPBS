@@ -19,7 +19,6 @@ import PrivateNotesDrawer from "../features/blog/components/PrivateNotesDrawer.v
 import type {
   ApprovalRequest,
   ArchiveGroup,
-  BlogAgentChatMessage,
   BlogArticle,
   BlogComment,
   BlogDraft,
@@ -39,6 +38,9 @@ import {
 } from "../features/blog/utils/webClipHandoff";
 import type { WebClipNoteDraft } from "../features/blog/components/PrivateNotesDrawer.vue";
 import ScreenshotOcrDialog, { type ScreenshotJobInput } from "../features/blog/components/ScreenshotOcrDialog.vue";
+import { useBlogAgentChat } from "../features/blog/composables/useBlogAgentChat";
+import { requestJson } from "../features/blog/api/requestJson";
+import { updateArticleHead } from "../features/blog/utils/articleHead";
 import {
   clearScreenshotFragment,
   consumeScreenshotHandoff,
@@ -66,9 +68,22 @@ const router = useRouter();
 
 const articles = ref<BlogArticle[]>([]);
 const currentArticle = ref<BlogArticle | null>(null);
+watch(currentArticle, (article) => updateArticleHead(article));
 const articleDetailRef = ref<InstanceType<typeof ArticleDetail> | null>(null);
-onBeforeRouteUpdate(() => articleDetailRef.value?.confirmLeave() ?? true);
-onBeforeRouteLeave(() => articleDetailRef.value?.confirmLeave() ?? true);
+const privateNotesRef = ref<InstanceType<typeof PrivateNotesDrawer> | null>(null);
+const screenshotOcrRef = ref<InstanceType<typeof ScreenshotOcrDialog> | null>(null);
+function confirmPageLeave() {
+  if (articleDetailRef.value?.confirmLeave() === false) return false;
+  if (privateNotesRef.value?.confirmPageLeave() === false) return false;
+  return screenshotOcrRef.value?.confirmPageLeave() ?? true;
+}
+function warnBeforeUnload(event: BeforeUnloadEvent) {
+  if (!privateNotesRef.value?.hasUnsavedChanges() && !screenshotOcrRef.value?.hasUnsavedChanges()) return;
+  event.preventDefault();
+  event.returnValue = "";
+}
+onBeforeRouteUpdate(confirmPageLeave);
+onBeforeRouteLeave(confirmPageLeave);
 const tags = ref<BlogTag[]>([]);
 const categories = ref<BlogCategory[]>([]);
 const archive = ref<ArchiveGroup[]>([]);
@@ -94,20 +109,11 @@ const pendingApproval = ref<ApprovalRequest | null>(null);
 const reviewingApproval = ref(false);
 const reviewer = ref("admin");
 const reviewNote = ref("");
-const blogAgentOpen = ref(false);
-const blogAgentLoading = ref(false);
-const blogAgentInput = ref("这个博客项目的技术栈是什么？");
-const blogAgentSource = ref<"legacy" | "ragagent">(
-  localStorage.getItem("blogAgentSource") === "ragagent" ? "ragagent" : "legacy"
-);
-const blogAgentSessionKey = ref(localStorage.getItem("blogAgentSessionKey") || "");
-const blogAgentMessages = ref<BlogAgentChatMessage[]>([
-  {
-    role: "agent",
-    content: "你好，我是这个博客里的智能体。你可以问公开文章、项目经历、技术栈、LangGraph 或 Agentic RAG。"
-  }
-]);
-const blogAgentSuggestions = ["你做过哪些 LangGraph 项目？", "这个项目架构是什么？", "Agentic RAG 是怎么实现的？"];
+const {
+  blogAgentOpen, blogAgentLoading, blogAgentInput, blogAgentSource, blogAgentMessages,
+  blogAgentHasMoreBefore, blogAgentLoadingOlder, blogAgentSuggestions,
+  loadBlogAgentHistory, loadMoreBlogAgentHistory, sendBlogAgentMessage, handleBlogAgentKeydown,
+} = useBlogAgentChat();
 const commentDraft = ref({
   content: ""
 });
@@ -324,8 +330,10 @@ function startPanelResize(panel: "right", event: PointerEvent) {
 }
 
 onMounted(async () => {
+  window.addEventListener("beforeunload", warnBeforeUnload);
   syncDiscoveryState();
   await restoreWriterSession();
+  if (route.query.write === "1" && auth.isAuthenticated && !showWriter.value) openWriterForNew();
   await Promise.all([loadArticles(), loadTags(), loadCategories(), loadArchive(), loadAbout()]);
   if (activeSlug.value) {
     await loadArticle(activeSlug.value);
@@ -348,6 +356,10 @@ onMounted(async () => {
 
 watch(draft, persistCurrentDraft, { deep: true });
 
+watch(() => route.query.write, (write) => {
+  if (write === "1" && auth.isAuthenticated && !showWriter.value) openWriterForNew();
+});
+
 watch(
   () => authenticatedDraftOwner.value && `${authenticatedDraftOwner.value.actor}\u0000${authenticatedDraftOwner.value.workspace}`,
   (nextOwnerKey, previousOwnerKey) => {
@@ -368,10 +380,9 @@ watch(
 );
 
 watch(activeSlug, async (slug) => {
+  currentArticle.value = null;
   if (slug) {
     await loadArticle(slug);
-  } else {
-    currentArticle.value = null;
   }
 });
 
@@ -381,6 +392,8 @@ watch([rightPanelWidth, rightPanelVisible], () => {
 });
 
 onBeforeUnmount(() => {
+  updateArticleHead(null);
+  window.removeEventListener("beforeunload", warnBeforeUnload);
   persistCurrentDraft();
   if (conflictListener) window.removeEventListener("storage", conflictListener);
   window.removeEventListener("hashchange", consumeExtensionClip);
@@ -567,10 +580,86 @@ function clearCollectionContext() {
 }
 
 /**
+ * 托盘截图交接（P1）：托盘工具在 127.0.0.1 起临时端点持有 PNG，
+ * 深链 fragment 只带 "screenshot-handoff=127.0.0.1:<port>/s/<token>" 引用。
+ * token 为 32 位 hex、5 分钟过期（TTL 内可重复取，供传输失败重试）；
+ * 端点响应带 CORS 头、只绑 localhost。
+ */
+function readTrayHandoffFragment(hash: string): string | null {
+  const raw = String(hash ?? "").replace(/^#/, "");
+  if (!raw) return null;
+  const value = new URLSearchParams(raw).get("screenshot-handoff") ?? "";
+  return /^127\.0\.0\.1:\d{2,5}\/s\/[0-9a-f]{32}$/.test(value) ? value : null;
+}
+
+function clearTrayHandoffFragment(): void {
+  if (typeof window === "undefined" || !window.location) return;
+  const { pathname, search } = window.location;
+  window.history.replaceState(window.history.state, "", `${pathname}${search}`);
+}
+
+/** 从托盘端点拉取 PNG 并校验文件签名，返回交给 OCR 链路的输入。 */
+async function consumeTrayHandoff(endpoint: string): Promise<{ file: File; width: number; height: number }> {
+  const response = await fetch(`http://${endpoint}.png`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(
+      response.status === 410 || response.status === 404
+        ? "托盘截图交接已被消费或已过期，请从托盘重新发起。"
+        : `托盘截图接收失败（HTTP ${response.status}）。`
+    );
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const isPng = bytes.length > 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+    && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a;
+  if (!isPng) throw new Error("托盘端点返回的不是有效 PNG，已拒绝。");
+  const file = new File([bytes.slice().buffer as ArrayBuffer], "tray-screenshot.png", { type: "image/png" });
+  const bitmap = await createImageBitmap(file);
+  const size = { width: bitmap.width, height: bitmap.height };
+  bitmap.close();
+  return { file, ...size };
+}
+
+/**
  * B-043：消费浏览器扩展的一次性交接。fragment 里只有随机 nonce 与扩展 ID；
  * 页面负责尽快清掉它，等登录态就绪后才向扩展取值，并只把它当作不可信输入。
  */
 async function consumeExtensionClip() {
+  // 托盘截图交接（P1）优先：hash 里只有一次性端点引用，登录后拉图进 OCR 链路。
+  const trayEndpoint = readTrayHandoffFragment(window.location.hash ?? "");
+  if (trayEndpoint) {
+    clearTrayHandoffFragment();
+    if (!auth.isAuthenticated) {
+      clipStatus.value = { kind: "error", text: "请先登录博客，再从托盘重新发起 OCR 交接。地址栏已清除。" };
+      ElMessage.error("请先登录博客，再从托盘重新发起 OCR 交接。");
+      return;
+    }
+    clipStatus.value = { kind: "info", text: "正在接收托盘截图…" };
+    try {
+      const shot = await consumeTrayHandoff(trayEndpoint);
+      screenshotOcrJob.value = {
+        tiles: [{ file: shot.file, width: shot.width, height: shot.height, scrollX: 0, scrollY: 0 }],
+        mode: "screen",
+        sourceUrl: "",
+        titleCandidate: "托盘截图",
+        capturedAt: new Date().toISOString(),
+        warnings: [],
+        cropRequired: false,
+      };
+      screenshotOcrOpen.value = true;
+      clipStatus.value = { kind: "ok", text: "已接收托盘截图：正在本地识别，请在校对页核对内容。" };
+    } catch (cause) {
+      // fetch 网络层失败（含 CORS 拦截）抛 TypeError，转成人性化中文提示；
+      // consumeTrayHandoff 内部抛出的已是具体文案，原样透出。保留重试语义：
+      // 托盘端点 5 分钟内可重复取，用户重新触发深链即可重试。
+      const text = cause instanceof TypeError
+        ? `无法从截图工具获取图片：${cause.message}。请确认托盘工具正在运行，并在 5 分钟内完成识别。`
+        : cause instanceof Error ? cause.message : "托盘截图接收失败。";
+      clipStatus.value = { kind: "error", text };
+      ElMessage.error(text);
+    }
+    return;
+  }
+
   // screenshot-v1 截图交接优先，v2 通用网页剪藏其次。
   // 注：v1 力扣链接交接（#clip=）已于 2026-10-07 随「力扣导入」功能一并移除。
   const shotFragment = readScreenshotFragment(window.location.hash ?? "");
@@ -1491,79 +1580,6 @@ function askAgent(article: BlogArticle) {
   localStorage.setItem("pendingAgentQuestion", `根据我的博客文章《${article.title}》，总结我的项目经验`);
 }
 
-async function loadBlogAgentHistory() {
-  if (!blogAgentSessionKey.value) return;
-  try {
-    const payload = await requestJson(`/api/agent/blog/agent/chat/?session_key=${encodeURIComponent(blogAgentSessionKey.value)}`);
-    if (payload.messages?.length) {
-      blogAgentMessages.value = payload.messages.map((message: any) => ({
-        role: message.role,
-        content: message.content,
-        sources: message.sources
-      }));
-    }
-  } catch {
-    localStorage.removeItem("blogAgentSessionKey");
-    blogAgentSessionKey.value = "";
-  }
-}
-
-async function sendBlogAgentMessage(prompt?: string) {
-  const message = (prompt ?? blogAgentInput.value).trim();
-  if (!message || blogAgentLoading.value) return;
-
-  blogAgentOpen.value = true;
-  blogAgentMessages.value.push({ role: "user", content: message });
-  const pendingMessage: BlogAgentChatMessage = {
-    role: "agent",
-    content: "正在根据公开博客资料检索...",
-    pending: true
-  };
-  const pendingText =
-    blogAgentSource.value === "ragagent"
-      ? "正在通过 RAG-Agent 检索本站隔离知识..."
-      : "正在根据公开博客资料检索...";
-  blogAgentMessages.value.push(pendingMessage);
-  blogAgentInput.value = "";
-  blogAgentLoading.value = true;
-
-  try {
-    const payload = await requestJson("/api/agent/blog/agent/chat/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message,
-        session_key: blogAgentSessionKey.value,
-        rag_source: blogAgentSource.value
-      })
-    });
-    blogAgentSessionKey.value = payload.session_key;
-    localStorage.setItem("blogAgentSessionKey", payload.session_key);
-    Object.assign(pendingMessage, {
-      content: payload.answer,
-      sources: payload.sources,
-      blocked: payload.blocked,
-      pending: false,
-      rag_source_effective: payload.rag_source_effective,
-      degraded: payload.degraded,
-      degraded_reason: payload.degraded_reason
-    });
-  } catch (error) {
-    Object.assign(pendingMessage, {
-      content: error instanceof Error ? error.message : "博客智能体暂时不可用，请稍后再试。",
-      pending: false
-    });
-  } finally {
-    blogAgentLoading.value = false;
-  }
-}
-
-function handleBlogAgentKeydown(event: KeyboardEvent) {
-  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
-  event.preventDefault();
-  void sendBlogAgentMessage();
-}
-
 const handleEditorUpload = async (files: File[]): Promise<Array<{ url: string; alt?: string; title?: string }>> => {
   editorError.value = "";
   uploadingImage.value = true;
@@ -1592,24 +1608,6 @@ const handleEditorUpload = async (files: File[]): Promise<Array<{ url: string; a
   }
 };
 
-async function requestJson(url: string, options: RequestInit = {}) {
-  const response = await fetch(url, options);
-  const contentType = response.headers.get("content-type") ?? "";
-  const text = await response.text();
-  let payload: any = null;
-
-  if (contentType.includes("application/json") && text) {
-    payload = JSON.parse(text);
-  } else if (text) {
-    const plainText = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    payload = { detail: plainText.slice(0, 220) || "服务返回了非 JSON 响应。" };
-  }
-
-  if (!response.ok) {
-    throw new Error(payload?.detail ?? `请求失败：HTTP ${response.status}`);
-  }
-  return payload;
-}
 </script>
 
 <template>
@@ -1847,6 +1845,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
           />
 
           <PrivateNotesDrawer
+            ref="privateNotesRef"
             v-if="auth.isAuthenticated"
             :key="`${auth.session.actor}:${auth.session.workspace_key}`"
             v-model="showPrivateNotes"
@@ -1859,6 +1858,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
           />
 
           <ScreenshotOcrDialog
+            ref="screenshotOcrRef"
             v-if="auth.isAuthenticated"
             v-model="screenshotOcrOpen"
             :initial-job="screenshotOcrJob"
@@ -2045,8 +2045,11 @@ async function requestJson(url: string, options: RequestInit = {}) {
       :loading="blogAgentLoading"
       :messages="blogAgentMessages"
       :suggestions="blogAgentSuggestions"
+      :has-more-before="blogAgentHasMoreBefore"
+      :loading-older="blogAgentLoadingOlder"
       @send="sendBlogAgentMessage"
       @keydown="handleBlogAgentKeydown"
+      @load-older="loadMoreBlogAgentHistory"
     />
   </div>
 </template>

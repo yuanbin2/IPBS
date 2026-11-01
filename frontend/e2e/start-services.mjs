@@ -107,6 +107,10 @@ export async function startServices() {
   }
 
   try {
+    const assets = spawnSync(process.execPath, [resolve(frontendRoot, "scripts/sync-ocr-assets.mjs")], {
+      cwd: frontendRoot, stdio: "inherit",
+    });
+    if (assets.error || assets.status !== 0) throw assets.error || new Error("OCR assets could not be prepared for E2E");
     await assertFrontendPortAvailable(frontendPort);
     setup(["manage.py", "migrate", "--noinput"], baseEnv);
     setup(["manage.py", "create_upload_e2e_user", "--password", password, "--workspace", "e2e-writer-a"], baseEnv);

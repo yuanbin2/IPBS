@@ -60,7 +60,7 @@ function handleClose() {
   <el-dialog
     :model-value="visible"
     title="新建知识库"
-    width="500px"
+    width="min(500px, calc(100vw - 32px))"
     @update:model-value="handleClose"
   >
     <el-form :model="form" label-position="top">

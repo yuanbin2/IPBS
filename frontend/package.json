@@ -4,17 +4,22 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
-    "build:check": "vue-tsc --noEmit && vite build",
+    "dev": "node scripts/sync-ocr-assets.mjs && node scripts/sync-editor-assets.mjs && vite --host 127.0.0.1",
+    "build": "node scripts/sync-ocr-assets.mjs && node scripts/sync-editor-assets.mjs && vite build",
+    "build:check": "node scripts/sync-ocr-assets.mjs && node scripts/sync-editor-assets.mjs && vue-tsc --noEmit && vite build",
+    "sync:ocr-assets": "node scripts/sync-ocr-assets.mjs",
+    "sync:editor-assets": "node scripts/sync-editor-assets.mjs",
     "test:e2e": "playwright test",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "test:unit": "node --test \"tests/**/*.test.ts\""
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
     "element-plus": "^2.8.4",
     "md-editor-v3": "^6.5.3",
+    "onnxruntime-web": "1.23.2",
     "pinia": "^2.2.4",
+    "ppu-paddle-ocr": "6.6.0",
     "vditor": "^4.0.0",
     "vue": "^3.5.12",
     "vue-router": "^4.4.5",
@@ -23,6 +28,7 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@vitejs/plugin-vue": "^5.1.4",
+    "pdfmarkdown-ppocrv5-models": "1.0.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
     "vue-tsc": "^2.1.6"

@@ -1,4 +1,5 @@
 import type { BlogDraft } from "../types";
+import { normalizeTagList } from "./tagInput";
 
 const DRAFT_PREFIX = "blogWriterDraft:v2:";
 const SESSION_PREFIX = "blogWriterSession:v2:";
@@ -108,6 +109,9 @@ export function readWriterDraft(
       localStorage.removeItem(key);
       return null;
     }
+    // 旧版草稿把 tags 存成逗号分隔字符串；这里统一规整成数组，
+    // 让「中文逗号被整串当成一个标签」的历史数据在下次恢复时自动修正。
+    parsed.draft.tags = normalizeTagList(parsed.draft.tags);
     return parsed;
   } catch {
     localStorage.removeItem(key);

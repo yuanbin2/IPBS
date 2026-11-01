@@ -2,9 +2,12 @@
 import { computed } from "vue";
 import { Delete, Document, Refresh, UploadFilled } from "@element-plus/icons-vue";
 import type { KnowledgeDocument, RagAgentDocument } from "../types";
+import PageFeedback from "../../../components/PageFeedback.vue";
 
 const props = defineProps<{
   documents: KnowledgeDocument[];
+  documentsLoading: boolean;
+  documentError: string;
   ragAgentDocuments: RagAgentDocument[];
   ragAgentAvailable: boolean;
   ragAgentError: string;
@@ -122,6 +125,7 @@ function ragStatusText(status: string) {
     </div>
 
     <template v-if="activeListSourceProxy === 'local'">
+    <PageFeedback v-if="documentsLoading" tone="loading" title="正在更新文档列表" next-step="请稍候，已有文档仍可查看。" />
     <div class="document-grid">
       <article v-for="doc in documents" :key="doc.id" class="document-card">
         <div class="doc-status-icon" :class="doc.status">
@@ -158,9 +162,9 @@ function ragStatusText(status: string) {
         </div>
       </article>
 
-      <div v-if="documents.length === 0" class="doc-empty">
+      <div v-if="documents.length === 0 && !documentsLoading && !documentError" class="doc-empty">
         <el-icon><Document /></el-icon>
-        <span>还没有上传文档</span>
+        <span>还没有上传文档。请在上方选择文件并上传。</span>
       </div>
     </div>
     </template>
@@ -181,7 +185,7 @@ function ragStatusText(status: string) {
 
         <div v-if="ragAgentDocuments.length === 0" class="doc-empty">
           <el-icon><Document /></el-icon>
-          <span>{{ ragAgentAvailable ? "RAG-Agent 知识库暂无文档" : "RAG-Agent 服务不可达（未启动或异常）" }}</span>
+          <span>{{ ragAgentAvailable ? "RAG-Agent 知识库暂无文档。请在上方选择目标并上传。" : "RAG-Agent 服务不可达，请检查服务后点击刷新。" }}</span>
         </div>
       </div>
       <p v-if="!ragAgentAvailable && ragAgentError" class="ragagent-error" role="status">{{ ragAgentError }}</p>

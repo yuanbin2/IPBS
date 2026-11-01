@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
 import { ArrowDown, ArrowRight, Loading } from "@element-plus/icons-vue";
+import { displayStage } from "../utils/displayStatus";
 
 const props = defineProps<{
   traces: string[];
@@ -31,7 +32,7 @@ watch(
 );
 
 const displayTraces = computed(() => {
-  return [...new Set(props.traces)];
+  return [...new Set(props.traces.map((trace) => displayStage(trace, props.isComplete)))];
 });
 </script>
 
@@ -40,6 +41,7 @@ const displayTraces = computed(() => {
     <button
       class="thinking-toggle"
       type="button"
+      :aria-expanded="expanded"
       @click="expanded = !expanded"
     >
       <el-icon>
@@ -48,12 +50,12 @@ const displayTraces = computed(() => {
         <ArrowRight v-else />
       </el-icon>
       <span>
-        {{ isStreaming ? "正在思考..." : `思考过程 (${displayTraces.length} 步)` }}
+        {{ isStreaming ? displayTraces[displayTraces.length - 1] : `处理进度 (${displayTraces.length} 步)` }}
       </span>
     </button>
 
     <Transition name="thinking-expand">
-      <div v-show="expanded" class="thinking-content">
+      <div v-show="expanded" class="thinking-content" :aria-hidden="!expanded">
         <div
           v-for="(trace, index) in displayTraces"
           :key="trace + index"

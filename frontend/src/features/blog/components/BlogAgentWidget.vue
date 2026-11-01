@@ -9,6 +9,10 @@ defineProps<{
   messages: BlogAgentChatMessage[];
   suggestions: string[];
   source: "legacy" | "ragagent";
+  /** 是否还有更早的历史消息（决定「加载更早消息」按钮显隐）。 */
+  hasMoreBefore: boolean;
+  /** 更早历史消息加载中（防重入 + 按钮态）。 */
+  loadingOlder: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -17,6 +21,7 @@ const emit = defineEmits<{
   "update:source": [value: "legacy" | "ragagent"];
   send: [prompt?: string];
   keydown: [event: KeyboardEvent];
+  "load-older": [];
 }>();
 </script>
 
@@ -53,9 +58,18 @@ const emit = defineEmits<{
       </div>
 
       <div class="blog-agent-messages">
+        <button
+          v-if="hasMoreBefore"
+          type="button"
+          class="blog-agent-load-older"
+          :disabled="loadingOlder"
+          @click="emit('load-older')"
+        >
+          {{ loadingOlder ? "加载中…" : "加载更早消息" }}
+        </button>
         <article
           v-for="(message, index) in messages"
-          :key="index"
+          :key="message.id ?? `local-${index}`"
           class="blog-agent-message"
           :class="[message.role, { blocked: message.blocked, pending: message.pending }]"
         >

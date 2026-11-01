@@ -122,6 +122,32 @@
   --el-mask-color: rgba(24, 35, 41, 0.5);
 }
 
+/* Shared loading, empty, error and partial-result feedback. */
+.page-feedback {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+.page-feedback p { margin: 0; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.page-feedback--error { border-color: var(--color-danger); background: var(--color-danger-soft); }
+.page-feedback--partial { border-color: var(--color-warning); background: var(--color-warning-soft); }
+.page-feedback--loading { border-color: var(--color-primary-border); background: var(--color-primary-soft); }
+
+/* Keep long authored content within its panel; code and tables scroll inside it. */
+.agent-md-preview, .agent-md-preview .md-editor-preview { min-width: 0; max-width: 100%; }
+.agent-md-preview .md-editor-preview pre,
+.agent-md-preview .md-editor-preview table { display: block; max-width: 100%; overflow-x: auto; }
+.agent-md-preview .md-editor-preview img { height: auto; max-width: 100%; }
+.agent-md-preview .md-editor-preview p,
+.agent-md-preview .md-editor-preview li,
+.agent-md-preview .md-editor-preview td { overflow-wrap: anywhere; }
+
 /* === Technical knowledge blog presentation === */
 .blog-library-hero {
   position: relative;
@@ -1686,6 +1712,23 @@ img {
   border-color: var(--color-primary);
 }
 
+.answer-next-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.answer-next-action a {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
 .message-copy {
   position: absolute;
   top: 9px;
@@ -1731,6 +1774,14 @@ img {
 }
 
 /* Agent markdown preview */
+.agent-stream-plain {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.7;
+}
+
 .agent-md-preview {
   background: transparent !important;
   border: none !important;
@@ -2325,11 +2376,26 @@ img {
   background: transparent;
   padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
   color: var(--color-text-secondary);
-  cursor: pointer;
+  cursor: default;
   text-align: left;
   font-size: var(--font-size-sm);
   transition: background var(--transition-fast), color var(--transition-fast);
 }
+
+.history-select {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.history-select .history-title { display: block; }
+.history-select:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 
 .history-item:hover {
   background: var(--color-bg-page);
@@ -2380,6 +2446,12 @@ img {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
   text-align: center;
+}
+
+.history-load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-2);
 }
 
 .history-search {
@@ -5470,6 +5542,29 @@ img {
   padding: var(--space-4);
 }
 
+/* 加载更早消息按钮：位于消息容器顶部，与来源标签风格一致 */
+.blog-agent-load-older {
+  align-self: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg-surface);
+  padding: 4px 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.blog-agent-load-older:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.blog-agent-load-older:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
 .blog-agent-message {
   display: flex;
   flex-direction: column;
@@ -5845,6 +5940,11 @@ img {
     padding: var(--space-4);
   }
 
+  .chat-workspace {
+    margin: calc(-1 * var(--space-4));
+    min-width: 0;
+  }
+
   .page-header {
     flex-direction: column;
     gap: var(--space-3);
@@ -5872,7 +5972,8 @@ img {
 
   .agent-panel {
     width: 100%;
-    max-height: none;
+    max-height: min(32dvh, 280px);
+    scrollbar-gutter: stable;
   }
 
   .composer {

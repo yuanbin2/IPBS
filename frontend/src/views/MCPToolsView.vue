@@ -315,8 +315,8 @@ async function requestJson(url: string, options: RequestInit = {}) {
       </div>
     </section>
 
-    <!-- 分类筛选 -->
-    <section class="mcp-categories">
+    <!-- 分类筛选（filter-chips：统一 pill chip 视觉） -->
+    <section class="mcp-categories filter-chips">
       <el-radio-group v-model="selectedCategory">
         <el-radio-button
           v-for="cat in categoryOptions"

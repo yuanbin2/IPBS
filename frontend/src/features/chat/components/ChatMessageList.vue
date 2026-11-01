@@ -2,6 +2,7 @@
 import { ChatDotRound, CopyDocument, Promotion } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { MdPreview } from "md-editor-v3";
+import { RouterLink } from "vue-router";
 import "md-editor-v3/lib/style.css";
 import ChatThinkingPanel from "./ChatThinkingPanel.vue";
 import type { ChatMessage, ToolCall } from "../types";
@@ -160,8 +161,9 @@ async function copyMessage(content: string) {
           :class="{ clamped: isClampable(message, index) && !isExpanded(message, index) }"
         >
           <div class="answer-inner" :data-answer-key="answerKey(message, index)">
+            <pre v-if="message.role === 'agent' && message.pending && message.content" class="agent-stream-plain">{{ message.content }}</pre>
             <MdPreview
-              v-if="message.role === 'agent'"
+              v-else-if="message.role === 'agent'"
               :model-value="message.content"
               language="zh-CN"
               preview-theme="github"
@@ -176,18 +178,10 @@ async function copyMessage(content: string) {
               :is-streaming="!!message.pending"
               :is-complete="!message.pending"
             />
-            <section v-if="message.role === 'agent' && message.supervisor" class="supervisor-card">
-              <header>
-                <strong>{{ message.supervisor.display_name }}</strong>
-                <span v-if="message.supervisor.confidence">confidence {{ message.supervisor.confidence.toFixed(2) }}</span>
-              </header>
-              <p>{{ message.supervisor.reason }}</p>
-              <small>{{ message.supervisor.handoff }}</small>
-            </section>
             <div v-if="message.role === 'agent' && message.tokenUsage" class="token-usage">
-              <span>Prompt {{ message.tokenUsage.prompt_tokens }}</span>
-              <span>Completion {{ message.tokenUsage.completion_tokens }}</span>
-              <strong>Total {{ message.tokenUsage.total_tokens }}</strong>
+              <span>Prompt {{ message.tokenUsage.prompt_tokens ?? '未知' }}</span>
+              <span>Completion {{ message.tokenUsage.completion_tokens ?? '未知' }}</span>
+              <strong>Total {{ message.tokenUsage.total_tokens ?? '未知' }}</strong>
             </div>
             <section v-if="message.sources?.length" class="source-list">
               <header>引用来源</header>
@@ -217,9 +211,6 @@ async function copyMessage(content: string) {
                 </section>
               </el-collapse-item>
             </el-collapse>
-            <div v-if="message.trace?.length" class="trace-list">
-              <span v-for="item in message.trace" :key="item">{{ item }}</span>
-            </div>
           </div>
         </div>
         <button
@@ -230,6 +221,10 @@ async function copyMessage(content: string) {
         >
           {{ isExpanded(message, index) ? "收起" : "展开全文" }}
         </button>
+        <div v-if="message.role === 'agent' && (message.id || message.answered) && !message.pending && message.content" class="answer-next-action">
+          <span>核对{{ message.sources?.length ? "引用来源" : "回答内容" }}后，可复制回答并继续写作。</span>
+          <RouterLink :to="{ path: '/blog', query: { write: '1' } }">去写博客</RouterLink>
+        </div>
       </div>
     </article>
   </div>

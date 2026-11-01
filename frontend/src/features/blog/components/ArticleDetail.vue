@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, watch, onMounted, onBeforeUnmount } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { ChatDotRound, Delete, ArrowLeft, Loading, View, Notebook } from "@element-plus/icons-vue";
 import { MdPreview, type HeadList } from "md-editor-v3";
-import type { BlogArticle, BlogComment, PrivateNote } from "../types";
+import type { BlogArticle, BlogComment, CollectionArticleContext, PrivateNote } from "../types";
 import { useThemeStore } from "../stores/themeStore";
 import { applyThemeToElement } from "../themes/applyTheme";
 import xss from "xss";
@@ -29,7 +30,11 @@ const props = defineProps<{
   deletingSlug: string;
   relatedArticles: BlogArticle[];
   relatedLoading: boolean;
+  collectionContext?: CollectionArticleContext | null;
 }>();
+
+const route = useRoute();
+const router = useRouter();
 
 const emit = defineEmits<{
   back: [];
@@ -156,7 +161,12 @@ let annotationObserver: MutationObserver | undefined;
 const highlightName = "blog-private-annotations";
 const publicHighlightName = "blog-public-comments";
 const rendererClass = /^(?:md-editor-[a-z0-9_-]+|hljs(?:-[a-z0-9_-]+)?|language-[a-z0-9_-]+|katex(?:-[a-z0-9_-]+)?)$/i;
-const sanitizeArticleHtml = (html: string) => xss(html, {
+// 长文性能：同一篇内容的重复渲染（主题切换、抽屉开关等）直接复用上次
+// 清洗结果，避免每次都对几万字符跑一遍 xss。
+let sanitizeCache: { source: string; output: string } | null = null;
+const sanitizeArticleHtml = (html: string) => {
+  if (sanitizeCache?.source === html) return sanitizeCache.output;
+  const output = xss(html, {
   stripIgnoreTag: true,
   stripIgnoreTagBody: ["script", "style"],
   onTagAttr: (tag, name, value) => {
@@ -170,6 +180,9 @@ const sanitizeArticleHtml = (html: string) => xss(html, {
     return classes.length ? `class="${classes.join(" ")}"` : "";
   },
 });
+  sanitizeCache = { source: html, output };
+  return output;
+}
 
 const readingMinutes = computed(() => {
   const text = (props.article.content || "").replace(/```[\s\S]*?```/g, "").replace(/\s+/g, "");
@@ -717,6 +730,23 @@ defineExpose({ confirmLeave: leaveEditor });
         <span>/</span>
         <span>{{ article.category?.name || "未分类" }}</span>
       </div>
+      <nav v-if="collectionContext" class="collection-context-bar" aria-label="所属目录">
+        <router-link
+          class="collection-link"
+          :to="{ name: 'blog-collection-detail', params: { publicId: collectionContext.collection.public_id }, query: collectionContext.node_id ? { node: String(collectionContext.node_id) } : {} }"
+        >返回目录：{{ collectionContext.collection.title }}</router-link>
+        <span v-if="collectionContext.node_path.length" class="collection-path">{{ collectionContext.node_path.join(" / ") }}</span>
+        <router-link
+          v-if="collectionContext.prev"
+          class="collection-neighbor"
+          :to="{ name: 'blog', params: { slug: collectionContext.prev.slug }, query: { collection: collectionContext.collection.public_id } }"
+        >← 上一篇：{{ collectionContext.prev.title }}</router-link>
+        <router-link
+          v-if="collectionContext.next"
+          class="collection-neighbor"
+          :to="{ name: 'blog', params: { slug: collectionContext.next.slug }, query: { collection: collectionContext.collection.public_id } }"
+        >下一篇：{{ collectionContext.next.title }} →</router-link>
+      </nav>
       <div class="article-actions-bar">
         <ThemeSwitcher />
         <el-button v-if="canTakeNotes" :icon="Notebook" @pointerdown="captureSelection" @click="takeNote">笔记本</el-button>
@@ -984,3 +1014,39 @@ defineExpose({ confirmLeave: leaveEditor });
 
   <ThemeCreator />
 </template>
+
+<style scoped>
+.collection-context-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #63716e;
+  min-width: 0;
+}
+.collection-link {
+  color: #1f6f54;
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.collection-link:hover { text-decoration: underline; }
+.collection-path { color: #8a9793; overflow-wrap: anywhere; }
+.collection-neighbor {
+  color: #4a5854;
+  text-decoration: none;
+  border: 1px solid #dce4e1;
+  border-radius: 8px;
+  padding: 3px 8px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collection-neighbor:hover { background: #eef3f1; }
+@media (max-width: 720px) {
+  .collection-context-bar { flex-direction: column; align-items: flex-start; }
+  .collection-neighbor { max-width: 100%; white-space: normal; }
+}
+</style>

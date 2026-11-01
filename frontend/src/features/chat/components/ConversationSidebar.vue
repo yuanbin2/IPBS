@@ -3,12 +3,18 @@ import { Cpu, Delete, EditPen, FolderOpened, Plus, Refresh, Search } from "@elem
 import { ElMessageBox } from "element-plus";
 import { ref } from "vue";
 import type { Conversation, ConversationProject, TurnMetrics } from "../types";
+import PageFeedback from "../../../components/PageFeedback.vue";
 
 const props = defineProps<{
   historySearch: string;
   conversations: Conversation[];
   currentConversationId: number | null;
   conversationsLoading: boolean;
+  conversationsError: string;
+  /** 会话列表是否还有更多（由"上一页返回条数 == limit"推断）。 */
+  hasMoreConversations: boolean;
+  /** "加载更多"请求进行中。 */
+  loadingMoreConversations: boolean;
   chatLoading: boolean;
   latestMetrics: TurnMetrics | null;
   projects: ConversationProject[];
@@ -21,6 +27,7 @@ const emit = defineEmits<{
   refresh: [];
   create: [];
   select: [conversation: Conversation];
+  "load-more": [];
   "select-project": [projectId: string];
   "create-project": [name: string];
   "rename-project": [project: ConversationProject, name: string];
@@ -143,7 +150,7 @@ function projectFilterLabel() {
     <div class="panel-actions">
       <h2><el-icon><Cpu /></el-icon> 会话历史</h2>
       <div>
-        <el-button :icon="Refresh" circle :loading="conversationsLoading" @click="emit('refresh')" />
+        <el-button :icon="Refresh" circle :loading="conversationsLoading" title="刷新会话历史" aria-label="刷新会话历史" @click="emit('refresh')" />
         <el-button :icon="Plus" circle title="新对话" @click="emit('create')" />
       </div>
     </div>
@@ -171,8 +178,8 @@ function projectFilterLabel() {
       <div v-if="latestMetrics" class="metric-grid">
         <div class="metric">
           <small>Token</small>
-          <strong>{{ latestMetrics.tokenUsage.total_tokens }}</strong>
-          <small>prompt {{ latestMetrics.tokenUsage.prompt_tokens }} / completion {{ latestMetrics.tokenUsage.completion_tokens }}</small>
+          <strong>{{ latestMetrics.tokenUsage.total_tokens ?? '未知' }}</strong>
+          <small>prompt {{ latestMetrics.tokenUsage.prompt_tokens ?? '未知' }} / completion {{ latestMetrics.tokenUsage.completion_tokens ?? '未知' }}</small>
         </div>
         <div class="metric">
           <small>延迟</small>
@@ -193,15 +200,17 @@ function projectFilterLabel() {
       <p v-else class="metric-empty">发送一条消息后显示 Token、延迟、工具与检索指标</p>
     </section>
 
-    <div class="history-list">
+    <PageFeedback v-if="conversationsError" :tone="conversations.length ? 'partial' : 'error'" title="会话历史未能更新" :next-step="conversationsError" action-label="重试" @action="emit('refresh')" />
+    <div class="history-list" :aria-busy="conversationsLoading">
       <div
         v-for="conversation in conversations"
         :key="conversation.id"
         class="history-item"
         :class="{ active: conversation.id === currentConversationId }"
-        @click="emit('select', conversation)"
       >
-        <span class="history-title">{{ conversation.title || `会话 ${conversation.id}` }}</span>
+        <button type="button" class="history-select" :aria-current="conversation.id === currentConversationId ? 'page' : undefined" @click="emit('select', conversation)">
+          <span class="history-title">{{ conversation.title || `会话 ${conversation.id}` }}</span>
+        </button>
         <el-dropdown trigger="click" @command="(command: number | null) => emit('move-conversation', conversation, command)">
           <el-button :icon="FolderOpened" size="small" text title="移动到项目" @click.stop />
           <template #dropdown>
@@ -219,7 +228,17 @@ function projectFilterLabel() {
           </template>
         </el-dropdown>
       </div>
-      <p v-if="!conversations.length && !conversationsLoading" class="history-empty">还没有对话，点右上角 + 开始</p>
+      <p v-if="!conversations.length && !conversationsLoading && !conversationsError" class="history-empty">还没有对话，点“新对话”开始。</p>
+      <div v-if="hasMoreConversations" class="history-load-more">
+        <el-button
+          size="small"
+          text
+          :loading="loadingMoreConversations"
+          @click="emit('load-more')"
+        >
+          {{ loadingMoreConversations ? "加载中…" : "加载更多" }}
+        </el-button>
+      </div>
     </div>
   </aside>
 </template>
