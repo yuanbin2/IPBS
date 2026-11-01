@@ -1,0 +1,5 @@
+# tools/screenshot-tray/requirements.txt（装进项目根 .venv）
+PyQt6==6.7.*          # 托盘/遮罩/悬浮条/热键消息循环/抓图，per-monitor DPI aware
+requests==2.32.*      # HTTP 客户端（multipart 上传、JWT 登录/刷新）
+numpy>=2.1,<3          # 二维像素匹配与向量化差分；只装进项目根 .venv
+# 打包（可选，P2）：pyinstaller==6.*（Windows，onedir 模式）

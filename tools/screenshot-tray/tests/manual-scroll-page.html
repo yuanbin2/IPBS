@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><title>长截图编号验收页</title>
+<style>
+body { font: 16px/1.5 Arial, sans-serif; margin: 0; background: #f7f9fd; color: #18243b }
+header { position: sticky; top: 0; z-index: 2; padding: 8px 20px; background: #183c77; color: white }
+.plain header { position: static }
+main { max-width: 900px; margin: 16px auto }
+.row { height: 52px; box-sizing: border-box; padding: 11px 18px; border-bottom: 1px solid #aaa; background: white }
+.row:nth-child(even) { background: #e7efff }
+.marker { float: right; width: 28px; height: 28px; background: #e69025 }
+#inside { height: 560px; overflow-y: auto; border: 3px solid #183c77 }
+.end { padding: 32px; background: #e69025; font-weight: bold; font-size: 24px }
+button { margin: 8px }
+</style>
+<header id="header">固定页头：验收时不得在长图中重复 <button onclick="document.body.classList.toggle('plain')">切换固定页头</button></header>
+<main><h1>长截图连续编号验收页</h1>
+<p>先抓下方普通长文，再抓内部滚动容器。每次缓慢滚动约 100 像素并停顿半秒。</p>
+<h2>普通长文 001–120</h2><section id="normal"></section><div class="end">普通长文 END-120</div>
+<h2>内部滚动容器 001–120</h2><section id="inside"></section></main>
+<script>
+for (const id of ['normal','inside']) {
+  const root = document.getElementById(id);
+  for (let i=1;i<=120;i++) {
+    const row=document.createElement('div'); row.className='row';
+    row.innerHTML=`编号 ${String(i).padStart(3,'0')} / ${id} <span class="marker" style="opacity:${.4+(i%6)/10}"></span>`;
+    root.append(row);
+  }
+  if (id==='inside') {
+    const end=document.createElement('div'); end.className='end'; end.textContent='内部容器 END-120'; root.append(end);
+  }
+}
+</script></html>
