@@ -1,5 +1,6 @@
 services:
   frontend:
+    image: knowledge-agent-frontend:${BLOG_RELEASE_ID:-local}
     build:
       context: .
       dockerfile: frontend/Dockerfile
@@ -7,8 +8,9 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    # Only the host TLS proxy may reach the HTTP listener.
     ports:
-      - "${NGINX_PORT:-80}:80"
+      - "127.0.0.1:${NGINX_PORT:-8080}:80"
     volumes:
       - media_data:/app/media:ro
       - static_data:/app/staticfiles:ro
@@ -20,22 +22,28 @@ services:
     restart: unless-stopped
 
   backend:
+    image: knowledge-agent-backend:${BLOG_RELEASE_ID:-local}
     build:
       context: .
       dockerfile: backend/Dockerfile
     container_name: knowledge-agent-backend
     env_file:
-      - .env
+      - ${COMPOSE_ENV_FILE:-.env}
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-knowledge_agent}
+      BLOG_LOCAL_MODE: "false"
+      DATABASE_URL: postgres://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-knowledge_agent}
       REDIS_URL: redis://redis:6379/0
       REDIS_CACHE_URL: redis://redis:6379/1
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-blog}:${RABBITMQ_PASSWORD:-blog}@rabbitmq:5672/${RABBITMQ_VHOST:-blog}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend,frontend}
-      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
-      AGENT_SECURITY_ENFORCED: ${AGENT_SECURITY_ENFORCED:-true}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?Set RABBITMQ_USER}:${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD}@rabbitmq:5672/${RABBITMQ_VHOST:-blog}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?Set the public host},127.0.0.1
+      DJANGO_DEBUG: "false"
+      AGENT_SECURITY_ENFORCED: "true"
+      DJANGO_HTTPS_TERMINATED: ${DJANGO_HTTPS_TERMINATED:?Set true only behind a verified TLS proxy}
       BLOG_MEDIA_STORAGE: ${BLOG_MEDIA_STORAGE:-file}
+      BLOG_PRIVATE_NOTE_MEDIA_ROOT: /app/private-note-media
       RAG_VECTOR_BACKEND: ${RAG_VECTOR_BACKEND:-pgvector}
+      RUN_MIGRATIONS: "false"
+      COLLECT_STATIC: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,13 +53,19 @@ services:
         condition: service_healthy
     volumes:
       - media_data:/app/backend/media
+      - private_note_data:/app/private-note-media
       - static_data:/app/backend/staticfiles
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/health/ || exit 1"]
+      test: ["CMD-SHELL", "test \"$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/api/ready/)\" = 200"]
       interval: 20s
       timeout: 5s
       retries: 6
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   celery_worker:
     build:
@@ -59,14 +73,20 @@ services:
       dockerfile: backend/Dockerfile
     container_name: knowledge-agent-celery-worker
     env_file:
-      - .env
+      - ${COMPOSE_ENV_FILE:-.env}
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-knowledge_agent}
+      BLOG_LOCAL_MODE: "false"
+      DJANGO_DEBUG: "false"
+      AGENT_SECURITY_ENFORCED: "true"
+      DJANGO_HTTPS_TERMINATED: ${DJANGO_HTTPS_TERMINATED:?Set true only behind a verified TLS proxy}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?Set the public host},127.0.0.1
+      DATABASE_URL: postgres://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-knowledge_agent}
       REDIS_URL: redis://redis:6379/0
       REDIS_CACHE_URL: redis://redis:6379/1
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-blog}:${RABBITMQ_PASSWORD:-blog}@rabbitmq:5672/${RABBITMQ_VHOST:-blog}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?Set RABBITMQ_USER}:${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD}@rabbitmq:5672/${RABBITMQ_VHOST:-blog}
       RAG_VECTOR_BACKEND: ${RAG_VECTOR_BACKEND:-pgvector}
       BLOG_MEDIA_STORAGE: ${BLOG_MEDIA_STORAGE:-file}
+      BLOG_PRIVATE_NOTE_MEDIA_ROOT: /app/private-note-media
       RUN_MIGRATIONS: "false"
       COLLECT_STATIC: "false"
     command: ["celery", "-A", "config", "worker", "--loglevel=INFO", "--queues=celery,documents,evaluations"]
@@ -75,7 +95,13 @@ services:
         condition: service_healthy
     volumes:
       - media_data:/app/backend/media
+      - private_note_data:/app/private-note-media
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   celery_beat:
     build:
@@ -83,11 +109,16 @@ services:
       dockerfile: backend/Dockerfile
     container_name: knowledge-agent-celery-beat
     env_file:
-      - .env
+      - ${COMPOSE_ENV_FILE:-.env}
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-knowledge_agent}
+      BLOG_LOCAL_MODE: "false"
+      DJANGO_DEBUG: "false"
+      AGENT_SECURITY_ENFORCED: "true"
+      DJANGO_HTTPS_TERMINATED: ${DJANGO_HTTPS_TERMINATED:?Set true only behind a verified TLS proxy}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?Set the public host},127.0.0.1
+      DATABASE_URL: postgres://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-knowledge_agent}
       REDIS_URL: redis://redis:6379/0
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-blog}:${RABBITMQ_PASSWORD:-blog}@rabbitmq:5672/${RABBITMQ_VHOST:-blog}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?Set RABBITMQ_USER}:${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD}@rabbitmq:5672/${RABBITMQ_VHOST:-blog}
       BLOG_MEDIA_STORAGE: ${BLOG_MEDIA_STORAGE:-file}
       RUN_MIGRATIONS: "false"
       COLLECT_STATIC: "false"
@@ -102,14 +133,12 @@ services:
     container_name: knowledge-agent-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-knowledge_agent}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-knowledge_agent}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?Set POSTGRES_USER} -d ${POSTGRES_DB:-knowledge_agent}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -118,8 +147,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: knowledge-agent-redis
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
@@ -134,12 +161,9 @@ services:
     image: rabbitmq:3.13-management-alpine
     container_name: knowledge-agent-rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-blog}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-blog}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD}
       RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-blog}
-    ports:
-      - "${RABBITMQ_PORT:-5672}:5672"
-      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -154,4 +178,5 @@ volumes:
   redis_data:
   rabbitmq_data:
   media_data:
+  private_note_data:
   static_data:

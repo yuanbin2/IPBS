@@ -1,46 +1,11 @@
-# 智能个人博客系统 · 桌面启动器
+# Windows Edge App 启动器
 
-## 快速启动
+`app-desktop` 是 Windows 快捷窗口启动工具，不是单独的 Electron 应用，也不负责准备后端依赖或数据库。
 
-### 方法1: 一键启动（推荐）
+## 推荐启动
 
-确保后端和前端已经在运行，然后双击 `launch.bat`。
+从仓库根目录运行 `start.bat` 启动本地博客（`http://127.0.0.1:8001/`）。需要双服务热更新时按根 README 使用 `restart.bat`，随后可双击本目录 `launch.bat` 打开 Edge App 窗口（固定访问 `http://127.0.0.1:5174`）。如端口未启动，`launch.bat` 只会打开地址，不会启动服务。
 
-### 方法2: 完整启动
+本目录内 `start-desktop.bat` / `start-desktop.ps1` 是旧脚本：仍假设 Django 使用 8000 端口，并且 BAT 退出时会结束所有 `python.exe`、`node.exe` 进程；不要用它启动或停止项目服务。使用根目录有进程归属检查的 `restart.bat` / `restart.sh` 管理开发服务。
 
-双击 `start-desktop.bat`，它会自动：
-1. 启动后端 Django 服务器
-2. 启动前端 Vite 开发服务器
-3. 用 Edge 桌面模式打开应用
-
-### 方法3: 手动启动
-
-```bash
-# 终端1: 启动后端
-cd backend
-python manage.py runserver
-
-# 终端2: 启动前端
-cd frontend
-npm run dev -- --host 127.0.0.1 --port 5174 --strictPort
-
-# 终端3: 打开桌面窗口
-"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --app=http://127.0.0.1:5174 --window-size=1400,900
-```
-
-## 为什么用 Edge App 模式？
-
-这台机器上的 Electron 安装有模块加载问题（`require('electron')` 无法解析内置模块）。Edge App 模式提供了类似的桌面体验：
-
-- ✅ 无地址栏的纯净窗口
-- ✅ 独立的用户数据目录
-- ✅ 可以固定到任务栏
-- ✅ 支持窗口控制
-- ✅ 零额外依赖
-
-## 后续改进
-
-如果需要真正的 Electron 桌面应用，可以：
-1. 在另一台机器上构建 Electron 应用
-2. 使用 GitHub Actions 自动构建
-3. 修复当前机器的 Electron 安装问题
+测试、构建和功能限制见根 [README](../README.md) 与[文档索引](../docs/README.md)。
